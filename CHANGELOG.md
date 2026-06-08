@@ -4,6 +4,10 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Planned
+- Full-flow provisioning test (install → import → settings → credentials →
+  catalog/home → asserts). Plan + decisions in `docs/PROVISIONING-TEST-PLAN.md`.
+
 ### Added — 2026-06-08
 - Initial scaffold of the OpenWoo config validation repo.
 - `scripts/oac.py` — pure-stdlib linter + sanitizer for OpenRegister
