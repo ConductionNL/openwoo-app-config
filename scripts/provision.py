@@ -234,26 +234,39 @@ def log(msg):
     print(f"==> {msg}", file=sys.stderr)
 
 
+def _from_env(var, flag):
+    """Read a non-empty value from env var `var`; raise if set-but-empty."""
+    import os
+
+    value = os.environ.get(var)
+    if not value:
+        raise ProvisionError(f"{flag} {var} is set but the env var is empty")
+    return value
+
+
 def resolve_apikey(args):
     """The real key from --apikey or --apikey-env, or None for dummy/test mode."""
     if args.apikey is not None:
         return args.apikey
     if args.apikey_env:
-        import os
-
-        value = os.environ.get(args.apikey_env)
-        if not value:
-            raise ProvisionError(
-                f"--apikey-env {args.apikey_env} is set but the env var is empty"
-            )
-        return value
+        return _from_env(args.apikey_env, "--apikey-env")
     return None
+
+
+def resolve_password(args):
+    """Password from --password or --password-env (kept out of argv)."""
+    if args.password is not None:
+        return args.password
+    if args.password_env:
+        return _from_env(args.password_env, "--password-env")
+    raise ProvisionError("provide --password or --password-env")
 
 
 def cmd_credentials(args):
     doc = load_config(args.config)
     apikey = resolve_apikey(args)
-    client = Client(args.base, args.user, args.password)
+    password = resolve_password(args)
+    client = Client(args.base, args.user, password)
     log(f"provisioning credentials against {args.base}")
     count = provision_credentials(client, doc, apikey=apikey, header=args.header)
     log(f"CREDENTIALS PROVISIONED OK ({count} source(s))")
@@ -272,7 +285,14 @@ def build_parser():
     )
     cred.add_argument("--base", required=True, help="instance base URL")
     cred.add_argument("--user", required=True, help="admin user / app-password user")
-    cred.add_argument("--password", required=True, help="password / app password")
+    cred.add_argument(
+        "--password", default=None, help="password / app password (prefer --password-env)"
+    )
+    cred.add_argument(
+        "--password-env",
+        default=None,
+        help="read the password from this env var (kept out of argv)",
+    )
     cred.add_argument(
         "--config",
         default="config/woo.configuration.json",

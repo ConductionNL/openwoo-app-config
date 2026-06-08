@@ -140,10 +140,11 @@ header. The config ships an **empty placeholder** (`configuration."headers.API-K
 secret (a K8s secret / ESO in prod, an env var locally):
 
 ```bash
-# real provisioning against a tenant (key from an env var, never logged):
-OPENWOO_APIKEY=… python3 scripts/provision.py credentials \
-    --base https://<tenant> --user <admin> --password <app-password> \
-    --apikey-env OPENWOO_APIKEY
+# real provisioning against a tenant — password and key come from env vars
+# (kept out of argv / logs); username is not a secret:
+python3 scripts/provision.py credentials \
+    --base https://<tenant> --user <admin> \
+    --password-env CANARY_PASS --apikey-env OPENWOO_APIKEY
 ```
 
 Real credentials for any source come from a secret store, never from the config

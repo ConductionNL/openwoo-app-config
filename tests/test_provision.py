@@ -128,3 +128,34 @@ def test_credentials_raises_when_key_does_not_reflect():
 
 def test_credentials_noop_when_no_sources():
     assert provision.provision_credentials(FakeClient([]), _doc()) == 0
+
+
+# --- credential resolution (kept out of argv) ---
+
+
+class _Args:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def test_resolve_password_prefers_flag_then_env(monkeypatch):
+    assert provision.resolve_password(_Args(password="p", password_env=None)) == "p"
+    monkeypatch.setenv("CRED", "from-env")
+    assert provision.resolve_password(_Args(password=None, password_env="CRED")) == "from-env"
+
+
+def test_resolve_password_raises_when_absent_or_empty(monkeypatch):
+    with pytest.raises(provision.ProvisionError, match="provide --password"):
+        provision.resolve_password(_Args(password=None, password_env=None))
+    monkeypatch.delenv("EMPTY", raising=False)
+    with pytest.raises(provision.ProvisionError, match="empty"):
+        provision.resolve_password(_Args(password=None, password_env="EMPTY"))
+
+
+def test_resolve_apikey_dummy_when_unset():
+    assert provision.resolve_apikey(_Args(apikey=None, apikey_env=None)) is None
+
+
+def test_resolve_apikey_from_env(monkeypatch):
+    monkeypatch.setenv("KEY", "real")
+    assert provision.resolve_apikey(_Args(apikey=None, apikey_env="KEY")) == "real"
