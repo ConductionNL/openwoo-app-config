@@ -212,6 +212,37 @@ def verify_import(client, doc):
     return report
 
 
+SETTINGS_ORG_PATH = "/index.php/apps/openregister/api/settings/organisation"
+SETTINGS_MT_PATH = "/index.php/apps/openregister/api/settings/multitenancy"
+
+
+def put_settings_reflected(client, path, key, payload):
+    """PUT a settings payload, GET it back (unwrapping `key`), assert it reflects.
+
+    These endpoints return the saved values wrapped under a single key
+    (`{"organisation": {...}}` / `{"multitenancy": {...}}`); we only assert the
+    fields we sent, so extra server-side fields (e.g. an auto-created org id) are
+    fine.
+    """
+    client.put(path, payload)
+    got = client.get(path).get(key, {})
+    mismatched = {k: got.get(k) for k, v in payload.items() if got.get(k) != v}
+    if mismatched:
+        raise ProvisionError(
+            f"{path}: settings did not reflect (sent {payload}, got back {mismatched})"
+        )
+    return got
+
+
+def provision_settings(client, organisation, multitenancy):
+    """PUT the organisation and multitenancy settings and assert both reflect."""
+    log("  PUT settings/organisation")
+    org = put_settings_reflected(client, SETTINGS_ORG_PATH, "organisation", organisation)
+    log("  PUT settings/multitenancy")
+    mt = put_settings_reflected(client, SETTINGS_MT_PATH, "multitenancy", multitenancy)
+    return {"organisation": org, "multitenancy": mt}
+
+
 def target_schema_resolved(target_id):
     """A sync targetId is "register/schema"; resolved iff the schema part is numeric.
 
@@ -345,6 +376,23 @@ def cmd_credentials(args):
     return 0
 
 
+def cmd_settings(args):
+    client = Client(args.base, args.user, resolve_password(args))
+    organisation = {"auto_create_default_organisation": True}
+    if args.default_organisation:
+        organisation["default_organisation"] = args.default_organisation
+    multitenancy = {
+        "enabled": args.multitenancy,
+        "defaultUserTenant": "",
+        "defaultObjectTenant": "",
+        "adminOverride": True,
+    }
+    log(f"provisioning settings against {args.base}")
+    provision_settings(client, organisation, multitenancy)
+    log("SETTINGS PROVISIONED OK (organisation + multitenancy)")
+    return 0
+
+
 def cmd_verify_import(args):
     doc = load_config(args.config)
     client = Client(args.base, args.user, resolve_password(args))
@@ -420,6 +468,23 @@ def build_parser():
         "--header", default=API_KEY_HEADER, help="source configuration key to set (default: %(default)s)"
     )
     cred.set_defaults(func=cmd_credentials)
+
+    st = sub.add_parser(
+        "settings",
+        help="PUT organisation + multitenancy settings and assert they reflect",
+    )
+    _add_connection_args(st, with_config=False)
+    st.add_argument(
+        "--default-organisation",
+        default=None,
+        help="org UUID to set (omit to rely on auto_create_default_organisation)",
+    )
+    st.add_argument(
+        "--multitenancy",
+        action="store_true",
+        help="enable multitenancy (default: disabled)",
+    )
+    st.set_defaults(func=cmd_settings)
 
     vi = sub.add_parser(
         "verify-import",

@@ -224,3 +224,44 @@ def test_sync_check_ignores_syncs_not_in_config():
         {"slug": "other", "targetId": "2/dangling"},  # not ours -> ignored
     ]})
     assert provision.sync_check(client, doc)["dangling"] == []
+
+
+# --- settings (org + multitenancy) ---
+
+
+class FakeSettingsClient:
+    """Stores PUT payloads and serves them back wrapped under `key`, like the API."""
+
+    def __init__(self, reflect=True, extra=None):
+        self._store = {}
+        self._reflect = reflect
+        self._extra = extra or {}
+
+    def put(self, path, body):
+        self._store[path] = dict(body) if self._reflect else {}
+        self.last = (path, body)
+        return {}
+
+    def get(self, path):
+        key = "organisation" if path.endswith("organisation") else "multitenancy"
+        value = dict(self._store.get(path, {}))
+        value.update(self._extra)  # server may add fields we didn't send
+        return {key: value}
+
+
+def test_provision_settings_asserts_reflection_ignoring_extra_fields():
+    # server echoes back an extra auto-created org id; we only assert what we sent
+    client = FakeSettingsClient(extra={"default_organisation": "auto-made-uuid"})
+    out = provision.provision_settings(
+        client,
+        {"auto_create_default_organisation": True},
+        {"enabled": False, "adminOverride": True},
+    )
+    assert out["organisation"]["auto_create_default_organisation"] is True
+    assert out["multitenancy"]["enabled"] is False
+
+
+def test_provision_settings_raises_when_not_reflected():
+    client = FakeSettingsClient(reflect=False)
+    with pytest.raises(provision.ProvisionError, match="did not reflect"):
+        provision.provision_settings(client, {"auto_create_default_organisation": True}, {"enabled": False})

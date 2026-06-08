@@ -4,6 +4,13 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-08 (settings provisioning)
+- `scripts/provision.py settings` — PUT `…/settings/organisation` (relies on
+  `auto_create_default_organisation` by default; `--default-organisation` to pin
+  a UUID) and `…/settings/multitenancy` (disabled by default, `--multitenancy`
+  to enable), then GET each back and assert the sent fields reflect. Proven
+  against canary. 2 unit tests.
+
 ### Added — 2026-06-08 (tenant verification)
 - `scripts/provision.py verify-import` — after an import, compares the config's
   slugs (registers/schemas/sources/synchronizations) against what is actually
