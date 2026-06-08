@@ -64,6 +64,38 @@ def test_sanitize_is_idempotent():
     assert doc["components"]["synchronizations"]["s1"] == {"sourceId": "a"}
 
 
+def test_job_runtime_fields_stripped_config_kept():
+    doc = _doc(jobs={"j1": {
+        "name": "Sync", "interval": 1800, "isEnabled": True,
+        "arguments": {"synchronizationId": "s1"},
+        "lastRun": "x", "nextRun": "y", "status": "z", "jobListId": "105",
+        "version": "0.0.1", "executionTime": 5, "created": "c",
+    }})
+    oac.sanitize(doc)
+    job = doc["components"]["jobs"]["j1"]
+    assert job == {"name": "Sync", "interval": 1800, "isEnabled": True,
+                   "arguments": {"synchronizationId": "s1"}}
+
+
+def test_job_dangling_synchronization_reference():
+    doc = _doc(
+        synchronizations={"s1": {"slug": "s1"}},
+        jobs={"j1": {"jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+                     "arguments": {"synchronizationId": "ghost"}}},
+    )
+    assert any(c == "dangling-ref" and "synchronizationId" in m
+               for _s, c, m in oac.lint(doc))
+
+
+def test_job_valid_synchronization_slug_passes():
+    doc = _doc(
+        synchronizations={"s1": {"slug": "mysync"}},
+        jobs={"j1": {"jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+                     "arguments": {"synchronizationId": "mysync"}}},
+    )
+    assert not any(c == "dangling-ref" for _s, c, _m in oac.lint(doc))
+
+
 def test_objects_data_leak_warns_but_does_not_delete():
     doc = _doc(objects=[{"id": 1, "created": "x"}])
     assert any(c == "data-leak" for _s, c, _m in oac.lint(doc))

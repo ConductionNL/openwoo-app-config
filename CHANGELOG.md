@@ -4,6 +4,24 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-08 (jobs)
+- `config/woo.configuration.json` now carries the **16 synchronization jobs**
+  (one `SynchronizationAction` per sync, `interval` 1800s) that the OpenRegister
+  configuration export omits. Sourced from the toolchain reference config — the
+  only structural difference between it and our config was these jobs (all other
+  buckets had identical slug sets). Each job is **sanitized** (runtime fields
+  stripped) and made **portable**: `arguments.synchronizationId` was rewritten
+  from the instance-specific numeric id to the synchronization **slug**.
+- `scripts/oac.py`: added a `jobs` runtime strip-set (`executionTime`,
+  `jobListId`, `lastRun`, `nextRun`, `reference`, `status`, `userId`, `version`)
+  and a reference-integrity check that every `SynchronizationAction` job's
+  `synchronizationId` resolves to a synchronization slug (a numeric/unknown ref
+  is non-portable and now fails lint). 3 unit tests.
+- Verified against canary: the jobs-bearing config imports HTTP 200 and creates
+  all 16 jobs with the slug reference preserved. (Local `make functional` was
+  separately blocked by an appstore download failure for the openregister app,
+  unrelated to this change.)
+
 ### Added — 2026-06-08 (full-flow orchestrator)
 - `scripts/provision.py all` — runs the bring-up in order and gates on each step:
   settings → verify-import → credentials → sync-check → (optional `--run-syncs`).

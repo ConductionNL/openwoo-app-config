@@ -564,7 +564,296 @@
         "slug": "xxlnc-openwoo-app-klachtoordelen"
       }
     },
-    "jobs": [],
+    "jobs": [
+      {
+        "name": "SyncXxllncToRegisterCovenanten",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-convenanten"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": null,
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllnctoregistercovenanten"
+      },
+      {
+        "name": "syncXxllncWooVerzoekenenBesluiten",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-woo-verzoeken-en-besluiten"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:00:25+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncwooverzoekenenbesluiten"
+      },
+      {
+        "name": "synchXxllncToOpenRegisterAgendasenBesluitlijsten",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-agendas-en-besluitenlijsten"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": null,
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "synchxxllnctoopenregisteragendasenbesluitlijsten"
+      },
+      {
+        "name": "syncXllncOpenWoo.app Wetten en algemeen verbindende voorschriften",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-wetten-en-algemeen-verbindende-voorschriften"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:04:40+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxllncopenwoo-app-wetten-en-algemeen-verbindende-voorschriften"
+      },
+      {
+        "name": "syncXxllncOverigeBesluiten",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-overige-besluiten-van-algemene-strekking"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:04:51+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncoverigebesluiten"
+      },
+      {
+        "name": "xxlnc-openwoo-app-ontwerpen-van-wet-en-regelgeving-met-adviesaanvraag-job",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-ontwerpen-van-wet-en-regelgeving-met-adviesaanvraag"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:05:00+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncontwerpenvanwetenenregelgeving"
+      },
+      {
+        "name": "xxlnc-openwoo-app-organisatie-en-werkwijze-job",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-organisatie-en-werkwijze"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:05:01+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncorganisatie"
+      },
+      {
+        "name": "syncXxllcBijVertegenwoordigdeOrganenIngekomenStukken",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-bij-vertegenwoordigende-organen-ingekomen-stukken"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:05:39+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllcbijvertegenwoordigdeorganeningekomenstukken"
+      },
+      {
+        "name": "syncXxllncVergaderstukkenStatenGeneraal",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-vergaderstukken-staten-generaal"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:06:12+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncvergaderstukkenstatengeneraal"
+      },
+      {
+        "name": "syncXxllncVergaderstukkenDecentraleOverheid",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-vergaderstukken-decentrale-overheden"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:06:24+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncvergaderstukkendecentraleoverheid"
+      },
+      {
+        "name": "syncXxllnceAdviezen",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-adviezen"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:06:47+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllnceadviezen"
+      },
+      {
+        "name": "syncXxllncJaarplannenEnJaarverslagen",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-jaarplannen-en-jaarverslagen"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:06:59+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncjaarplannenenjaarverslagen"
+      },
+      {
+        "name": "syncXxllnceSubsidieverplichtingenAndersDanMetBeschikking",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-subsidieverplichtingen-anders-dan-met-beschikking"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": null,
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncesubsidieverplichtingenandersdanmetbeschikking"
+      },
+      {
+        "name": "syncXxllncOnderzoeksrapporten",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-onderzoeksrapporten"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:08:32+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllnconderzoeksrapporten"
+      },
+      {
+        "name": "syncXxllncBeschikkingen",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-beschikkingen"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": "2025-07-09T21:11:27+00:00",
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncbeschikkingen"
+      },
+      {
+        "name": "syncXxllncKlachtoordelen",
+        "description": "",
+        "jobClass": "OCA\\OpenConnector\\Action\\SynchronizationAction",
+        "arguments": {
+          "synchronizationId": "xxlnc-openwoo-app-klachtoordelen"
+        },
+        "interval": 1800,
+        "timeSensitive": false,
+        "allowParallelRuns": false,
+        "isEnabled": true,
+        "singleRun": false,
+        "scheduleAfter": null,
+        "logRetention": 3600,
+        "errorRetention": 86400,
+        "configurations": [],
+        "slug": "syncxxllncklachtoordelen"
+      }
+    ],
     "registers": {
       "woo": {
         "slug": "woo",

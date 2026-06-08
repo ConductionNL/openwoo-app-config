@@ -79,6 +79,7 @@ schema property definitions), per bucket:
 | `sources` | `lastCall`, `lastSync`, `objectCount`, `rateLimitRemaining`, `rateLimitReset`, `status`, `version` | `location`, `type`, `auth`, `headers`, `rateLimitLimit`, `rateLimitWindow`, config |
 | `registers` | `usage`, `version` | `slug`, `title`, `schemas`, `quota`, config |
 | `mappings`, `rules` | `version` | definition fields |
+| `jobs` | `executionTime`, `jobListId`, `lastRun`, `nextRun`, `reference`, `status`, `userId`, `version` | `name`, `jobClass`, `arguments`, `interval`, `isEnabled`, `slug` |
 | `schemas` | timestamps only | **`version` is preserved** — semantic schema version (e.g. `1.0.4`), not runtime noise |
 
 > **Two non-obvious rules:**
@@ -97,7 +98,8 @@ automatically.
 - **structure** — `openapi`, `info`, `components` present.
 - **pollution** — no runtime fields leaked into entities (the postgres-import bug).
 - **dangling-ref** — every `synchronizations[*].sourceId` resolves to a `source`;
-  every `targetId` of the form `register/schema` resolves to a real register + schema.
+  every `targetId` of the form `register/schema` resolves to a real register + schema;
+  every `SynchronizationAction` job's `synchronizationId` resolves to a synchronization slug.
 - **data-leak** (warn) — stored `objects` in a config export.
 
 ## Layer 2 — functional import test (local)

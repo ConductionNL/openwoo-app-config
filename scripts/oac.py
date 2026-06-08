@@ -63,6 +63,10 @@ BUCKET_RUNTIME_KEYS = {
     "mappings": {"version"},
     "rules": {"version"},
     "registers": {"version", "usage"},
+    "jobs": {
+        "executionTime", "jobListId", "lastRun", "nextRun",
+        "reference", "status", "userId", "version",
+    },
 }
 
 # Buckets that hold stored data records, not configuration. They should be empty
@@ -125,6 +129,18 @@ def check_refs(comps):
             if sch not in schemas:
                 out.append(("error", "dangling-ref",
                             f"synchronizations/{name}: targetId schema '{sch}' not in schemas"))
+    # Jobs that drive a synchronization must reference it by a slug that exists
+    # (the portable form). A numeric/unknown synchronizationId is non-portable
+    # and breaks on a fresh tenant — the same class of bug as a dangling sync
+    # target — so we treat it as an error.
+    syncs = _slugs(comps.get("synchronizations", {}))
+    for name, job in iter_entities(comps.get("jobs", {})):
+        if "SynchronizationAction" not in (job.get("jobClass") or ""):
+            continue
+        sync_ref = (job.get("arguments") or {}).get("synchronizationId")
+        if sync_ref is not None and str(sync_ref) not in syncs:
+            out.append(("error", "dangling-ref",
+                        f"jobs/{name}: synchronizationId '{sync_ref}' not a synchronization slug"))
     return out
 
 
