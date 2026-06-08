@@ -27,6 +27,8 @@ set -euo pipefail
 readonly COMPOSE_FILE="docker-compose.test.yml"
 readonly BASE_URL="http://localhost:8080"
 readonly ADMIN="admin:admin_test_only"
+readonly ADMIN_USER="admin"
+readonly ADMIN_PASS="admin_test_only"
 readonly APPS=(openregister openconnector opencatalogi)
 readonly CONFIG="${CONFIG:-config/woo.configuration.json}"
 readonly KEEP_UP="${KEEP_UP:-0}"
@@ -140,6 +142,18 @@ db_count() {
   compose exec -T db psql -U nextcloud -d nextcloud -tAc "SELECT count(*) FROM $1;" 2>/dev/null | tr -d '[:space:]'
 }
 
+# Post-import provisioning step we ship: for every source in the config, PUT a
+# dummy apikey via the API and assert it reflects (scripts/provision.py). Proves
+# the credential-provisioning path against the freshly imported source. No real
+# data fetch — the demo source is auth:none and the key is an obvious dummy.
+provision_credentials() {
+  log "provisioning source credentials (dummy apikey) via the API"
+  python3 scripts/provision.py credentials \
+    --base "${BASE_URL}" --user "${ADMIN_USER}" --password "${ADMIN_PASS}" \
+    --config "${CONFIG}" \
+    || die "credential provisioning failed"
+}
+
 main() {
   detect_compose
   trap cleanup EXIT
@@ -149,6 +163,7 @@ main() {
   install_apps
   import_config
   verify_import
+  provision_credentials
   log "FUNCTIONAL TEST PASSED"
 }
 

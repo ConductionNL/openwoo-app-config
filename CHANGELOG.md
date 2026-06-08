@@ -4,9 +4,31 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
-### Planned
-- Full-flow provisioning test (install → import → settings → credentials →
-  catalog/home → asserts). Plan + decisions in `docs/PROVISIONING-TEST-PLAN.md`.
+### Added — 2026-06-08 (provisioning / credentials)
+- `scripts/provision.py` — post-import tenant provisioner (pure stdlib, urllib).
+  `credentials` subcommand: resolves every config source by slug on the running
+  instance, sets the `headers.API-KEY` entry in the source `configuration`
+  (read-modify-write, preserving existing headers like `API-Interface-ID`), then
+  GETs the source back and asserts the key reflected. Key comes from `--apikey`
+  / `--apikey-env` (never logged); a clearly-marked dummy is used when none is
+  supplied (CI / local test).
+- `scripts/functional-test.sh` — new `provision_credentials` step after the
+  row-count check; proves the credential-provisioning path end-to-end (dummy
+  key). Verified on NC30 + openconnector 0.2.20.
+- `tests/test_provision.py` — 11 unit tests (slug resolution, header merge /
+  config preservation, dummy vs supplied key, missing-source and
+  no-reflection failure paths).
+- `config/woo.configuration.json` — source `demo-xxllnc` gains an **empty**
+  `configuration."headers.API-KEY"` placeholder. The real demo key is injected
+  at provision time from a secret / env var and is never committed.
+
+### Finding — 2026-06-08
+- OpenCatalogi settings / default-catalog / home-page provisioning steps operate
+  on OpenCatalogi's **own** entities (a `publication` register, `catalog`/
+  `listing`/… schemas) which are NOT in the WOO config — a fresh import yields
+  only register `woo` + 17 WOO schemas. Those steps require a separate
+  OpenCatalogi-base provisioning flow and are out of scope for this repo's WOO
+  config. Details in `docs/PROVISIONING-TEST-PLAN.md`.
 
 ### Added — 2026-06-08
 - Initial scaffold of the OpenWoo config validation repo.

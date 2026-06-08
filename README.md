@@ -27,8 +27,11 @@ That noise causes broken diffs and unpredictable imports.
 |------|------|
 | `config/woo.configuration.json` | The canonical, **sanitized** config (commit this) |
 | `scripts/oac.py` | Linter + sanitizer — pure stdlib Python, **zero dependencies** |
+| `scripts/provision.py` | Post-import provisioner — sets source API-key credentials over the API, stdlib only |
+| `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
 | `tests/test_oac.py` | Unit tests for the linter/sanitizer |
+| `tests/test_provision.py` | Unit tests for the provisioner |
 | `.woodpecker.yml` | Codeberg CI (lint + tests + secret scan) |
 
 Zero third-party dependencies is deliberate: full auditability, no supply-chain
@@ -118,10 +121,33 @@ response body omits the created rows (e.g. it echoes `schemas: []` while 17
 schemas were in fact written), so a status-code check alone is not proof. The
 count check is.
 
+After the row-count check, the test runs the **post-import provisioner**
+(`scripts/provision.py`): for every source in the config it sets the API-key
+header on the running instance and asserts it reflects — proving the
+credential-provisioning path without performing any real data fetch. In the test
+it writes a clearly-marked dummy key.
+
 ```bash
-make functional                  # full cycle: up → install → import → assert → teardown
+make functional                  # full cycle: up → install → import → assert → provision → teardown
 KEEP_UP=1 make functional        # leave the stack at http://localhost:8080 to debug
 ```
+
+### Source credentials (provisioning)
+
+The demo source authenticates with an API key sent as the `API-KEY` request
+header. The config ships an **empty placeholder** (`configuration."headers.API-KEY": ""`)
+— the real key is **never committed**; it is injected at provision time from a
+secret (a K8s secret / ESO in prod, an env var locally):
+
+```bash
+# real provisioning against a tenant (key from an env var, never logged):
+OPENWOO_APIKEY=… python3 scripts/provision.py credentials \
+    --base https://<tenant> --user <admin> --password <app-password> \
+    --apikey-env OPENWOO_APIKEY
+```
+
+Real credentials for any source come from a secret store, never from the config
+JSON or git history.
 
 > **Why not on Codeberg CI:** Codeberg's shared runners only provide buildah,
 > not docker/compose, so this stack can't run there. Layer 2 is therefore a

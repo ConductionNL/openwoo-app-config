@@ -12,3 +12,7 @@ config/raw-*.json
 *.secret.json
 .env
 .env.*
+*.pem
+*.key
+*_rsa
+*.crt

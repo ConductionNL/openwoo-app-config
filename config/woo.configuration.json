@@ -53,7 +53,8 @@
         "configuration": {
           "headers.API-Interface-ID": "44",
           "headers.Accept": "*/*",
-          "headers.Content-Type": "application/json"
+          "headers.Content-Type": "application/json",
+          "headers.API-KEY": ""
         },
         "endpointsConfig": [],
         "logRetention": 3600,
