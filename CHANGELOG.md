@@ -4,6 +4,15 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-08 (full-flow orchestrator)
+- `scripts/provision.py all` — runs the bring-up in order and gates on each step:
+  settings → verify-import → credentials → sync-check → (optional `--run-syncs`).
+  Stops at the first failed assertion. Object creation and job runs stay separate.
+  Proven against canary: it correctly halts at verify-import on the partial-import
+  bug (4 schemas missing) rather than proceeding. 4 unit tests for the sequencing.
+- `verify-import` now also covers the `jobs` bucket (skipped while the config has
+  no jobs; active once jobs land after the hotfix).
+
 ### Added — 2026-06-08 (sync-run + objects)
 - `scripts/provision.py sync-run` — POST `…/api/synchronizations/{id}/run` (or
   `--test` for the `/test` dry-run) for every config synchronization, resolved

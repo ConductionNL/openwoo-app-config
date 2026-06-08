@@ -146,6 +146,7 @@ post-install steps the config owns, over the API, each asserting it took effect
 | `credentials` | set each source's `headers.API-KEY` | GET reflects the key |
 | `sync-run` | POST run/`--test` per synchronization | no error (real run fetches live data) |
 | `objects` | create one object in a register/schema | response carries an id/uuid |
+| `all` | run the bring-up in order, gating each step | settings → verify-import → credentials → sync-check → (`--run-syncs`) |
 
 `verify-import` and `sync-check` exist because the import API returns HTTP 200
 even when it silently drops rows: on a tenant that already holds data the bulk

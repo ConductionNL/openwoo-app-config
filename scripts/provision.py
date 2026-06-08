@@ -172,17 +172,21 @@ class ProvisionError(Exception):
 
 SOURCES_PATH = "/index.php/apps/openconnector/api/sources"
 SYNCS_PATH = "/index.php/apps/openconnector/api/synchronizations"
+JOBS_PATH = "/index.php/apps/openconnector/api/jobs"
 REGISTERS_PATH = "/index.php/apps/openregister/api/registers"
 SCHEMAS_PATH = "/index.php/apps/openregister/api/schemas"
 
 # Config bucket -> the tenant list endpoint that should hold its rows after
 # import. Used by verify_import to compare config slugs against what is actually
 # present on the tenant (a slug-level check the bulk row count cannot give).
+# Buckets the config leaves empty are skipped, so `jobs` only kicks in once the
+# config carries jobs (expected after the OpenRegister import hotfix).
 VERIFY_BUCKETS = {
     "registers": REGISTERS_PATH,
     "schemas": SCHEMAS_PATH,
     "sources": SOURCES_PATH,
     "synchronizations": SYNCS_PATH,
+    "jobs": JOBS_PATH,
 }
 
 
@@ -239,6 +243,42 @@ def provision_sync_run(client, doc, mode="run"):
         log(f"  sync '{slug}' (id={sid}): {mode} OK")
         done.append({"slug": slug, "id": sid})
     return done
+
+
+def provision_all(client, doc, apikey=None, settings=None, run_syncs=False, sync_mode="test"):
+    """Run the full post-install bring-up in order, asserting each step.
+
+    Order mirrors a real tenant bring-up: settings (optional) -> verify the
+    import landed -> source credentials -> synchronizations resolved -> optional
+    per-sync run. Raises ProvisionError on the first failed assertion. Object
+    creation and job runs are separate steps, kept out of the default sequence.
+    """
+    if settings is not None:
+        log("[1/5] settings")
+        provision_settings(client, settings["organisation"], settings["multitenancy"])
+    else:
+        log("[1/5] settings — skipped")
+
+    log("[2/5] verify-import")
+    report = verify_import(client, doc)
+    missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
+    if missing:
+        raise ProvisionError(f"import incomplete, missing: {missing}")
+
+    log("[3/5] credentials")
+    provision_credentials(client, doc, apikey=apikey)
+
+    log("[4/5] sync-check")
+    chk = sync_check(client, doc)
+    if chk["dangling"]:
+        raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
+
+    if run_syncs:
+        log(f"[5/5] sync-run ({sync_mode})")
+        provision_sync_run(client, doc, mode=sync_mode)
+    else:
+        log("[5/5] sync-run — skipped (pass --run-syncs)")
+    return True
 
 
 def provision_object(client, register, schema, payload):
@@ -436,6 +476,38 @@ def cmd_settings(args):
     return 0
 
 
+def _settings_from_args(args):
+    """Build the settings payloads from CLI args, or None when --skip-settings."""
+    if args.skip_settings:
+        return None
+    organisation = {"auto_create_default_organisation": True}
+    if args.default_organisation:
+        organisation["default_organisation"] = args.default_organisation
+    multitenancy = {
+        "enabled": args.multitenancy,
+        "defaultUserTenant": "",
+        "defaultObjectTenant": "",
+        "adminOverride": True,
+    }
+    return {"organisation": organisation, "multitenancy": multitenancy}
+
+
+def cmd_all(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"full provisioning against {args.base}")
+    provision_all(
+        client,
+        doc,
+        apikey=resolve_apikey(args),
+        settings=_settings_from_args(args),
+        run_syncs=args.run_syncs,
+        sync_mode="test" if args.test else "run",
+    )
+    log("FULL PROVISIONING OK")
+    return 0
+
+
 def cmd_sync_run(args):
     doc = load_config(args.config)
     client = Client(args.base, args.user, resolve_password(args))
@@ -584,6 +656,20 @@ def build_parser():
     ob.add_argument("--schema", required=True, help="target schema (slug or id)")
     ob.add_argument("--payload-file", required=True, help="JSON file with the object body")
     ob.set_defaults(func=cmd_objects)
+
+    al = sub.add_parser(
+        "all",
+        help="run the full bring-up in order: settings -> verify-import -> credentials -> sync-check [-> sync-run]",
+    )
+    _add_connection_args(al)
+    al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")
+    al.add_argument("--apikey-env", default=None, help="read the real API key from this env var")
+    al.add_argument("--default-organisation", default=None, help="org UUID (omit to rely on auto-create)")
+    al.add_argument("--multitenancy", action="store_true", help="enable multitenancy (default: disabled)")
+    al.add_argument("--skip-settings", action="store_true", help="do not touch settings")
+    al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")
+    al.add_argument("--test", action="store_true", help="with --run-syncs, use the /test dry-run endpoint")
+    al.set_defaults(func=cmd_all)
 
     return parser
 

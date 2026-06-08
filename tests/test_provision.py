@@ -340,3 +340,50 @@ def test_provision_object_raises_without_id():
     client = FakeObjectClient({"message": "no id here"})
     with pytest.raises(provision.ProvisionError, match="no id/uuid"):
         provision.provision_object(client, "woo", "page", {"title": "Home"})
+
+
+# --- all (orchestrator) ---
+
+
+def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
+    monkeypatch.setattr(provision, "provision_settings",
+                        lambda c, o, m: calls.append("settings"))
+    monkeypatch.setattr(provision, "verify_import",
+                        lambda c, d: (calls.append("verify"),
+                                      {"schemas": {"expected": 1, "missing": verify_missing or []}})[1])
+    monkeypatch.setattr(provision, "provision_credentials",
+                        lambda c, d, apikey=None: calls.append("credentials"))
+    monkeypatch.setattr(provision, "sync_check",
+                        lambda c, d: (calls.append("sync-check"),
+                                      {"total": 1, "dangling": dangling or []})[1])
+    monkeypatch.setattr(provision, "provision_sync_run",
+                        lambda c, d, mode="run": calls.append(f"sync-run:{mode}"))
+
+
+def test_provision_all_runs_steps_in_order(monkeypatch):
+    calls = []
+    _patch_steps(monkeypatch, calls)
+    provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
+    assert calls == ["settings", "verify", "credentials", "sync-check"]  # sync-run skipped
+
+
+def test_provision_all_includes_sync_run_when_requested(monkeypatch):
+    calls = []
+    _patch_steps(monkeypatch, calls)
+    provision.provision_all(None, _doc(), settings=None, run_syncs=True, sync_mode="test")
+    assert calls == ["verify", "credentials", "sync-check", "sync-run:test"]  # settings skipped
+
+
+def test_provision_all_stops_on_incomplete_import(monkeypatch):
+    calls = []
+    _patch_steps(monkeypatch, calls, verify_missing=["convenanten"])
+    with pytest.raises(provision.ProvisionError, match="import incomplete"):
+        provision.provision_all(None, _doc(), settings=None)
+    assert "credentials" not in calls  # stopped before credentials
+
+
+def test_provision_all_stops_on_dangling_syncs(monkeypatch):
+    calls = []
+    _patch_steps(monkeypatch, calls, dangling=[{"slug": "x", "targetId": "2/x"}])
+    with pytest.raises(provision.ProvisionError, match="dangling"):
+        provision.provision_all(None, _doc(), settings=None)
