@@ -3,10 +3,10 @@
 Versioned, **validated** OpenRegister configuration for the OpenWoo app (Woo
 register, schemas, mappings, sources, synchronizations).
 
-This repo exists for one reason: the config is a ~14k-line JSON document that
-devs hand-edit and re-export, and mistakes in it silently break app
-functionality. Here the config is version-controlled and **gated by CI** before
-it is ever loaded into a tenant.
+This repo exists for one reason: the config is a large JSON document
+(~7,500 lines pretty-printed) that devs hand-edit and re-export, and mistakes in
+it silently break app functionality. Here the config is version-controlled and
+**gated by CI** before it is ever loaded into a tenant.
 
 ## The problem this solves
 
