@@ -132,6 +132,30 @@ make functional                  # full cycle: up → install → import → ass
 KEEP_UP=1 make functional        # leave the stack at http://localhost:8080 to debug
 ```
 
+### The provisioner (`scripts/provision.py`)
+
+A real tenant bring-up is more than the import. `provision.py` performs the
+post-install steps the config owns, over the API, each asserting it took effect
+("test what you ship"). Every step is one subcommand with its own unit tests:
+
+| Subcommand | Does | Asserts |
+|------------|------|---------|
+| `settings` | PUT organisation + multitenancy settings | GET reflects the sent fields |
+| `verify-import` | compare config slugs to the tenant | every register/schema/source/sync present |
+| `sync-check` | inspect tenant synchronizations | every target schema resolved (no dangling `reg/<slug>`) |
+| `credentials` | set each source's `headers.API-KEY` | GET reflects the key |
+| `sync-run` | POST run/`--test` per synchronization | no error (real run fetches live data) |
+| `objects` | create one object in a register/schema | response carries an id/uuid |
+
+`verify-import` and `sync-check` exist because the import API returns HTTP 200
+even when it silently drops rows: on a tenant that already holds data the bulk
+row count can't see the gap, but a slug-level diff can. (They caught exactly
+this on canary — see the test plan.)
+
+Connection flags are shared: `--base`, `--user`, and `--password` /
+`--password-env` (the env form keeps the secret out of argv). Steps that read the
+config also take `--config`.
+
 ### Source credentials (provisioning)
 
 The demo source authenticates with an API key sent as the `API-KEY` request

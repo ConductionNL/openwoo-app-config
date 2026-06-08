@@ -212,6 +212,49 @@ def verify_import(client, doc):
     return report
 
 
+OBJECTS_PATH = "/index.php/apps/openregister/api/objects"
+
+
+def provision_sync_run(client, doc, mode="run"):
+    """POST run (or test) for every config synchronization, resolved by slug.
+
+    `mode` is "run" (real execution) or "test" (dry-run). Returns a list of
+    {slug, id}. Raises ProvisionError on a missing sync or a response that
+    carries an error/exception (HTTP errors already raise in the client).
+    NOTE: "run" against a real source performs a live data fetch — intended for
+    a real tenant, not the local CI test.
+    """
+    want = config_slugs(doc, "synchronizations")
+    syncs = results_list(client.get(SYNCS_PATH))
+    done = []
+    for slug in want:
+        sync = find_by_slug(syncs, slug)
+        if sync is None:
+            raise ProvisionError(f"synchronization '{slug}' not found on the instance")
+        sid = sync.get("id")
+        resp = client.post(f"{SYNCS_PATH}/{sid}/{mode}")
+        err = resp.get("error") or resp.get("exception") if isinstance(resp, dict) else None
+        if err:
+            raise ProvisionError(f"synchronization '{slug}' {mode} failed: {err}")
+        log(f"  sync '{slug}' (id={sid}): {mode} OK")
+        done.append({"slug": slug, "id": sid})
+    return done
+
+
+def provision_object(client, register, schema, payload):
+    """POST one object into register/schema and assert the response carries an id.
+
+    register/schema may be slugs or numeric ids. Returns the created object.
+    """
+    resp = client.post(f"{OBJECTS_PATH}/{register}/{schema}", payload)
+    oid = (resp.get("id") or resp.get("uuid")) if isinstance(resp, dict) else None
+    if not oid:
+        raise ProvisionError(
+            f"object create in {register}/{schema} returned no id/uuid: {str(resp)[:200]}"
+        )
+    return resp
+
+
 SETTINGS_ORG_PATH = "/index.php/apps/openregister/api/settings/organisation"
 SETTINGS_MT_PATH = "/index.php/apps/openregister/api/settings/multitenancy"
 
@@ -393,6 +436,26 @@ def cmd_settings(args):
     return 0
 
 
+def cmd_sync_run(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    mode = "test" if args.test else "run"
+    log(f"{mode}ning {len(config_slugs(doc, 'synchronizations'))} synchronization(s) on {args.base}")
+    done = provision_sync_run(client, doc, mode=mode)
+    log(f"SYNC {mode.upper()} OK ({len(done)} synchronization(s))")
+    return 0
+
+
+def cmd_objects(args):
+    client = Client(args.base, args.user, resolve_password(args))
+    with open(args.payload_file, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    log(f"creating object in {args.register}/{args.schema} on {args.base}")
+    obj = provision_object(client, args.register, args.schema, payload)
+    log(f"OBJECT CREATED OK (id={obj.get('id') or obj.get('uuid')})")
+    return 0
+
+
 def cmd_verify_import(args):
     doc = load_config(args.config)
     client = Client(args.base, args.user, resolve_password(args))
@@ -499,6 +562,28 @@ def build_parser():
     )
     _add_connection_args(sc)
     sc.set_defaults(func=cmd_sync_check)
+
+    sr = sub.add_parser(
+        "sync-run",
+        help="POST run (or --test) for every config synchronization; real run fetches live data",
+    )
+    _add_connection_args(sr)
+    sr.add_argument(
+        "--test",
+        action="store_true",
+        help="use the /test dry-run endpoint instead of /run (no real fetch)",
+    )
+    sr.set_defaults(func=cmd_sync_run)
+
+    ob = sub.add_parser(
+        "objects",
+        help="create one object in a register/schema from a JSON payload file",
+    )
+    _add_connection_args(ob, with_config=False)
+    ob.add_argument("--register", required=True, help="target register (slug or id)")
+    ob.add_argument("--schema", required=True, help="target schema (slug or id)")
+    ob.add_argument("--payload-file", required=True, help="JSON file with the object body")
+    ob.set_defaults(func=cmd_objects)
 
     return parser
 

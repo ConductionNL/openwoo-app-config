@@ -265,3 +265,78 @@ def test_provision_settings_raises_when_not_reflected():
     client = FakeSettingsClient(reflect=False)
     with pytest.raises(provision.ProvisionError, match="did not reflect"):
         provision.provision_settings(client, {"auto_create_default_organisation": True}, {"enabled": False})
+
+
+# --- sync-run ---
+
+
+class FakeRunClient:
+    """Lists syncs and records run/test POSTs; optional per-id error response."""
+
+    def __init__(self, syncs, errors=None):
+        self._syncs = syncs
+        self._errors = errors or {}
+        self.posts = []
+
+    def get(self, path):
+        return {"results": self._syncs}
+
+    def post(self, path, body=None):
+        self.posts.append(path)
+        sid = int(path.split("/")[-2])
+        return self._errors.get(sid, {"ok": True})
+
+
+def test_sync_run_posts_run_for_each_config_sync():
+    doc = _doc(synchronizations=[{"slug": "x"}, {"slug": "y"}])
+    client = FakeRunClient([{"slug": "x", "id": 1}, {"slug": "y", "id": 2}])
+    done = provision.provision_sync_run(client, doc, mode="run")
+    assert [d["id"] for d in done] == [1, 2]
+    assert client.posts == [f"{provision.SYNCS_PATH}/1/run", f"{provision.SYNCS_PATH}/2/run"]
+
+
+def test_sync_run_test_mode_uses_test_endpoint():
+    doc = _doc(synchronizations=[{"slug": "x"}])
+    client = FakeRunClient([{"slug": "x", "id": 1}])
+    provision.provision_sync_run(client, doc, mode="test")
+    assert client.posts == [f"{provision.SYNCS_PATH}/1/test"]
+
+
+def test_sync_run_raises_on_error_response():
+    doc = _doc(synchronizations=[{"slug": "x"}])
+    client = FakeRunClient([{"slug": "x", "id": 1}], errors={1: {"error": "boom"}})
+    with pytest.raises(provision.ProvisionError, match="boom"):
+        provision.provision_sync_run(client, doc, mode="run")
+
+
+def test_sync_run_raises_when_sync_missing():
+    doc = _doc(synchronizations=[{"slug": "ghost"}])
+    client = FakeRunClient([{"slug": "x", "id": 1}])
+    with pytest.raises(provision.ProvisionError, match="not found"):
+        provision.provision_sync_run(client, doc, mode="run")
+
+
+# --- objects ---
+
+
+class FakeObjectClient:
+    def __init__(self, response):
+        self._response = response
+        self.posts = []
+
+    def post(self, path, body=None):
+        self.posts.append((path, body))
+        return self._response
+
+
+def test_provision_object_returns_created_with_id():
+    client = FakeObjectClient({"id": 42, "title": "Home"})
+    obj = provision.provision_object(client, "woo", "page", {"title": "Home"})
+    assert obj["id"] == 42
+    assert client.posts == [(f"{provision.OBJECTS_PATH}/woo/page", {"title": "Home"})]
+
+
+def test_provision_object_raises_without_id():
+    client = FakeObjectClient({"message": "no id here"})
+    with pytest.raises(provision.ProvisionError, match="no id/uuid"):
+        provision.provision_object(client, "woo", "page", {"title": "Home"})

@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-08 (sync-run + objects)
+- `scripts/provision.py sync-run` — POST `…/api/synchronizations/{id}/run` (or
+  `--test` for the `/test` dry-run) for every config synchronization, resolved
+  by slug, asserting no error. A real run fetches live data from the source, so
+  it targets a real tenant, not the local CI test. Endpoints confirmed from the
+  OpenConnector source (`synchronizations#run` / `#test`).
+- `scripts/provision.py objects` — create one object in a register/schema
+  (`POST …/api/objects/{register}/{schema}`) from a JSON payload file and assert
+  the response carries an id/uuid.
+- 6 unit tests (run vs test endpoint, error/ missing-sync paths, object id assert).
+- Live-testing of these two is deferred until after the OpenRegister import
+  hotfix (the partial-import bug leaves canary's syncs dangling until then).
+
 ### Added — 2026-06-08 (settings provisioning)
 - `scripts/provision.py settings` — PUT `…/settings/organisation` (relies on
   `auto_create_default_organisation` by default; `--default-organisation` to pin
