@@ -34,6 +34,26 @@ That noise causes broken diffs and unpredictable imports.
 Zero third-party dependencies is deliberate: full auditability, no supply-chain
 surface, reproducible anywhere `python3` exists.
 
+## The rule: every config change goes through this repo
+
+The OpenWoo config is **not** edited live in a tenant and is **not** imported
+from a hand-edited export. The single source of truth is
+`config/woo.configuration.json` here. Anyone changing the config follows this
+flow — no exceptions:
+
+1. `git switch -c feat/<what-changed>`
+2. Make/obtain a fresh export → drop it in the repo as `raw-<date>.json`
+   (git-ignored, never committed).
+3. `make sanitize RAW=raw-<date>.json` — strips the postgres runtime pollution
+   into `config/woo.configuration.json`.
+4. `make lint && make test` — the gate. Fix any dangling refs / pollution.
+5. `make functional` *(local)* — prove it imports into a clean Nextcloud.
+6. Review the diff, open a PR. CI runs `lint` + `test` + secret scan.
+7. Merge → tag a release. Nextcloud-base consumes the tag (see below).
+
+This is the whole point of the repo: errors are caught here, in review and CI,
+before the config can reach a tenant.
+
 ## Usage
 
 ```bash
@@ -41,10 +61,8 @@ make lint                 # CI gate: fail on runtime pollution / dangling refs
 make sanitize             # strip pollution from config/woo.configuration.json in place
 make sanitize RAW=fresh-export.json   # clean a fresh export into the canonical config
 make test                 # run unit tests
+make functional           # local layer-2: import into ephemeral Nextcloud (needs docker)
 ```
-
-**Workflow when you have a new export:** drop it in the repo, run
-`make sanitize RAW=<file>`, review the diff, commit.
 
 ## What gets stripped, and why
 
@@ -78,6 +96,36 @@ automatically.
 - **dangling-ref** — every `synchronizations[*].sourceId` resolves to a `source`;
   every `targetId` of the form `register/schema` resolves to a real register + schema.
 - **data-leak** (warn) — stored `objects` in a config export.
+
+## Layer 2 — functional import test (local)
+
+Static `lint` cannot prove the config actually *loads*. `make functional` does:
+it spins up an **ephemeral** Nextcloud + PostgreSQL (`docker-compose.test.yml`),
+installs the Conduction apps, and imports the config through the real
+OpenRegister API:
+
+```
+POST /apps/openregister/api/configurations/import   (multipart file=)
+```
+
+The stack is wiped after every run (`down -v`), so the test always proves a
+**clean** tenant accepts the config — the same starting point a new tenant has.
+
+```bash
+make functional                  # full cycle: up → install → import → assert → teardown
+KEEP_UP=1 make functional        # leave the stack at http://localhost:8080 to debug
+```
+
+> **Why not on Codeberg CI:** Codeberg's shared runners only provide buildah,
+> not docker/compose, so this stack can't run there. Layer 2 is therefore a
+> local check (and a candidate for a self-hosted nightly), while the static
+> `lint`/`test` gate runs on every push. Auth uses the ephemeral container's own
+> admin — **no live credentials live in Codeberg.**
+
+Possible extension (not yet wired): round-trip — after import, `GET
+.../configurations/{id}/export`, run it back through `sanitize`, and assert the
+register/schema/source/sync slug-set matches the input. That would also prove the
+sanitizer captures every runtime field OpenRegister emits.
 
 ## How Nextcloud-base consumes this
 

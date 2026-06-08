@@ -19,6 +19,13 @@ All notable changes to this repository are documented here.
 - `tests/test_oac.py` — unit tests (pollution, schema-version preservation,
   dangling refs, sanitize idempotency, data-leak warning).
 - `.woodpecker.yml` — Codeberg CI: lint + tests + gitleaks secret scan.
+- `docker-compose.test.yml` + `scripts/functional-test.sh` — Layer-2 functional
+  test: ephemeral Nextcloud + PostgreSQL, installs the Conduction apps, imports
+  the config via `POST /apps/openregister/api/configurations/import` and asserts
+  success. Local-only (Codeberg runners provide buildah, not docker/compose); no
+  live credentials. `make functional`.
+- README: mandatory contribution workflow — every config change goes through
+  this repo (branch → sanitize → lint/test → functional → PR → tag).
 - `Makefile` — source of truth for local + CI commands.
 - `config/woo.configuration.json` — initial canonical config, sanitized from
   `configuration_7_2026-06-08.json` (261 runtime fields stripped).
