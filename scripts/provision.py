@@ -245,39 +245,54 @@ def provision_sync_run(client, doc, mode="run"):
     return done
 
 
-def provision_all(client, doc, apikey=None, settings=None, run_syncs=False, sync_mode="test"):
+def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
+                  catalog=True, run_syncs=False, sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
-    Order mirrors a real tenant bring-up: settings (optional) -> verify the
-    import landed -> source credentials -> synchronizations resolved -> optional
-    per-sync run. Raises ProvisionError on the first failed assertion. Object
-    creation and job runs are separate steps, kept out of the default sequence.
+    Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
+    coupling -> verify the import landed -> point the catalog at the WOO schemas
+    -> source credentials -> synchronizations resolved -> optional per-sync run.
+    Raises ProvisionError on the first failed assertion. The oc-settings and
+    catalog steps need the OpenCatalogi base present; skip them for a WOO-only
+    tenant. Object creation and job runs stay separate.
     """
     if settings is not None:
-        log("[1/5] settings")
+        log("[1/7] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/5] settings — skipped")
+        log("[1/7] settings — skipped")
 
-    log("[2/5] verify-import")
+    if oc_settings:
+        log("[2/7] oc-settings")
+        provision_oc_settings(client)
+    else:
+        log("[2/7] oc-settings — skipped")
+
+    log("[3/7] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
-    log("[3/5] credentials")
+    if catalog:
+        log("[4/7] catalog")
+        provision_catalog(client, doc)
+    else:
+        log("[4/7] catalog — skipped")
+
+    log("[5/7] credentials")
     provision_credentials(client, doc, apikey=apikey)
 
-    log("[4/5] sync-check")
+    log("[6/7] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
     if run_syncs:
-        log(f"[5/5] sync-run ({sync_mode})")
+        log(f"[7/7] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[5/5] sync-run — skipped (pass --run-syncs)")
+        log("[7/7] sync-run — skipped (pass --run-syncs)")
     return True
 
 
@@ -588,6 +603,8 @@ def cmd_all(args):
         doc,
         apikey=resolve_apikey(args),
         settings=_settings_from_args(args),
+        oc_settings=not args.skip_oc_settings,
+        catalog=not args.skip_catalog,
         run_syncs=args.run_syncs,
         sync_mode="test" if args.test else "run",
     )
@@ -788,6 +805,8 @@ def build_parser():
     al.add_argument("--default-organisation", default=None, help="org UUID (omit to rely on auto-create)")
     al.add_argument("--multitenancy", action="store_true", help="enable multitenancy (default: disabled)")
     al.add_argument("--skip-settings", action="store_true", help="do not touch settings")
+    al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
+    al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
     al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")
     al.add_argument("--test", action="store_true", help="with --run-syncs, use the /test dry-run endpoint")
     al.set_defaults(func=cmd_all)

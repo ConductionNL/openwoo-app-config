@@ -19,6 +19,12 @@ All notable changes to this repository are documented here.
 - Verified on a clean canary (NC 32.0.5): the fixed config imports **17/17
   schemas**, the catalog links all 17, and `sync-check` reports no dangling.
 
+### Changed — 2026-06-08 (orchestrator)
+- `scripts/provision.py all` now runs the full bring-up: settings → **oc-settings**
+  → verify-import → **catalog** → credentials → sync-check → (optional sync-run).
+  `--skip-oc-settings` / `--skip-catalog` for a WOO-only tenant without the
+  OpenCatalogi base. Proven end-to-end on canary (all steps green).
+
 ### Added — 2026-06-08 (OpenCatalogi settings)
 - `scripts/provision.py oc-settings` — couples each OpenCatalogi object type
   (catalog/listing/organization/theme/page/menu/glossary) to its register +

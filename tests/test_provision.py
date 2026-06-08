@@ -464,9 +464,13 @@ def test_provision_catalog_raises_when_register_missing():
 def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
     monkeypatch.setattr(provision, "provision_settings",
                         lambda c, o, m: calls.append("settings"))
+    monkeypatch.setattr(provision, "provision_oc_settings",
+                        lambda c: calls.append("oc-settings"))
     monkeypatch.setattr(provision, "verify_import",
                         lambda c, d: (calls.append("verify"),
                                       {"schemas": {"expected": 1, "missing": verify_missing or []}})[1])
+    monkeypatch.setattr(provision, "provision_catalog",
+                        lambda c, d: calls.append("catalog"))
     monkeypatch.setattr(provision, "provision_credentials",
                         lambda c, d, apikey=None: calls.append("credentials"))
     monkeypatch.setattr(provision, "sync_check",
@@ -480,14 +484,15 @@ def test_provision_all_runs_steps_in_order(monkeypatch):
     calls = []
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
-    assert calls == ["settings", "verify", "credentials", "sync-check"]  # sync-run skipped
+    assert calls == ["settings", "oc-settings", "verify", "catalog", "credentials", "sync-check"]
 
 
-def test_provision_all_includes_sync_run_when_requested(monkeypatch):
+def test_provision_all_skips_optional_steps(monkeypatch):
     calls = []
     _patch_steps(monkeypatch, calls)
-    provision.provision_all(None, _doc(), settings=None, run_syncs=True, sync_mode="test")
-    assert calls == ["verify", "credentials", "sync-check", "sync-run:test"]  # settings skipped
+    provision.provision_all(None, _doc(), settings=None, oc_settings=False, catalog=False,
+                            run_syncs=True, sync_mode="test")
+    assert calls == ["verify", "credentials", "sync-check", "sync-run:test"]
 
 
 def test_provision_all_stops_on_incomplete_import(monkeypatch):
