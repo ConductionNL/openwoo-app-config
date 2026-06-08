@@ -96,6 +96,18 @@ def test_job_valid_synchronization_slug_passes():
     assert not any(c == "dangling-ref" for _s, c, _m in oac.lint(doc))
 
 
+def test_invalid_authorization_action_flagged():
+    doc = _doc(schemas={"s1": {"authorization": {"read": [], "inheritFromPublic": True}}})
+    findings = oac.lint(doc)
+    assert any(c == "bad-authorization" and "inheritFromPublic" in m
+               for _s, c, m in findings)
+
+
+def test_valid_authorization_actions_pass():
+    doc = _doc(schemas={"s1": {"authorization": {"read": [], "create": [], "update": [], "delete": []}}})
+    assert not any(c == "bad-authorization" for _s, c, _m in oac.lint(doc))
+
+
 def test_objects_data_leak_warns_but_does_not_delete():
     doc = _doc(objects=[{"id": 1, "created": "x"}])
     assert any(c == "data-leak" for _s, c, _m in oac.lint(doc))

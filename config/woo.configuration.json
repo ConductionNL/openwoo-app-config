@@ -4018,7 +4018,6 @@
         "application": "uploaded-config",
         "groups": null,
         "authorization": {
-          "inheritFromPublic": true,
           "read": [
             {
               "group": "public",
@@ -4426,7 +4425,6 @@
           "delete": [
             "Test WOO-verzoek"
           ],
-          "inheritFromPublic": true,
           "read": [
             {
               "group": "public",
@@ -5234,7 +5232,6 @@
           "create": [
             "Test Convenant"
           ],
-          "inheritFromPublic": true,
           "read": [
             {
               "group": "public",
@@ -6039,7 +6036,6 @@
         "application": "uploaded-config",
         "groups": null,
         "authorization": {
-          "inheritFromPublic": true,
           "read": [
             {
               "group": "public",

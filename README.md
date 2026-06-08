@@ -100,6 +100,9 @@ automatically.
 - **dangling-ref** — every `synchronizations[*].sourceId` resolves to a `source`;
   every `targetId` of the form `register/schema` resolves to a real register + schema;
   every `SynchronizationAction` job's `synchronizationId` resolves to a synchronization slug.
+- **bad-authorization** — every schema `authorization` key is a valid action
+  (`create`/`read`/`update`/`delete`). An invalid key (e.g. `inheritFromPublic`)
+  makes the import silently drop the whole schema, so it fails the gate.
 - **data-leak** (warn) — stored `objects` in a config export.
 
 ## Layer 2 — functional import test (local)
@@ -148,6 +151,7 @@ post-install steps the config owns, over the API, each asserting it took effect
 | `credentials` | set each source's `headers.API-KEY` | GET reflects the key |
 | `sync-run` | POST run/`--test` per synchronization | no error (real run fetches live data) |
 | `objects` | create one object in a register/schema | response carries an id/uuid |
+| `catalog` | point the OpenCatalogi catalog at the WOO register + all its schemas | registers/schemas reflect (slugs resolved to tenant ids) |
 | `all` | run the bring-up in order, gating each step | settings → verify-import → credentials → sync-check → (`--run-syncs`) |
 
 `verify-import` and `sync-check` exist because the import API returns HTTP 200

@@ -4,6 +4,27 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Fixed — 2026-06-08 (root cause of the silent partial import)
+- **4 schemas** (`adviezen`, `convenanten`, `wetten_en_algemeen_verbindende_voorschriften`,
+  `woo_verzoeken_en_besluiten`) carried an invalid `authorization` key
+  `inheritFromPublic: true`. OpenRegister's import rejects any authorization key
+  that is not `create`/`read`/`update`/`delete` and then **silently drops the
+  whole schema** (HTTP 200, no failure in the response), which also left the 4
+  matching synchronizations dangling. Confirmed from the canary Nextcloud log
+  (`[ImportHandler] Failed to create schema (Pass 1) ... Invalid authorization
+  action 'inheritFromPublic'`). Removed the stray flag from the 4 schemas.
+- `scripts/oac.py`: new **bad-authorization** lint check — a schema
+  `authorization` key that is not a valid action now fails the gate (would have
+  caught this before it reached a tenant). 2 unit tests.
+- Verified on a clean canary (NC 32.0.5): the fixed config imports **17/17
+  schemas**, the catalog links all 17, and `sync-check` reports no dangling.
+
+### Added — 2026-06-08 (catalog)
+- `scripts/provision.py catalog` — points the OpenCatalogi `publications` catalog
+  object at the WOO register + **all** its schemas, resolving the register and
+  schema slugs to tenant ids (the object stores numeric ids) and asserting they
+  reflect. 3 unit tests. Proven on canary (17 schemas linked).
+
 ### Added — 2026-06-08 (jobs)
 - `config/woo.configuration.json` now carries the **16 synchronization jobs**
   (one `SynchronizationAction` per sync, `interval` 1800s) that the OpenRegister

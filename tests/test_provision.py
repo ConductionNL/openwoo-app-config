@@ -342,6 +342,69 @@ def test_provision_object_raises_without_id():
         provision.provision_object(client, "woo", "page", {"title": "Home"})
 
 
+# --- catalog ---
+
+
+class FakeCatalogClient:
+    """Serves registers/schemas slug->id lists and the catalog object; records PUT."""
+
+    def __init__(self, registers, schemas, catalog, reflect=True):
+        self._registers = registers
+        self._schemas = schemas
+        self._catalog = dict(catalog)
+        self._reflect = reflect
+        self.put_body = None
+
+    def get(self, path):
+        if path.endswith("/api/registers"):
+            return {"results": self._registers}
+        if path.endswith("/api/schemas"):
+            return {"results": self._schemas}
+        return dict(self._catalog)  # the catalog object path
+
+    def put(self, path, body):
+        self.put_body = body
+        if self._reflect:
+            self._catalog.update({"registers": body["registers"], "schemas": body["schemas"]})
+        return self._catalog
+
+
+def test_provision_catalog_resolves_slugs_to_ids():
+    doc = _doc(schemas=[{"slug": "a"}, {"slug": "b"}, {"slug": "c"}])
+    client = FakeCatalogClient(
+        registers=[{"slug": "woo", "id": 2}, {"slug": "publication", "id": 1}],
+        schemas=[{"slug": "a", "id": 9}, {"slug": "b", "id": 10}, {"slug": "c", "id": 11}],
+        catalog={"slug": "publications", "title": "Publications", "registers": [2], "schemas": [99]},
+    )
+    provision.provision_catalog(client, doc)
+    # all three config schema slugs resolved to ids; woo register resolved
+    assert client.put_body["registers"] == [2]
+    assert client.put_body["schemas"] == [9, 10, 11]
+    assert client.put_body["title"] == "Publications"  # existing field preserved
+
+
+def test_provision_catalog_raises_on_missing_schema():
+    doc = _doc(schemas=[{"slug": "a"}, {"slug": "gone"}])
+    client = FakeCatalogClient(
+        registers=[{"slug": "woo", "id": 2}],
+        schemas=[{"slug": "a", "id": 9}],  # 'gone' absent
+        catalog={"slug": "publications", "registers": [], "schemas": []},
+    )
+    with pytest.raises(provision.ProvisionError, match="not on the tenant"):
+        provision.provision_catalog(client, doc)
+
+
+def test_provision_catalog_raises_when_register_missing():
+    doc = _doc(schemas=[{"slug": "a"}])
+    client = FakeCatalogClient(
+        registers=[{"slug": "publication", "id": 1}],  # no 'woo'
+        schemas=[{"slug": "a", "id": 9}],
+        catalog={"slug": "publications"},
+    )
+    with pytest.raises(provision.ProvisionError, match="register 'woo' not found"):
+        provision.provision_catalog(client, doc)
+
+
 # --- all (orchestrator) ---
 
 

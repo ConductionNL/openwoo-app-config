@@ -281,6 +281,54 @@ def provision_all(client, doc, apikey=None, settings=None, run_syncs=False, sync
     return True
 
 
+CATALOG_REGISTER = "publication"
+CATALOG_SCHEMA = "catalog"
+
+
+def slug_to_id(items):
+    """Map slug -> id for a list of entities (skips entries without a slug)."""
+    return {i.get("slug"): i.get("id") for i in items if i.get("slug")}
+
+
+def provision_catalog(client, doc, catalog_slug="publications", target_register="woo"):
+    """Point the OpenCatalogi catalog object at the WOO register + all its schemas.
+
+    The catalog lives in the OpenCatalogi base (register `publication`, schema
+    `catalog`). We resolve the WOO register slug and every config schema slug to
+    their tenant ids (the object stores numeric ids), set them on the catalog,
+    PUT, then assert the registers/schemas reflect. Raises if the base catalog
+    object or any config schema is absent on the tenant.
+    """
+    reg_ids = slug_to_id(results_list(client.get(REGISTERS_PATH)))
+    sch_ids = slug_to_id(results_list(client.get(SCHEMAS_PATH)))
+    if target_register not in reg_ids:
+        raise ProvisionError(f"catalog: register '{target_register}' not found on the tenant")
+    want = config_slugs(doc, "schemas")
+    missing = [s for s in want if s not in sch_ids]
+    if missing:
+        raise ProvisionError(f"catalog: {len(missing)} schema(s) not on the tenant: {missing}")
+    register_ids = [reg_ids[target_register]]
+    schema_ids = [sch_ids[s] for s in want]
+
+    obj_path = f"{OBJECTS_PATH}/{CATALOG_REGISTER}/{CATALOG_SCHEMA}/{catalog_slug}"
+    existing = client.get(obj_path)
+    body = dict(existing) if isinstance(existing, dict) else {}
+    body["registers"] = register_ids
+    body["schemas"] = schema_ids
+    log(f"  catalog '{catalog_slug}': register {register_ids} + {len(schema_ids)} schemas")
+    client.put(obj_path, body)
+
+    after = client.get(obj_path)
+    got_reg = after.get("registers") or []
+    got_sch = sorted(after.get("schemas") or [])
+    if got_reg != register_ids or got_sch != sorted(schema_ids):
+        raise ProvisionError(
+            f"catalog did not reflect (registers={got_reg}, {len(got_sch)} schemas)"
+        )
+    log(f"  catalog '{catalog_slug}': {len(schema_ids)} schemas reflected OK")
+    return after
+
+
 def provision_object(client, register, schema, payload):
     """POST one object into register/schema and assert the response carries an id.
 
@@ -518,6 +566,15 @@ def cmd_sync_run(args):
     return 0
 
 
+def cmd_catalog(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"provisioning catalog '{args.catalog_slug}' against {args.base}")
+    provision_catalog(client, doc, catalog_slug=args.catalog_slug, target_register=args.register)
+    log("CATALOG PROVISIONED OK")
+    return 0
+
+
 def cmd_objects(args):
     client = Client(args.base, args.user, resolve_password(args))
     with open(args.payload_file, encoding="utf-8") as fh:
@@ -656,6 +713,15 @@ def build_parser():
     ob.add_argument("--schema", required=True, help="target schema (slug or id)")
     ob.add_argument("--payload-file", required=True, help="JSON file with the object body")
     ob.set_defaults(func=cmd_objects)
+
+    cat = sub.add_parser(
+        "catalog",
+        help="point the OpenCatalogi catalog object at the WOO register + all its schemas",
+    )
+    _add_connection_args(cat)
+    cat.add_argument("--catalog-slug", default="publications", help="catalog object slug (default: %(default)s)")
+    cat.add_argument("--register", default="woo", help="register slug to link (default: %(default)s)")
+    cat.set_defaults(func=cmd_catalog)
 
     al = sub.add_parser(
         "all",

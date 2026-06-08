@@ -79,6 +79,13 @@ KNOWN_BUCKETS = {
     "jobs", "registers", "schemas", "workflows", "objects",
 }
 
+# A schema's `authorization` object is keyed by action. The importer rejects any
+# other key (e.g. a stray `inheritFromPublic` flag) with "Invalid authorization
+# action ... Must be one of: create, read, update, delete" and then SILENTLY
+# drops the whole schema (HTTP 200, no failure reported in the response). So a
+# bad action here is an import-breaking error we must gate on.
+VALID_AUTH_ACTIONS = {"create", "read", "update", "delete"}
+
 
 def strip_keys_for(bucket):
     """Return the set of top-level keys to strip from entities in `bucket`."""
@@ -144,6 +151,21 @@ def check_refs(comps):
     return out
 
 
+def check_authorization(comps):
+    """Schema `authorization` keys must be valid actions, or the import silently
+    drops the schema (see VALID_AUTH_ACTIONS)."""
+    out = []
+    for name, schema in iter_entities(comps.get("schemas", {})):
+        auth = schema.get("authorization")
+        if isinstance(auth, dict):
+            for action in auth:
+                if action not in VALID_AUTH_ACTIONS:
+                    out.append(("error", "bad-authorization",
+                                f"schemas/{name}: invalid authorization action '{action}' "
+                                f"(import drops the schema; allowed: create, read, update, delete)"))
+    return out
+
+
 def lint(doc):
     """Return a list of (severity, code, message) findings. severity in {error,warn}."""
     findings = []
@@ -179,6 +201,7 @@ def lint(doc):
                              f"components.{bucket} holds {count} data record(s) — not config"))
 
     findings.extend(check_refs(comps))
+    findings.extend(check_authorization(comps))
     return findings
 
 
