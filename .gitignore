@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Local raw exports awaiting sanitize (never commit unsanitized exports)
+config/raw-*.json
+*.raw.json
+
+# Secrets
+*.secret.json
+.env
+.env.*
