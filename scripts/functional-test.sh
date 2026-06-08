@@ -31,7 +31,24 @@ readonly APPS=(openregister openconnector opencatalogi)
 readonly CONFIG="${CONFIG:-config/woo.configuration.json}"
 readonly KEEP_UP="${KEEP_UP:-0}"
 
-compose() { docker compose -f "${COMPOSE_FILE}" "$@"; }
+# Detect an available compose implementation (this env uses podman-compose;
+# Codeberg/CI may differ). Order: docker compose, podman compose, podman-compose.
+COMPOSE=()
+detect_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+  elif podman compose version >/dev/null 2>&1; then
+    COMPOSE=(podman compose)
+  elif command -v podman-compose >/dev/null 2>&1; then
+    COMPOSE=(podman-compose)
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+  else
+    die "no compose implementation found (docker compose / podman compose / podman-compose)"
+  fi
+  log "using compose: ${COMPOSE[*]}"
+}
+compose() { "${COMPOSE[@]}" -f "${COMPOSE_FILE}" "$@"; }
 occ() { compose exec -T -u www-data nextcloud php occ "$@"; }
 log() { echo "==> $*" >&2; }
 die() { echo "error: $*" >&2; exit 1; }
@@ -74,7 +91,7 @@ import_config() {
   body="$(curl -sS -u "${ADMIN}" \
     -w '\n%{http_code}' \
     -F "file=@${CONFIG};type=application/json" \
-    "${BASE_URL}/apps/openregister/api/configurations/import")"
+    "${BASE_URL}/index.php/apps/openregister/api/configurations/import")"
   status="$(echo "${body}" | tail -n1)"
   body="$(echo "${body}" | sed '$d')"
   echo "${body}" >&2
@@ -83,14 +100,55 @@ import_config() {
   log "import OK (HTTP 200, Import successful)"
 }
 
+# Map config bucket -> the table that should hold its rows after import.
+# registers/schemas live in openregister; sources/syncs/mappings/rules in
+# openconnector. Default Nextcloud table prefix is oc_.
+verify_import() {
+  log "verifying imported row counts against the config"
+  local -A table=(
+    [schemas]=oc_openregister_schemas
+    [registers]=oc_openregister_registers
+    [sources]=oc_openconnector_sources
+    [mappings]=oc_openconnector_mappings
+    [rules]=oc_openconnector_rules
+    [synchronizations]=oc_openconnector_synchronizations
+  )
+  local bucket want got fail=0
+  for bucket in "${!table[@]}"; do
+    want="$(config_count "${bucket}")"
+    got="$(db_count "${table[$bucket]}")"
+    if [[ "${want}" == "${got}" ]]; then
+      log "  ${bucket}: ${got} (expected ${want}) OK"
+    else
+      echo "  MISMATCH ${bucket}: imported ${got}, config has ${want}" >&2
+      fail=1
+    fi
+  done
+  [[ "${fail}" == "0" ]] || die "imported row counts do not match the config — import is incomplete"
+}
+
+config_count() {
+  python3 - "${CONFIG}" "$1" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1]))
+bucket = doc.get("components", {}).get(sys.argv[2])
+print(len(bucket) if isinstance(bucket, (list, dict)) else 0)
+PY
+}
+
+db_count() {
+  compose exec -T db psql -U nextcloud -d nextcloud -tAc "SELECT count(*) FROM $1;" 2>/dev/null | tr -d '[:space:]'
+}
+
 main() {
-  command -v docker >/dev/null || die "docker not found"
+  detect_compose
   trap cleanup EXIT
   log "starting ephemeral stack"
   compose up -d
   wait_for_install
   install_apps
   import_config
+  verify_import
   log "FUNCTIONAL TEST PASSED"
 }
 

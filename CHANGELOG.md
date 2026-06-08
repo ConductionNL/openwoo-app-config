@@ -22,8 +22,13 @@ All notable changes to this repository are documented here.
 - `docker-compose.test.yml` + `scripts/functional-test.sh` — Layer-2 functional
   test: ephemeral Nextcloud + PostgreSQL, installs the Conduction apps, imports
   the config via `POST /apps/openregister/api/configurations/import` and asserts
-  success. Local-only (Codeberg runners provide buildah, not docker/compose); no
-  live credentials. `make functional`.
+  success, then **verifies PostgreSQL row counts** (registers/schemas/sources/
+  mappings/rules/synchronizations) against the config — the import returns
+  HTTP 200 even when its response omits created rows, so the count check is the
+  real proof. Auto-detects compose (docker/podman). Local-only (Codeberg runners
+  provide buildah, not docker/compose); no live credentials. `make functional`.
+  Verified end-to-end: a fresh NC30 + openregister 1.0.3 / openconnector 0.2.20 /
+  opencatalogi 1.0.3 imports the WOO config with all 17 schemas + 16 syncs.
 - README: mandatory contribution workflow — every config change goes through
   this repo (branch → sanitize → lint/test → functional → PR → tag).
 - `Makefile` — source of truth for local + CI commands.

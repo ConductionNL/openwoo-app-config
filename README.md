@@ -111,6 +111,13 @@ POST /apps/openregister/api/configurations/import   (multipart file=)
 The stack is wiped after every run (`down -v`), so the test always proves a
 **clean** tenant accepts the config — the same starting point a new tenant has.
 
+It then **verifies row counts** in PostgreSQL against the config: registers,
+schemas, sources, mappings, rules and synchronizations must all match. This is
+deliberate — the import API returns `HTTP 200 "Import successful"` even when its
+response body omits the created rows (e.g. it echoes `schemas: []` while 17
+schemas were in fact written), so a status-code check alone is not proof. The
+count check is.
+
 ```bash
 make functional                  # full cycle: up → install → import → assert → teardown
 KEEP_UP=1 make functional        # leave the stack at http://localhost:8080 to debug
