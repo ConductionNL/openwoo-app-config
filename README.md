@@ -146,6 +146,7 @@ post-install steps the config owns, over the API, each asserting it took effect
 | Subcommand | Does | Asserts |
 |------------|------|---------|
 | `settings` | PUT organisation + multitenancy settings | GET reflects the sent fields |
+| `oc-settings` | couple OpenCatalogi object types to their register + schema | GET reflects (slugs resolved to tenant ids) |
 | `verify-import` | compare config slugs to the tenant | every register/schema/source/sync present |
 | `sync-check` | inspect tenant synchronizations | every target schema resolved (no dangling `reg/<slug>`) |
 | `credentials` | set each source's `headers.API-KEY` | GET reflects the key |

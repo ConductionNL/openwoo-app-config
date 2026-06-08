@@ -267,6 +267,59 @@ def test_provision_settings_raises_when_not_reflected():
         provision.provision_settings(client, {"auto_create_default_organisation": True}, {"enabled": False})
 
 
+# --- oc-settings (OpenCatalogi register/schema coupling) ---
+
+
+class FakeOcSettingsClient:
+    """Serves registers/schemas slug->id and echoes the posted settings back."""
+
+    def __init__(self, registers, schemas, reflect=True):
+        self._registers = registers
+        self._schemas = schemas
+        self._reflect = reflect
+        self._posted = {}
+
+    def get(self, path):
+        if path.endswith("/api/registers"):
+            return {"results": self._registers}
+        if path.endswith("/api/schemas"):
+            return {"results": self._schemas}
+        return {"configuration": self._posted}  # OC settings GET
+
+    def post(self, path, body=None):
+        self.last = body
+        if self._reflect:
+            self._posted = dict(body)
+        return self._posted
+
+
+def test_oc_settings_couples_each_type_to_resolved_ids():
+    schemas = [{"slug": t, "id": i} for i, t in enumerate(provision.OC_OBJECT_TYPES, start=2)]
+    client = FakeOcSettingsClient(registers=[{"slug": "publication", "id": 1}], schemas=schemas)
+    provision.provision_oc_settings(client)
+    # every object type got source=openregister, register=1, schema=<its id>
+    for t in provision.OC_OBJECT_TYPES:
+        assert client.last[f"{t}_source"] == "openregister"
+        assert client.last[f"{t}_register"] == "1"
+    assert client.last["catalog_schema"] == "2"  # first type -> id 2
+
+
+def test_oc_settings_raises_when_schema_missing():
+    client = FakeOcSettingsClient(
+        registers=[{"slug": "publication", "id": 1}],
+        schemas=[{"slug": "catalog", "id": 2}],  # the other types' schemas absent
+    )
+    with pytest.raises(provision.ProvisionError, match="schema"):
+        provision.provision_oc_settings(client)
+
+
+def test_oc_settings_raises_when_register_missing():
+    schemas = [{"slug": t, "id": i} for i, t in enumerate(provision.OC_OBJECT_TYPES, start=2)]
+    client = FakeOcSettingsClient(registers=[], schemas=schemas)
+    with pytest.raises(provision.ProvisionError, match="register 'publication' not found"):
+        provision.provision_oc_settings(client)
+
+
 # --- sync-run ---
 
 

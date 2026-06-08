@@ -19,6 +19,16 @@ All notable changes to this repository are documented here.
 - Verified on a clean canary (NC 32.0.5): the fixed config imports **17/17
   schemas**, the catalog links all 17, and `sync-check` reports no dangling.
 
+### Added — 2026-06-08 (OpenCatalogi settings)
+- `scripts/provision.py oc-settings` — couples each OpenCatalogi object type
+  (catalog/listing/organization/theme/page/menu/glossary) to its register +
+  schema via `POST /apps/opencatalogi/api/settings`, resolving the `publication`
+  register slug and each type's same-named schema slug to tenant ids, then
+  asserting the coupling reflects. Makes the coupling reproducibly owned by the
+  provisioner instead of relying on the base install. Proven on canary; 3 unit
+  tests. (Default-organisation is left on `auto_create_default_organisation`;
+  multitenancy is set to disabled by the `settings` step.)
+
 ### Added — 2026-06-08 (catalog)
 - `scripts/provision.py catalog` — points the OpenCatalogi `publications` catalog
   object at the WOO register + **all** its schemas, resolving the register and

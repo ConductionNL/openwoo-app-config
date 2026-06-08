@@ -365,6 +365,45 @@ def put_settings_reflected(client, path, key, payload):
     return got
 
 
+OC_SETTINGS_PATH = "/index.php/apps/opencatalogi/api/settings"
+# OpenCatalogi object types; each is backed by a same-named schema in the
+# OpenCatalogi base register (`publication`).
+OC_OBJECT_TYPES = ["catalog", "listing", "organization", "theme", "page", "menu", "glossary"]
+
+
+def provision_oc_settings(client, register="publication", object_types=None):
+    """Couple each OpenCatalogi object type to its register + schema.
+
+    POSTs `{type}_source/_register/_schema` for catalog/listing/organization/
+    theme/page/menu/glossary, resolving the register slug and each type's
+    same-named schema slug to tenant ids, then GETs the settings back and
+    asserts the coupling reflects. Requires the OpenCatalogi base schemas.
+    """
+    types = object_types or OC_OBJECT_TYPES
+    reg_ids = slug_to_id(results_list(client.get(REGISTERS_PATH)))
+    sch_ids = slug_to_id(results_list(client.get(SCHEMAS_PATH)))
+    if register not in reg_ids:
+        raise ProvisionError(f"oc-settings: register '{register}' not found on the tenant")
+    missing = [t for t in types if t not in sch_ids]
+    if missing:
+        raise ProvisionError(f"oc-settings: schema(s) not on the tenant: {missing}")
+    payload = {}
+    for t in types:
+        payload[f"{t}_source"] = "openregister"
+        payload[f"{t}_register"] = str(reg_ids[register])
+        payload[f"{t}_schema"] = str(sch_ids[t])
+    log(f"  coupling {len(types)} object types to register '{register}'")
+    client.post(OC_SETTINGS_PATH, payload)
+
+    after = client.get(OC_SETTINGS_PATH)
+    conf = after.get("configuration", after) if isinstance(after, dict) else {}
+    bad = [k for k, v in payload.items() if str(conf.get(k)) != str(v)]
+    if bad:
+        raise ProvisionError(f"oc-settings did not reflect: {bad}")
+    log(f"  oc-settings: {len(types)} object types coupled OK")
+    return conf
+
+
 def provision_settings(client, organisation, multitenancy):
     """PUT the organisation and multitenancy settings and assert both reflect."""
     log("  PUT settings/organisation")
@@ -585,6 +624,14 @@ def cmd_objects(args):
     return 0
 
 
+def cmd_oc_settings(args):
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"provisioning OpenCatalogi settings against {args.base}")
+    provision_oc_settings(client, register=args.register)
+    log("OC-SETTINGS PROVISIONED OK")
+    return 0
+
+
 def cmd_verify_import(args):
     doc = load_config(args.config)
     client = Client(args.base, args.user, resolve_password(args))
@@ -677,6 +724,14 @@ def build_parser():
         help="enable multitenancy (default: disabled)",
     )
     st.set_defaults(func=cmd_settings)
+
+    ocs = sub.add_parser(
+        "oc-settings",
+        help="couple OpenCatalogi object types (catalog/listing/…) to their register + schema",
+    )
+    _add_connection_args(ocs, with_config=False)
+    ocs.add_argument("--register", default="publication", help="OpenCatalogi base register slug (default: %(default)s)")
+    ocs.set_defaults(func=cmd_oc_settings)
 
     vi = sub.add_parser(
         "verify-import",
