@@ -159,3 +159,68 @@ def test_resolve_apikey_dummy_when_unset():
 def test_resolve_apikey_from_env(monkeypatch):
     monkeypatch.setenv("KEY", "real")
     assert provision.resolve_apikey(_Args(apikey=None, apikey_env="KEY")) == "real"
+
+
+# --- verify-import (slug diff) ---
+
+
+class FakeListClient:
+    """Serves canned list responses keyed by endpoint path."""
+
+    def __init__(self, by_path):
+        self._by_path = by_path
+
+    def get(self, path):
+        return {"results": self._by_path.get(path, [])}
+
+
+def test_verify_import_reports_missing_slugs():
+    doc = _doc(
+        schemas=[{"slug": "a"}, {"slug": "b"}, {"slug": "c"}],
+        sources=[{"slug": "s1"}],
+    )
+    client = FakeListClient({
+        provision.SCHEMAS_PATH: [{"slug": "a"}, {"slug": "c"}],   # b dropped
+        provision.SOURCES_PATH: [{"slug": "s1"}],
+    })
+    report = provision.verify_import(client, doc)
+    assert report["schemas"] == {"expected": 3, "missing": ["b"]}
+    assert report["sources"] == {"expected": 1, "missing": []}
+    assert "synchronizations" not in report  # no syncs in config -> skipped
+
+
+def test_verify_import_all_present():
+    doc = _doc(schemas=[{"slug": "a"}, {"slug": "b"}])
+    client = FakeListClient({provision.SCHEMAS_PATH: [{"slug": "b"}, {"slug": "a"}]})
+    assert provision.verify_import(client, doc)["schemas"]["missing"] == []
+
+
+# --- sync-check (dangling target schema) ---
+
+
+def test_target_schema_resolved():
+    assert provision.target_schema_resolved("2/19") is True
+    assert provision.target_schema_resolved("2/convenanten") is False
+    assert provision.target_schema_resolved("woo/adviezen") is False
+    assert provision.target_schema_resolved(None) is False
+    assert provision.target_schema_resolved("2") is False
+
+
+def test_sync_check_flags_dangling_targets():
+    doc = _doc(synchronizations=[{"slug": "x"}, {"slug": "y"}])
+    client = FakeListClient({provision.SYNCS_PATH: [
+        {"slug": "x", "targetId": "2/19"},          # resolved
+        {"slug": "y", "targetId": "2/convenanten"},  # dangling
+    ]})
+    result = provision.sync_check(client, doc)
+    assert result["total"] == 2
+    assert result["dangling"] == [{"slug": "y", "targetId": "2/convenanten"}]
+
+
+def test_sync_check_ignores_syncs_not_in_config():
+    doc = _doc(synchronizations=[{"slug": "x"}])
+    client = FakeListClient({provision.SYNCS_PATH: [
+        {"slug": "x", "targetId": "2/19"},
+        {"slug": "other", "targetId": "2/dangling"},  # not ours -> ignored
+    ]})
+    assert provision.sync_check(client, doc)["dangling"] == []

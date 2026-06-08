@@ -4,6 +4,23 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-08 (tenant verification)
+- `scripts/provision.py verify-import` — after an import, compares the config's
+  slugs (registers/schemas/sources/synchronizations) against what is actually
+  present on the tenant and fails on any missing entity. The import API returns
+  HTTP 200 even when it silently drops rows, so on a tenant that already held
+  data the bulk row count cannot see the gap; this slug-level diff can.
+- `scripts/provision.py sync-check` — asserts every config synchronization
+  resolved its target schema on the tenant (targetId rewritten to a numeric
+  `register/schema` id), flagging any left dangling as `register/<slug>`.
+- Both proven against canary, where they caught a real OpenRegister import bug:
+  importing this config into a non-empty instance (8 pre-existing OpenCatalogi
+  base schemas) silently created only 13 of 17 WOO schemas — leaving 4 schemas
+  absent and their 4 synchronizations dangling — while returning HTTP 200
+  "Import successful". Confirmed via the canary DB: the 4 are genuinely not
+  created (not soft-deleted / org-filtered). See `docs/PROVISIONING-TEST-PLAN.md`.
+- 9 more unit tests (slug diff, dangling-target detection, config-scoped filtering).
+
 ### Added — 2026-06-08 (provisioning / credentials)
 - `scripts/provision.py` — post-import tenant provisioner (pure stdlib, urllib).
   `credentials` subcommand: resolves every config source by slug on the running

@@ -160,6 +160,9 @@ class Client:
     def put(self, path, body):
         return self._request("PUT", path, body)
 
+    def post(self, path, body=None):
+        return self._request("POST", path, body)
+
 
 class ProvisionError(Exception):
     """A provisioning step failed (HTTP error, refused auth, or failed assert)."""
@@ -168,6 +171,76 @@ class ProvisionError(Exception):
 # --- Commands ---
 
 SOURCES_PATH = "/index.php/apps/openconnector/api/sources"
+SYNCS_PATH = "/index.php/apps/openconnector/api/synchronizations"
+REGISTERS_PATH = "/index.php/apps/openregister/api/registers"
+SCHEMAS_PATH = "/index.php/apps/openregister/api/schemas"
+
+# Config bucket -> the tenant list endpoint that should hold its rows after
+# import. Used by verify_import to compare config slugs against what is actually
+# present on the tenant (a slug-level check the bulk row count cannot give).
+VERIFY_BUCKETS = {
+    "registers": REGISTERS_PATH,
+    "schemas": SCHEMAS_PATH,
+    "sources": SOURCES_PATH,
+    "synchronizations": SYNCS_PATH,
+}
+
+
+def config_slugs(doc, bucket):
+    """Slugs of every entity in a config bucket (skip entries without one)."""
+    return [e["slug"] for e in bucket_items(doc, bucket) if e.get("slug")]
+
+
+def verify_import(client, doc):
+    """Compare config slugs to what is present on the tenant, per bucket.
+
+    Returns {bucket: {"expected": n, "missing": [slugs...]}}. A non-empty
+    `missing` means the import silently dropped those entities (the import API
+    returns HTTP 200 even when it omits rows), which the bulk row count cannot
+    catch on a tenant that already held data.
+    """
+    report = {}
+    for bucket, path in VERIFY_BUCKETS.items():
+        want = config_slugs(doc, bucket)
+        if not want:
+            continue
+        present = {item.get("slug") for item in results_list(client.get(path))}
+        report[bucket] = {
+            "expected": len(want),
+            "missing": [s for s in want if s not in present],
+        }
+    return report
+
+
+def target_schema_resolved(target_id):
+    """A sync targetId is "register/schema"; resolved iff the schema part is numeric.
+
+    After import the schema slug should be rewritten to its numeric id (e.g.
+    "2/19"). A leftover slug (e.g. "2/convenanten") means the target schema was
+    never created, so the synchronization is dangling.
+    """
+    if not isinstance(target_id, str) or "/" not in target_id:
+        return False
+    _register, _, schema = target_id.partition("/")
+    return schema.isdigit()
+
+
+def sync_check(client, doc):
+    """Find synchronizations on the tenant whose target schema did not resolve.
+
+    Returns {"total": n, "dangling": [{"slug":..., "targetId":...}, ...]}.
+    Cross-checks against the config sync slugs so we only report the ones this
+    config is responsible for.
+    """
+    want = set(config_slugs(doc, "synchronizations"))
+    syncs = results_list(client.get(SYNCS_PATH))
+    dangling = []
+    for s in syncs:
+        if want and s.get("slug") not in want:
+            continue
+        if not target_schema_resolved(s.get("targetId")):
+            dangling.append({"slug": s.get("slug"), "targetId": s.get("targetId")})
+    return {"total": len(syncs), "dangling": dangling}
 
 
 def merge_header(configuration, header, value):
@@ -265,12 +338,65 @@ def resolve_password(args):
 def cmd_credentials(args):
     doc = load_config(args.config)
     apikey = resolve_apikey(args)
-    password = resolve_password(args)
-    client = Client(args.base, args.user, password)
+    client = Client(args.base, args.user, resolve_password(args))
     log(f"provisioning credentials against {args.base}")
     count = provision_credentials(client, doc, apikey=apikey, header=args.header)
     log(f"CREDENTIALS PROVISIONED OK ({count} source(s))")
     return 0
+
+
+def cmd_verify_import(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"verifying imported config slugs against {args.base}")
+    report = verify_import(client, doc)
+    failed = False
+    for bucket, info in report.items():
+        missing = info["missing"]
+        if missing:
+            failed = True
+            log(f"  {bucket}: MISSING {len(missing)}/{info['expected']}: {missing}")
+        else:
+            log(f"  {bucket}: {info['expected']}/{info['expected']} present OK")
+    if failed:
+        raise ProvisionError("config entities missing on the tenant — import incomplete")
+    log("IMPORT VERIFIED OK (all config slugs present)")
+    return 0
+
+
+def cmd_sync_check(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"checking synchronization targets resolved on {args.base}")
+    result = sync_check(client, doc)
+    if result["dangling"]:
+        for d in result["dangling"]:
+            log(f"  DANGLING {d['slug']}: targetId={d['targetId']!r} (schema not resolved)")
+        raise ProvisionError(
+            f"{len(result['dangling'])} synchronization(s) have an unresolved target schema"
+        )
+    log(f"SYNC CHECK OK ({result['total']} syncs, all targets resolved)")
+    return 0
+
+
+def _add_connection_args(p, with_config=True):
+    """Shared connection flags: base URL, user, and password (kept out of argv)."""
+    p.add_argument("--base", required=True, help="instance base URL")
+    p.add_argument("--user", required=True, help="admin user / app-password user")
+    p.add_argument(
+        "--password", default=None, help="password / app password (prefer --password-env)"
+    )
+    p.add_argument(
+        "--password-env",
+        default=None,
+        help="read the password from this env var (kept out of argv)",
+    )
+    if with_config:
+        p.add_argument(
+            "--config",
+            default="config/woo.configuration.json",
+            help="config to drive the step (default: %(default)s)",
+        )
 
 
 def build_parser():
@@ -281,39 +407,34 @@ def build_parser():
 
     cred = sub.add_parser(
         "credentials",
-        help="PUT a dummy apikey onto every config source and assert it reflects",
+        help="set every config source's API-key header and assert it reflects",
     )
-    cred.add_argument("--base", required=True, help="instance base URL")
-    cred.add_argument("--user", required=True, help="admin user / app-password user")
+    _add_connection_args(cred)
     cred.add_argument(
-        "--password", default=None, help="password / app password (prefer --password-env)"
-    )
-    cred.add_argument(
-        "--password-env",
-        default=None,
-        help="read the password from this env var (kept out of argv)",
+        "--apikey", default=None, help="real API key to set (omit to write a dummy test key)"
     )
     cred.add_argument(
-        "--config",
-        default="config/woo.configuration.json",
-        help="config to drive provisioning (default: %(default)s)",
+        "--apikey-env", default=None, help="read the real API key from this env var (never logged)"
     )
     cred.add_argument(
-        "--apikey",
-        default=None,
-        help="real API key to set (omit to write a dummy test key)",
-    )
-    cred.add_argument(
-        "--apikey-env",
-        default=None,
-        help="read the real API key from this env var (never logged)",
-    )
-    cred.add_argument(
-        "--header",
-        default=API_KEY_HEADER,
-        help="source configuration key to set (default: %(default)s)",
+        "--header", default=API_KEY_HEADER, help="source configuration key to set (default: %(default)s)"
     )
     cred.set_defaults(func=cmd_credentials)
+
+    vi = sub.add_parser(
+        "verify-import",
+        help="assert every config slug (registers/schemas/sources/syncs) is present on the tenant",
+    )
+    _add_connection_args(vi)
+    vi.set_defaults(func=cmd_verify_import)
+
+    sc = sub.add_parser(
+        "sync-check",
+        help="assert every config synchronization resolved its target schema (no dangling slug)",
+    )
+    _add_connection_args(sc)
+    sc.set_defaults(func=cmd_sync_check)
+
     return parser
 
 
