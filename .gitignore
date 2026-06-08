@@ -12,6 +12,7 @@ config/raw-*.json
 *.secret.json
 .env
 .env.*
+!.env.canary.example
 *.pem
 *.key
 *_rsa
