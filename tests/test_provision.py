@@ -648,8 +648,8 @@ def test_provision_all_skips_optional_steps(monkeypatch):
     calls = []
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings=None, oc_settings=False, do_import=False,
-                            catalog=False, run_syncs=True, sync_mode="test")
-    assert calls == ["verify", "credentials", "sync-check", "jobs", "sync-run:test"]
+                            catalog=False, do_credentials=False, run_syncs=True, sync_mode="test")
+    assert calls == ["verify", "sync-check", "jobs", "sync-run:test"]
 
 
 def test_provision_all_stops_on_incomplete_import(monkeypatch):

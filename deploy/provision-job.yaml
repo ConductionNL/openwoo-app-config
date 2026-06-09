@@ -1,0 +1,51 @@
+# EXAMPLE — adapt into your nextcloud-platform ApplicationSet (per tenant).
+#
+# Runs the WOO base-config provisioning once per Argo sync, AFTER the Nextcloud
+# app + OpenCatalogi base are healthy (PostSync hook). It runs `provision.py all`
+# with --skip-credentials: the base config (settings, oc-settings, import,
+# verify-import, catalog, sync-check, jobs) is declarative/Argo-owned, while the
+# per-tenant source connection (URL + API-Interface-ID + API key) is set
+# out-of-band by an operator via the CLI/GUI.
+#
+# Idempotent: re-runs on every sync skip steps that are already converged, so the
+# hook is safe to run repeatedly.
+#
+# Placeholders to fill: <NAMESPACE>, <IMAGE>:<TAG>, the admin secret name/keys,
+# and --base (in-cluster service or the public https URL).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openwoo-provision
+  namespace: <NAMESPACE>
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10            # retry until the app + OpenCatalogi base are ready
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: provision
+          image: <IMAGE>:<TAG>          # e.g. conduction2022/openwoo-provisioner:<git-tag>
+          args:
+            - all
+            - --base=http://nextcloud    # in-cluster service (or https://<tenant> ingress)
+            - --user=$(NC_ADMIN_USER)    # k8s substitutes from env below
+            - --password-env=NC_ADMIN_PASSWORD
+            - --skip-credentials         # source URL/interface-id/key set out-of-band
+          env:
+            - name: NC_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: <ADMIN_SECRET>   # the tenant's Nextcloud admin secret
+                  key: <ADMIN_USER_KEY>  # e.g. nextcloud-admin-user
+            - name: NC_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: <ADMIN_SECRET>
+                  key: <ADMIN_PASSWORD_KEY>   # e.g. nextcloud-admin-password
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 128Mi}

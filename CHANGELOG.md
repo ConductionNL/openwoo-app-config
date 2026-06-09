@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (in-cluster Argo target track)
+- `Dockerfile` — packages `provision.py` + the (tagged) config into a tiny
+  pure-stdlib image (`make image` / `make push`; `IMAGE`/`TAG`/`CONTAINER`
+  overridable). Built + smoke-tested with podman.
+- `deploy/provision-job.yaml` (Argo PostSync hook) + `deploy/provision-cronjob.yaml`
+  (drift reconcile) + `deploy/README.md` — examples for running
+  `provision.py all --skip-credentials` per tenant in-cluster, admin creds from
+  the tenant secret. Base config = Argo-owned; per-tenant source connection
+  stays operator-supplied.
+- `provision.py all --skip-credentials` — run the base config only (for the Argo
+  Job); the source URL/interface-id/key are set out-of-band. 1 unit test.
+
 ### Changed — 2026-06-09 (idempotent — skip writes when already converged)
 - Every write step now GET-checks first and **skips the write when the tenant is
   already in the desired state**, so a re-run on a converged tenant is a near

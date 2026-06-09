@@ -1,0 +1,43 @@
+# EXAMPLE — optional continuous reconciliation (drift repair) per tenant.
+#
+# Runs the same base-config provisioning on a schedule. Because every step is
+# idempotent (skips when already converged), this is a near no-op when nothing
+# drifted and self-heals when something did. Use this OR the PostSync Job (the
+# Job converges on each deploy; the CronJob also catches between-deploy drift).
+#
+# Placeholders: <NAMESPACE>, <IMAGE>:<TAG>, admin secret name/keys, --base.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openwoo-provision-reconcile
+  namespace: <NAMESPACE>
+spec:
+  schedule: "*/30 * * * *"          # every 30 min
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: provision
+              image: <IMAGE>:<TAG>
+              args:
+                - all
+                - --base=http://nextcloud
+                - --user=$(NC_ADMIN_USER)
+                - --password-env=NC_ADMIN_PASSWORD
+                - --skip-credentials
+              env:
+                - name: NC_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef: {name: <ADMIN_SECRET>, key: <ADMIN_USER_KEY>}
+                - name: NC_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: <ADMIN_SECRET>, key: <ADMIN_PASSWORD_KEY>}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 250m, memory: 128Mi}

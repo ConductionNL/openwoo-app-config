@@ -340,7 +340,8 @@ def provision_jobs(client, doc, job_user=None):
 
 def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
                   settings=None, oc_settings=True, do_import=True, force_import=False,
-                  catalog=True, job_user=None, run_syncs=False, sync_mode="test"):
+                  catalog=True, do_credentials=True, job_user=None, run_syncs=False,
+                  sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
@@ -383,9 +384,12 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
     else:
         log("[5/9] catalog — skipped")
 
-    log("[6/9] credentials")
-    provision_credentials(client, doc, apikey=apikey, source_url=source_url,
-                          interface_id=interface_id)
+    if do_credentials:
+        log("[6/9] credentials")
+        provision_credentials(client, doc, apikey=apikey, source_url=source_url,
+                              interface_id=interface_id)
+    else:
+        log("[6/9] credentials — skipped (per-tenant source params set out-of-band)")
 
     log("[7/9] sync-check")
     chk = sync_check(client, doc)
@@ -882,6 +886,7 @@ def cmd_all(args):
         do_import=not args.skip_import,
         force_import=args.force_import,
         catalog=not args.skip_catalog,
+        do_credentials=not args.skip_credentials,
         job_user=args.job_user or client.user,
         run_syncs=args.run_syncs,
         sync_mode="test" if args.test else "run",
@@ -1143,6 +1148,7 @@ def build_parser():
     al.add_argument("--force-import", action="store_true", help="re-upload the config even if already present (for content changes)")
     al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
     al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
+    al.add_argument("--skip-credentials", action="store_true", help="skip source credentials (per-tenant source params set out-of-band, e.g. base-config-only Argo runs)")
     al.add_argument("--job-user", default=None,
                     help="job userId to set on every job (default: the admin --user; workaround for Anonymous job runs)")
     al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")
