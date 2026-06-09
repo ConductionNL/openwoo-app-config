@@ -45,7 +45,7 @@ spec:
               command: ["python3", "/provisioner/provision.py"]
               args:
                 - all
-                - --base=http://nextcloud
+                - --base=http://nextcloud:8080
                 - --user=$(NC_ADMIN_USER)
                 - --password-env=NC_ADMIN_PASSWORD
                 - --config=/provisioner/woo.configuration.json

@@ -50,7 +50,7 @@ spec:
           command: ["python3", "/provisioner/provision.py"]
           args:
             - all
-            - --base=http://nextcloud           # in-cluster service in the tenant ns
+            - --base=http://nextcloud:8080      # in-cluster service in the tenant ns
             - --user=$(NC_ADMIN_USER)
             - --password-env=NC_ADMIN_PASSWORD
             - --config=/provisioner/woo.configuration.json
