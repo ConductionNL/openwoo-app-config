@@ -61,6 +61,10 @@ def build_command(values):
         argv += ["--source-url", values["source_url"].strip()]
     if values.get("api_interface_id"):
         argv += ["--api-interface-id", values["api_interface_id"].strip()]
+    if values.get("run_syncs"):
+        argv += ["--run-syncs"]
+        if values.get("dry_run"):
+            argv += ["--test"]
     env = dict(os.environ)
     if values.get("password"):
         env["GUI_PROVISION_PASSWORD"] = values["password"]
@@ -85,8 +89,15 @@ def _run_gui():
         entry.grid(row=row, column=1, padx=6, pady=3)
         entries[key] = entry
 
+    run_syncs_var = tk.BooleanVar(value=False)
+    dry_run_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(root, text="Run synchronizations after provisioning (fetches live data)",
+                   variable=run_syncs_var).grid(row=len(FIELDS), column=0, columnspan=2, sticky="w", padx=6)
+    tk.Checkbutton(root, text="    └ dry-run only (/test, no real fetch)",
+                   variable=dry_run_var).grid(row=len(FIELDS) + 1, column=0, columnspan=2, sticky="w", padx=6)
+
     out = scrolledtext.ScrolledText(root, width=90, height=20)
-    out.grid(row=len(FIELDS) + 1, column=0, columnspan=2, padx=6, pady=6)
+    out.grid(row=len(FIELDS) + 3, column=0, columnspan=2, padx=6, pady=6)
 
     def append(line):
         out.insert("end", line)
@@ -106,8 +117,11 @@ def _run_gui():
             root.after(0, lambda: run_btn.config(state="normal"))
 
     def on_run():
+        values = {k: e.get() for k, e in entries.items()}
+        values["run_syncs"] = run_syncs_var.get()
+        values["dry_run"] = dry_run_var.get()
         try:
-            argv, env = build_command({k: e.get() for k, e in entries.items()})
+            argv, env = build_command(values)
         except ValueError as exc:
             append(f"error: {exc}\n")
             return
@@ -117,7 +131,7 @@ def _run_gui():
         threading.Thread(target=worker, args=(argv, env), daemon=True).start()
 
     run_btn = tk.Button(root, text="Run provisioning", command=on_run)
-    run_btn.grid(row=len(FIELDS), column=0, columnspan=2, pady=6)
+    run_btn.grid(row=len(FIELDS) + 2, column=0, columnspan=2, pady=6)
     root.mainloop()
 
 

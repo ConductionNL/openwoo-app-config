@@ -40,6 +40,16 @@ def test_build_command_omits_blank_optionals():
         assert absent not in argv
 
 
+def test_build_command_run_syncs_real_and_dry():
+    base = {"base": "https://k.accept.commonground.nu", "user": "admin"}
+    argv, _ = provision_gui.build_command({**base, "run_syncs": True})
+    assert "--run-syncs" in argv and "--test" not in argv          # real run
+    argv, _ = provision_gui.build_command({**base, "run_syncs": True, "dry_run": True})
+    assert "--run-syncs" in argv and "--test" in argv              # dry-run
+    argv, _ = provision_gui.build_command({**base, "run_syncs": False, "dry_run": True})
+    assert "--run-syncs" not in argv and "--test" not in argv      # dry-run only matters with run-syncs
+
+
 def test_build_command_requires_base():
     for bad in ("", "   ", "https://<org>.accept.commonground.nu"):
         with pytest.raises(ValueError, match="base URL is required"):

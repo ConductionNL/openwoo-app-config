@@ -8,8 +8,10 @@ All notable changes to this repository are documented here.
 - `scripts/provision_gui.py` — optional Tkinter form (tenant URL, admin user, app
   password, source URL, API-Interface-ID, source API key) that runs
   `provision.py all`, passing secrets via env (never argv) and streaming output.
+  A **"Run synchronizations after provisioning"** checkbox adds `--run-syncs`
+  (with a dry-run `--test` sub-option) so the syncs fire as part of the run.
   Pure-stdlib; with no Tkinter/display it falls back to printing the terminal
-  command. Testable `build_command` core (3 unit tests).
+  command. Testable `build_command` core (4 unit tests).
 
 ### Added — 2026-06-09 (per-tenant source connection params)
 - `provision.py credentials` / `all` now also set the source **`location` (URL)**
