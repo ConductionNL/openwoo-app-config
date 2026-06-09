@@ -4,6 +4,27 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (hosted web control-plane — Phase 1: core, no auth)
+- `webgui/` — a small **Flask** app that drives provisioning from **outside** the
+  cluster against a tenant's **public URL**, reusing the tested
+  `provision_gui.build_command()` (so the web form becomes `provision.py all`).
+  - **Creds model A**: the operator enters the tenant password + source API key
+    per run; the app **stores nothing**. Secrets reach the subprocess via **env**
+    (`GUI_PROVISION_PASSWORD` / `GUI_PROVISION_APIKEY`), never argv — and are
+    never logged (the audit line is `user + base + options` only).
+  - Routes: `GET /` (form), `GET /healthz`, `POST /provision` (streams the
+    `provision.py` step log back to the browser).
+  - `current_user()` reads `X-Forwarded-Email`/`-User` — wired for the **Phase 2**
+    oauth2-proxy → Keycloak (Google-brokered) front; **no auth in Phase 1** by
+    design (run locally / behind a trusted network).
+  - Files: `webgui/server.py`, `webgui/templates/index.html`,
+    `webgui/requirements.txt` (`Flask>=3,<4`). Dev venv in `webgui/.venv/`
+    (git-ignored).
+  - Tests: `tests/test_webgui.py` (Flask test client) — `importorskip("flask")`
+    so the system-python `make test` run **skips** it; run it under the venv
+    (`webgui/.venv/bin/python -m pytest tests/test_webgui.py`). Verified
+    end-to-end against canary (`POST /provision` → `FULL PROVISIONING OK`).
+
 ### Decided — 2026-06-09 (provisioning is operator-driven, not in-cluster)
 - Provisioning runs from **outside** the cluster against a tenant's **public URL**
   (a trusted domain) via the CLI/GUI — not as in-cluster Argo Jobs. An in-cluster

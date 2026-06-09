@@ -17,3 +17,6 @@ config/raw-*.json
 *.key
 *_rsa
 *.crt
+
+# webgui (Flask) dev venv
+webgui/.venv/
