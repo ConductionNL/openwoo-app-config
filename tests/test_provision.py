@@ -175,6 +175,14 @@ def test_resolve_password_raises_when_absent_or_empty(monkeypatch):
         provision.resolve_password(_Args(password=None, password_env="EMPTY"), "admin")
 
 
+def test_client_sets_host_header_when_given():
+    c = provision.Client("http://nextcloud:8080", "admin", "pw",
+                         host_header="canary.accept.commonground.nu")
+    assert c.host_header == "canary.accept.commonground.nu"
+    plain = provision.Client("https://x", "admin", "pw")
+    assert plain.host_header is None
+
+
 def test_resolve_user_flag_or_error_without_tty():
     assert provision.resolve_user(_Args(user="bob")) == "bob"
     with pytest.raises(provision.ProvisionError, match="provide --user"):

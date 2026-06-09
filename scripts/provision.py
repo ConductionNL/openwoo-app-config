@@ -124,9 +124,14 @@ def dummy_apikey(slug):
 class Client:
     """Minimal Nextcloud API client: basic-auth + OCS-APIREQUEST, JSON in/out."""
 
-    def __init__(self, base, user, password):
+    def __init__(self, base, user, password, host_header=None):
         self.base = base.rstrip("/")
         self.user = user
+        # Override the Host header (connect to --base, present a trusted domain).
+        # Needed in-cluster: hitting http://nextcloud:8080 sends Host nextcloud:8080,
+        # which Nextcloud rejects (not a trusted_domain). Set --host-header to the
+        # tenant's domain (a trusted_domain) so requests are accepted.
+        self.host_header = host_header
         if self.base.startswith("http://") and not any(
             h in self.base for h in ("localhost", "127.0.0.1")
         ):
@@ -142,6 +147,8 @@ class Client:
         req.add_header("Authorization", self.auth_header)
         req.add_header("OCS-APIREQUEST", "true")
         req.add_header("Accept", "application/json")
+        if self.host_header:
+            req.add_header("Host", self.host_header)
         if data is not None:
             req.add_header("Content-Type", "application/json")
         try:
@@ -182,6 +189,8 @@ class Client:
         req = urllib.request.Request(f"{self.base}{path}", data=body, method="POST")
         req.add_header("Authorization", self.auth_header)
         req.add_header("OCS-APIREQUEST", "true")
+        if self.host_header:
+            req.add_header("Host", self.host_header)
         req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
         try:
             with urllib.request.urlopen(req) as resp:
@@ -822,7 +831,8 @@ def resolve_interface_id(args):
 def make_client(args):
     """Build a Client, resolving user + password (flags or interactive prompt)."""
     user = resolve_user(args)
-    return Client(args.base, user, resolve_password(args, user))
+    return Client(args.base, user, resolve_password(args, user),
+                  host_header=getattr(args, "host_header", None))
 
 
 def cmd_credentials(args):
@@ -1005,6 +1015,11 @@ def _add_connection_args(p, with_config=True):
         "--password-env",
         default=None,
         help="read the password from this env var (kept out of argv)",
+    )
+    p.add_argument(
+        "--host-header",
+        default=None,
+        help="override the Host header (a trusted_domain) — e.g. in-cluster against http://nextcloud:8080",
     )
     if with_config:
         p.add_argument(
