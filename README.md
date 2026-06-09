@@ -29,7 +29,8 @@ That noise causes broken diffs and unpredictable imports.
 | `scripts/oac.py` | Linter + sanitizer — pure stdlib Python, **zero dependencies** |
 | `scripts/provision.py` | Target-track provisioner — drives a tenant to the config's state over the API, stdlib only |
 | `scripts/provision_gui.py` | Optional Tkinter form front-end for `provision.py all` |
-| `Dockerfile` + `deploy/` | Provisioner image + example Argo Job/CronJob (in-cluster target track) |
+| `deploy/` | GitOps Argo manifests (ConfigMap + Job + CronJob Helm templates) for the in-cluster target track |
+| `Dockerfile` | Optional fallback image (the GitOps ConfigMap path is the default) |
 | `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
 | `tests/test_oac.py` | Unit tests for the linter/sanitizer |
@@ -267,13 +268,15 @@ sanitizer captures every runtime field OpenRegister emits.
 ## In-cluster: the Argo target track
 
 `Nextcloud-base` (the Argo ApplicationSet) brings up a tenant; the provisioner
-then converges its WOO config in-cluster — a per-tenant Kubernetes Job (Argo
-PostSync hook) running `provision.py all --skip-credentials`. The base config is
-Argo-owned and declarative; the per-tenant **source connection** (URL,
-API-Interface-ID, API key) is set out-of-band by an operator (CLI/GUI), never by
-the reconciler. Because every step is idempotent, the Job re-converges safely on
-every sync; a CronJob can reconcile drift between deploys. See `deploy/` for the
-image (`make image push`) and example Job/CronJob manifests.
+then converges its WOO config in-cluster — fully GitOps, no custom image. The
+script + tagged config ship as a **ConfigMap** (~300 KB, under the 1 MiB limit)
+mounted into a stock `python:3-slim`, run by a per-tenant Argo **PostSync** Job:
+`provision.py all --skip-credentials`. The base config is Argo-owned and
+declarative; the per-tenant **source connection** (URL, API-Interface-ID, API
+key) is set out-of-band by an operator (CLI/GUI), never by the reconciler. Every
+step is idempotent, so the Job re-converges safely on every sync; a CronJob can
+reconcile drift. See `deploy/` (ConfigMap + Job + CronJob Helm templates +
+README). A `Dockerfile` exists as an optional fallback only.
 
 ## How Nextcloud-base consumes this
 

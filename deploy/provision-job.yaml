@@ -1,10 +1,11 @@
 {{- if .Values.woo.enabled }}
 ---
 # Provision the WOO base config after Nextcloud + OpenCatalogi base are up.
-# Argo PostSync hook; mirrors the platform's db-provision Job conventions.
-# Runs `provision.py all --skip-credentials`: the base config is Argo-owned; the
-# per-tenant source connection (URL + API-Interface-ID + API key) is set
-# out-of-band by an operator (CLI/GUI), never here. Idempotent — safe per sync.
+# Argo PostSync hook; mounts the openwoo-provisioner ConfigMap into a stock
+# python image (no custom image needed). Runs `provision.py all --skip-credentials`:
+# the base config is Argo-owned; the per-tenant source connection (URL +
+# API-Interface-ID + API key) is set out-of-band by an operator (CLI/GUI).
+# Idempotent — safe to run on every sync.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -32,9 +33,15 @@ spec:
         runAsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      volumes:
+        - name: provisioner
+          configMap:
+            name: openwoo-provisioner-{{ .Values.tenant.name }}
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: provision
-          image: {{ .Values.woo.provisionerImage | default "conduction2022/openwoo-provisioner:latest" }}
+          image: {{ .Values.woo.pythonImage | default "python:3.12-slim" }}
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -42,15 +49,20 @@ spec:
             capabilities:
               drop:
                 - ALL
+          command: ["python3", "/provisioner/provision.py"]
           args:
             - all
             - --base={{ .Values.woo.base | default "http://nextcloud" }}
             - --user=$(NC_ADMIN_USER)
             - --password-env=NC_ADMIN_PASSWORD
+            - --config=/provisioner/woo.configuration.json
             - --skip-credentials
             {{- if not .Values.woo.openCatalogiBase }}
             - --skip-oc-settings
             - --skip-catalog
+            {{- end }}
+            {{- if .Values.woo.forceImport }}
+            - --force-import
             {{- end }}
           env:
             - name: NC_ADMIN_USER
@@ -63,6 +75,12 @@ spec:
                 secretKeyRef:
                   name: nextcloud-secrets
                   key: nextcloud-password
+          volumeMounts:
+            - name: provisioner
+              mountPath: /provisioner
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 250m, memory: 128Mi}

@@ -1,50 +1,48 @@
-# Running the provisioner in-cluster (Argo)
+# Running the provisioner in-cluster (GitOps / Argo)
 
 This is the **target track** wired into the deploy pipeline. `Nextcloud-base`
 (the Argo ApplicationSet) brings up a tenant; then the provisioner converges its
-WOO configuration. No vendor CI, no external trigger — it runs in-cluster, right
-after the deploy, as a Kubernetes Job that Argo manages per tenant.
+WOO configuration. Fully GitOps: everything is declarative in git, Argo renders
+and reconciles it. **No custom image, no registry, no build step, no token.**
 
-## The split
+## How (GitOps — recommended)
 
-| Concern | Owner |
-|---------|-------|
-| **Base config** — settings, oc-settings, import, verify-import, catalog, sync-check, jobs | **Argo** — declarative, the Job here (`provision.py all --skip-credentials`) |
-| **Per-tenant source connection** — source URL, API-Interface-ID, API key | **Operator** — out-of-band via the CLI/GUI (`provision.py credentials …`), never in Argo |
+`provision.py` + the tagged `woo.configuration.json` are ~300 KB together — well
+under the 1 MiB ConfigMap limit. So they ship as a **ConfigMap**, mounted into a
+**stock public `python:3-slim`** image that runs them:
 
-The base config is the same on every tenant (it's the tagged
-`config/woo.configuration.json`); the source connection differs per client, so it
-is supplied by an operator, not the reconciler.
+- `provision-configmap.yaml` — Helm template, renders the ConfigMap from the two
+  files vendored into the chart (`files/openwoo/provision.py`,
+  `files/openwoo/woo.configuration.json`) at the pinned `openwoo-app-config` tag.
+- `provision-job.yaml` — Argo **PostSync** Job: mounts the ConfigMap, runs
+  `python3 /provisioner/provision.py all --skip-credentials`.
+- `provision-cronjob.yaml` — optional drift reconcile (`.Values.woo.reconcile`).
 
-## How it runs
+All three are Helm templates that drop into `nextcloud-platform`'s
+`tenant-resources/templates/` and follow that chart's conventions
+(`.Values.tenant.*`, `tenant-resources.labels`, hardened securityContext, Argo
+hooks). Admin creds come from `nextcloud-secrets`
+(`nextcloud-username` / `nextcloud-password`); `--base` is the in-cluster
+`nextcloud` service.
 
-`provision-job.yaml` / `provision-cronjob.yaml` are **Helm templates** that drop
-straight into `nextcloud-platform`'s `tenant-resources/templates/` — they follow
-that chart's conventions (`.Values.tenant.name/namespace`,
-`tenant-resources.labels`, hardened securityContext, Argo hooks). They read the
-tenant admin from `nextcloud-secrets` (`nextcloud-username` / `nextcloud-password`)
-and target the in-cluster `nextcloud` service.
+### Vendoring the two files
 
-1. Build + push the image (config baked in, per tag): `make image push`
-   (`IMAGE`/`TAG`/`CONTAINER` overridable).
-2. Drop `provision-job.yaml` into `tenant-resources/templates/` (Argo PostSync
-   hook → runs after Nextcloud is up). Optionally `provision-cronjob.yaml` for
-   drift reconciliation.
-3. Add the `woo` values block (below) to the tenant values.
-
-Both run `provision.py all --skip-credentials`. Because every step is
-**idempotent** (GET-check, skip when converged) they are safe per sync and on a
-schedule — converged runs are near no-ops.
+The platform pins `openwoo-app-config` at a tag (as it already does for the
+config). Place the pinned files at `files/openwoo/provision.py` and
+`files/openwoo/woo.configuration.json` in the chart (e.g. an Argo multi-source
+Application, a git submodule, or a sync step). The ConfigMap is then rendered
+from them — a config change is a new tag → new ConfigMap → Job re-runs.
 
 ## Values
 
 ```yaml
 woo:
-  enabled: true                # render the WOO provisioning Job for this tenant
-  provisionerImage: conduction2022/openwoo-provisioner:<tag>
-  base: http://nextcloud       # in-cluster service (or the ingress https URL)
-  openCatalogiBase: true       # false -> adds --skip-oc-settings --skip-catalog
-  reconcile: false             # true -> also render the reconcile CronJob
+  enabled: true                 # render the WOO provisioning resources
+  pythonImage: python:3.12-slim # stock runtime (override for a mirror)
+  base: http://nextcloud        # in-cluster service (or the ingress https URL)
+  openCatalogiBase: true        # false -> adds --skip-oc-settings --skip-catalog
+  forceImport: false            # true -> --force-import (re-upload on content change)
+  reconcile: false              # true -> also render the reconcile CronJob
   reconcileSchedule: "*/30 * * * *"
 ```
 
@@ -52,5 +50,8 @@ woo:
 
 - Per-tenant **source connection** (URL / API-Interface-ID / API key) is NOT set
   here — an operator sets it via the CLI/GUI (`provision.py credentials …`).
-- On a config *content* change, ship a new image tag; the changed slugs trigger
-  an import. `--force-import` exists for the rare forced re-upload.
+- Idempotent: every step GET-checks and skips when converged, so the Job/CronJob
+  are safe per sync and on a schedule.
+- `Dockerfile` + `make image/push` remain as an **optional fallback** (e.g. if
+  the config ever outgrows the 1 MiB ConfigMap limit, or an air-gapped cluster
+  can't pull `python:3-slim`). The GitOps ConfigMap path above is the default.

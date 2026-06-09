@@ -1,9 +1,9 @@
 {{- if and .Values.woo.enabled .Values.woo.reconcile }}
 ---
-# Optional continuous reconciliation (drift repair) for WOO tenants. Runs the
-# same idempotent base-config provisioning on a schedule — a near no-op when
-# nothing drifted, self-healing when something did. Enable per tenant with
-# .Values.woo.reconcile.
+# Optional continuous reconciliation (drift repair) for WOO tenants. Same
+# idempotent base-config provisioning on a schedule — a near no-op when nothing
+# drifted, self-healing when something did. Mounts the openwoo-provisioner
+# ConfigMap into a stock python image. Enable with .Values.woo.reconcile.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -29,9 +29,15 @@ spec:
             runAsGroup: 1000
             seccompProfile:
               type: RuntimeDefault
+          volumes:
+            - name: provisioner
+              configMap:
+                name: openwoo-provisioner-{{ .Values.tenant.name }}
+            - name: tmp
+              emptyDir: {}
           containers:
             - name: provision
-              image: {{ .Values.woo.provisionerImage | default "conduction2022/openwoo-provisioner:latest" }}
+              image: {{ .Values.woo.pythonImage | default "python:3.12-slim" }}
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -39,11 +45,13 @@ spec:
                 capabilities:
                   drop:
                     - ALL
+              command: ["python3", "/provisioner/provision.py"]
               args:
                 - all
                 - --base={{ .Values.woo.base | default "http://nextcloud" }}
                 - --user=$(NC_ADMIN_USER)
                 - --password-env=NC_ADMIN_PASSWORD
+                - --config=/provisioner/woo.configuration.json
                 - --skip-credentials
                 {{- if not .Values.woo.openCatalogiBase }}
                 - --skip-oc-settings
@@ -56,6 +64,12 @@ spec:
                 - name: NC_ADMIN_PASSWORD
                   valueFrom:
                     secretKeyRef: {name: nextcloud-secrets, key: nextcloud-password}
+              volumeMounts:
+                - name: provisioner
+                  mountPath: /provisioner
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
               resources:
                 requests: {cpu: 50m, memory: 64Mi}
                 limits: {cpu: 250m, memory: 128Mi}

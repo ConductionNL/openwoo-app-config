@@ -4,17 +4,19 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
-### Added — 2026-06-09 (in-cluster Argo target track)
-- `Dockerfile` — packages `provision.py` + the (tagged) config into a tiny
-  pure-stdlib image (`make image` / `make push`; `IMAGE`/`TAG`/`CONTAINER`
-  overridable). Built + smoke-tested with podman.
-- `deploy/provision-job.yaml` (Argo PostSync hook) + `deploy/provision-cronjob.yaml`
-  (drift reconcile) + `deploy/README.md` — examples for running
-  `provision.py all --skip-credentials` per tenant in-cluster, admin creds from
-  the tenant secret. Base config = Argo-owned; per-tenant source connection
-  stays operator-supplied.
-- `provision.py all --skip-credentials` — run the base config only (for the Argo
-  Job); the source URL/interface-id/key are set out-of-band. 1 unit test.
+### Added — 2026-06-09 (in-cluster GitOps target track)
+- `deploy/` — GitOps-native Argo manifests (Helm templates for
+  `nextcloud-platform`'s `tenant-resources`): a **ConfigMap**
+  (`provision.py` + the tagged config, ~300 KB, rendered via `.Files.Get`) mounted
+  into a stock `python:3-slim`, run by an Argo **PostSync** Job
+  (`provision-job.yaml`) and optional reconcile **CronJob**. No custom image,
+  registry, build step or token. Admin creds from `nextcloud-secrets`; base =
+  in-cluster `nextcloud` service. Gated on `.Values.woo.enabled`; values block in
+  `deploy/README.md`.
+- `provision.py all --skip-credentials` — base config only (for the Argo Job);
+  per-tenant source connection set out-of-band. 1 unit test.
+- `Dockerfile` + `make image/push` kept as an **optional fallback** (config >
+  1 MiB ConfigMap limit, or air-gapped clusters); the ConfigMap path is default.
 
 ### Changed — 2026-06-09 (idempotent — skip writes when already converged)
 - Every write step now GET-checks first and **skips the write when the tenant is
