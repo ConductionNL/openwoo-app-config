@@ -1,2 +1,5 @@
-# Hosted provisioning control-plane (Phase 1). Minimal deps.
+# Hosted provisioning control-plane. Minimal deps.
 Flask>=3.0,<4.0
+# Production WSGI server (Phase 3 deploy). gthread workers + a long timeout so the
+# streaming /provision response (a live subprocess log) is not cut short.
+gunicorn>=22.0,<24.0

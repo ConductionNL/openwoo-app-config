@@ -273,6 +273,27 @@ WOO config and set the source connection. Driving tenants in-cluster was tried
 and dropped — the internal service Host isn't a trusted domain, and it added
 standing Argo apps nobody wanted. Outbound-from-outside is simpler and works.
 
+### Hosted control-plane (`webgui/`)
+
+The same operator flow is also available as a small **hosted web GUI** — a Flask
+app (`webgui/server.py`) that runs `provision.py all` from a form and streams the
+log back. It drives tenants **outbound** over their public URLs, so one hosted
+instance can converge any tenant.
+
+- **Auth:** no login of its own — it sits behind **oauth2-proxy → Keycloak**
+  (realm `commonground`), which brokers **Google**. The app **fails closed**
+  (`REQUIRE_AUTH`, default on): every route except `/healthz` returns `403`
+  without the proxy's identity header. See `webgui/auth/README.md`.
+- **Creds model A:** the operator types the tenant password + source key per run;
+  nothing is stored. Secrets go to the subprocess via env, never argv, never logs.
+- **Deploy:** `webgui/deploy/` (kustomize) — app on `127.0.0.1` + oauth2-proxy
+  sidecar as the sole listener, NetworkPolicy, nginx Ingress + TLS, at
+  `platform.commonground.nu`. Build the image with `make image`. See
+  `webgui/deploy/README.md`. Local dev: `REQUIRE_AUTH=false python3 webgui/server.py`.
+
+The host is named generically (`platform.`) because the control-plane is intended
+to grow beyond provisioning (e.g. driving deployments) over time.
+
 ## How Nextcloud-base consumes this
 
 `Nextcloud-base` (the GitOps platform) does **not** own this config. It consumes

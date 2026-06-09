@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openwoo-provisioner
+  namespace: openwoo-platform
+  labels:
+    app.kubernetes.io/name: openwoo-provisioner
+    app.kubernetes.io/part-of: nextcloud-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openwoo-provisioner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openwoo-provisioner
+    spec:
+      serviceAccountName: openwoo-provisioner
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        # The Flask app: gunicorn bound to 127.0.0.1:8081. NOT exposed on the pod
+        # network — only the oauth2-proxy sidecar (same netns) can reach it. This
+        # localhost bind is what makes X-Forwarded-Email trustworthy.
+        - name: app
+          image: ghcr.io/conductionnl/openwoo-provisioner:latest  # override per env (kustomize images:)
+          env:
+            - name: REQUIRE_AUTH
+              value: "true"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        # The auth front: the SOLE network listener. Validates the operator
+        # against Keycloak (which brokers Google) and forwards the identity as
+        # X-Forwarded-Email to the app on localhost.
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+          args: ["--config=/etc/oauth2-proxy/oauth2-proxy.cfg"]
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openwoo-provisioner-oauth
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openwoo-provisioner-oauth
+                  key: cookie-secret
+          ports:
+            - name: http
+              containerPort: 4180
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: oauth2-cfg
+              mountPath: /etc/oauth2-proxy
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: oauth2-cfg
+          configMap:
+            name: oauth2-proxy-cfg

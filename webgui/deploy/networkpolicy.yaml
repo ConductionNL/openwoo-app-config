@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openwoo-provisioner
+  namespace: openwoo-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openwoo-provisioner
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the ingress-nginx controller may reach the pod, and only on the
+    # oauth2-proxy port. Together with the app's 127.0.0.1 bind this enforces
+    # "oauth2-proxy is the sole ingress" — the trust anchor for X-Forwarded-Email.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 4180
+  egress:
+    # DNS resolution.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS out: Keycloak (oauth2-proxy ↔ iam.commonground.nu) and the tenant
+    # public URLs the operator provisions. Destinations are operator-chosen, so
+    # this is a broad 443 egress — acceptable because the trigger is now behind auth.
+    - ports:
+        - protocol: TCP
+          port: 443

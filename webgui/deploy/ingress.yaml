@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openwoo-provisioner
+  namespace: openwoo-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Streaming: the /provision response is a live subprocess log — disable
+    # buffering and give long-running runs a generous read timeout.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - platform.commonground.nu
+      secretName: openwoo-provisioner-tls
+  rules:
+    - host: platform.commonground.nu
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openwoo-provisioner
+                port:
+                  number: 80

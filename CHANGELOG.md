@@ -4,6 +4,29 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (web control-plane — Phase 3: Kubernetes deploy)
+- `Dockerfile` (repo root) — control-plane image: `python:3.12-slim` + Flask +
+  **gunicorn** (gthread, `--timeout 3600` so the streaming `/provision` log isn't
+  cut), running the app **bound to `127.0.0.1:8081`**, non-root, unprivileged.
+- `webgui/deploy/` — kustomize bundle for `https://platform.commonground.nu`:
+  - `deployment.yaml` — **one pod, two containers**: the app (localhost only) +
+    an **oauth2-proxy** sidecar that is the sole network listener (`:4180`) and
+    forwards the authenticated identity to the app. Hardened securityContext
+    (readOnlyRootFs, drop ALL caps, runAsNonRoot, seccomp RuntimeDefault).
+  - `service.yaml` (ClusterIP `80→4180`), `ingress.yaml` (nginx + `letsencrypt-prod`
+    TLS; buffering off + long read-timeout for streaming).
+  - `networkpolicy.yaml` — pod ingress **only** from the `ingress-nginx` namespace
+    on `:4180`; egress DNS + 443. With the localhost bind this **enforces in code**
+    the "oauth2-proxy is the sole ingress" trust anchor (the Phase-2 review follow-up).
+  - `oauth2-proxy.cfg` (moved here from `webgui/auth/`) → hashed ConfigMap via
+    `configMapGenerator`; `secret.example.yaml` is a template (real Secret
+    out-of-band); `argocd-application.example.yaml` for the GitOps repo.
+  - `webgui/deploy/README.md` — build/push, prerequisites, apply, verify.
+- `Makefile`: `image` / `push` / `k8s-validate` targets.
+- Verified: `kustomize build` renders 7 resources (ConfigMap hash + volume
+  rewrite); the image **builds and runs** — in-container `/healthz`=200, `/`
+  without auth=**403 fail-closed**, `/` with `X-Forwarded-Email`=200.
+
 ### Added — 2026-06-09 (web control-plane — Phase 2: auth via oauth2-proxy → Keycloak)
 - The web GUI is now **fronted by oauth2-proxy → Keycloak** (realm `commonground`,
   `iam.commonground.nu`), which **brokers Google** as identity provider — operators

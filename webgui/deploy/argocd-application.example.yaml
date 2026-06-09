@@ -1,0 +1,23 @@
+# EXAMPLE — this Application belongs in the GitOps repo (nextcloud-platform/argo or
+# the KeyCloak app-of-apps), NOT applied from here. It deploys webgui/deploy/ as the
+# control-plane. The oauth2 Secret is created out-of-band (see secret.example.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openwoo-provisioner
+  namespace: argocd
+spec:
+  project: nextcloud-platform
+  source:
+    repoURL: https://codeberg.org/Conduction/openwoo-app-config.git
+    targetRevision: main
+    path: webgui/deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openwoo-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -31,7 +31,7 @@ If you run the app *without* a proxy for local dev, set `REQUIRE_AUTH=false`.
 
 | Piece | Location |
 |---|---|
-| oauth2-proxy config | `webgui/auth/oauth2-proxy.cfg` (this repo) |
+| oauth2-proxy config | `webgui/deploy/oauth2-proxy.cfg` (this repo) |
 | Keycloak client `openwoo-provisioner` | KeyCloak repo, `realm-commonground.yaml` |
 | Google identity provider | KeyCloak repo, `realm-commonground.yaml` |
 | Secrets (client + cookie) | env / cluster Secret — **never in Git** |
