@@ -67,13 +67,16 @@ python3 scripts/provision.py all \
     --password-env CANARY_PASS --apikey-env OPENWOO_APIKEY
 ```
 
-Credentials can also come from an **interactive prompt** — omit `--password` /
-`--password-env` and, on a terminal, the tool asks for the app password
-(`getpass`, never stored or in argv):
+Credentials can also come from **interactive prompts** — omit `--user`,
+`--password` and `--apikey` and, on a terminal, the tool asks for the admin user
+(default `admin`), the app password and the source API key (`getpass`, never
+stored or in argv). The minimal fully-interactive run:
 
 ```bash
-python3 scripts/provision.py all \
-    --base https://<tenant> --user admin --apikey-env OPENWOO_APIKEY   # prompts for the password
+python3 scripts/provision.py all --base https://<tenant>
+#   Nextcloud admin user [admin]:
+#   App password for admin @ https://<tenant>:
+#   Source API key (blank = dummy test key):
 ```
 
 `all` is a **convergence/repair** run: it updates the existing tenant's objects to

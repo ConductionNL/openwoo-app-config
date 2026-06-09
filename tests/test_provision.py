@@ -139,17 +139,24 @@ class _Args:
 
 
 def test_resolve_password_prefers_flag_then_env(monkeypatch):
-    assert provision.resolve_password(_Args(password="p", password_env=None)) == "p"
+    assert provision.resolve_password(_Args(password="p", password_env=None), "admin") == "p"
     monkeypatch.setenv("CRED", "from-env")
-    assert provision.resolve_password(_Args(password=None, password_env="CRED")) == "from-env"
+    assert provision.resolve_password(_Args(password=None, password_env="CRED"), "admin") == "from-env"
 
 
 def test_resolve_password_raises_when_absent_or_empty(monkeypatch):
+    # non-tty under pytest -> no prompt fallback
     with pytest.raises(provision.ProvisionError, match="provide --password"):
-        provision.resolve_password(_Args(password=None, password_env=None))
+        provision.resolve_password(_Args(password=None, password_env=None), "admin")
     monkeypatch.delenv("EMPTY", raising=False)
     with pytest.raises(provision.ProvisionError, match="empty"):
-        provision.resolve_password(_Args(password=None, password_env="EMPTY"))
+        provision.resolve_password(_Args(password=None, password_env="EMPTY"), "admin")
+
+
+def test_resolve_user_flag_or_error_without_tty():
+    assert provision.resolve_user(_Args(user="bob")) == "bob"
+    with pytest.raises(provision.ProvisionError, match="provide --user"):
+        provision.resolve_user(_Args(user=None))  # non-tty under pytest
 
 
 def test_resolve_apikey_dummy_when_unset():

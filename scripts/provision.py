@@ -666,16 +666,16 @@ def _from_env(var, flag):
     return value
 
 
-def resolve_apikey(args):
-    """The real key from --apikey or --apikey-env, or None for dummy/test mode."""
-    if args.apikey is not None:
-        return args.apikey
-    if args.apikey_env:
-        return _from_env(args.apikey_env, "--apikey-env")
-    return None
+def resolve_user(args):
+    """Admin user from --user, or an interactive prompt (default 'admin')."""
+    if args.user:
+        return args.user
+    if sys.stdin.isatty():
+        return input("Nextcloud admin user [admin]: ").strip() or "admin"
+    raise ProvisionError("provide --user (or run interactively)")
 
 
-def resolve_password(args):
+def resolve_password(args, user):
     """Password from --password, --password-env, or an interactive prompt.
 
     When neither flag is given and we have a terminal, prompt with getpass so the
@@ -688,16 +688,40 @@ def resolve_password(args):
     import getpass
 
     if sys.stdin.isatty():
-        value = getpass.getpass(f"App password for {args.user} @ {args.base}: ")
+        value = getpass.getpass(f"App password for {user} @ {args.base}: ")
         if value:
             return value
     raise ProvisionError("provide --password, --password-env, or run interactively")
 
 
+def resolve_apikey(args):
+    """The real source key from --apikey / --apikey-env / an interactive prompt.
+
+    Returns None (→ dummy test key) only when no flag is set and either there is
+    no terminal or the operator leaves the prompt blank.
+    """
+    if getattr(args, "apikey", None) is not None:
+        return args.apikey
+    if getattr(args, "apikey_env", None):
+        return _from_env(args.apikey_env, "--apikey-env")
+    import getpass
+
+    if sys.stdin.isatty():
+        value = getpass.getpass("Source API key (blank = dummy test key): ")
+        return value or None
+    return None
+
+
+def make_client(args):
+    """Build a Client, resolving user + password (flags or interactive prompt)."""
+    user = resolve_user(args)
+    return Client(args.base, user, resolve_password(args, user))
+
+
 def cmd_credentials(args):
     doc = load_config(args.config)
     apikey = resolve_apikey(args)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"provisioning credentials against {args.base}")
     count = provision_credentials(client, doc, apikey=apikey, header=args.header)
     log(f"CREDENTIALS PROVISIONED OK ({count} source(s))")
@@ -705,7 +729,7 @@ def cmd_credentials(args):
 
 
 def cmd_settings(args):
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     organisation = {"auto_create_default_organisation": True}
     if args.default_organisation:
         organisation["default_organisation"] = args.default_organisation
@@ -739,7 +763,7 @@ def _settings_from_args(args):
 
 def cmd_all(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"full provisioning against {args.base}")
     provision_all(
         client,
@@ -758,7 +782,7 @@ def cmd_all(args):
 
 def cmd_sync_run(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     mode = "test" if args.test else "run"
     log(f"{mode}ning {len(config_slugs(doc, 'synchronizations'))} synchronization(s) on {args.base}")
     done = provision_sync_run(client, doc, mode=mode)
@@ -768,7 +792,7 @@ def cmd_sync_run(args):
 
 def cmd_catalog(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"provisioning catalog '{args.catalog_slug}' against {args.base}")
     provision_catalog(client, doc, catalog_slug=args.catalog_slug, target_register=args.register)
     log("CATALOG PROVISIONED OK")
@@ -776,7 +800,7 @@ def cmd_catalog(args):
 
 
 def cmd_objects(args):
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     with open(args.payload_file, encoding="utf-8") as fh:
         payload = json.load(fh)
     log(f"creating object in {args.register}/{args.schema} on {args.base}")
@@ -787,7 +811,7 @@ def cmd_objects(args):
 
 def cmd_import(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"importing config into {args.base}")
     provision_import(client, doc)
     log("IMPORT OK")
@@ -796,7 +820,7 @@ def cmd_import(args):
 
 def cmd_authorization(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"restoring schema authorization on {args.base}")
     n = provision_authorization(client, doc)
     log(f"AUTHORIZATION OK ({n} schema(s) patched)")
@@ -805,7 +829,7 @@ def cmd_authorization(args):
 
 def cmd_jobs(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"resolving job synchronizationIds on {args.base}")
     n = provision_jobs(client, doc)
     log(f"JOBS OK ({n} synchronizationId(s) resolved to numeric ids)")
@@ -813,7 +837,7 @@ def cmd_jobs(args):
 
 
 def cmd_oc_settings(args):
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"provisioning OpenCatalogi settings against {args.base}")
     provision_oc_settings(client, register=args.register)
     log("OC-SETTINGS PROVISIONED OK")
@@ -822,7 +846,7 @@ def cmd_oc_settings(args):
 
 def cmd_verify_import(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"verifying imported config slugs against {args.base}")
     report = verify_import(client, doc)
     failed = False
@@ -841,7 +865,7 @@ def cmd_verify_import(args):
 
 def cmd_sync_check(args):
     doc = load_config(args.config)
-    client = Client(args.base, args.user, resolve_password(args))
+    client = make_client(args)
     log(f"checking synchronization targets resolved on {args.base}")
     result = sync_check(client, doc)
     if result["dangling"]:
@@ -857,7 +881,7 @@ def cmd_sync_check(args):
 def _add_connection_args(p, with_config=True):
     """Shared connection flags: base URL, user, and password (kept out of argv)."""
     p.add_argument("--base", required=True, help="instance base URL")
-    p.add_argument("--user", required=True, help="admin user / app-password user")
+    p.add_argument("--user", default=None, help="admin user (prompted if omitted, default admin)")
     p.add_argument(
         "--password", default=None, help="password / app password (prefer --password-env)"
     )
