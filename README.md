@@ -77,7 +77,14 @@ python3 scripts/provision.py all --base https://<tenant>
 #   Nextcloud admin user [admin]:
 #   App password for admin @ https://<tenant>:
 #   Source API key (blank = dummy test key):
+#   Source URL (blank = keep config default):
+#   API-Interface-ID (blank = keep config default):
 ```
+
+The source URL, API-Interface-ID and API key are **per-tenant** (each client's
+source system differs), so they are supplied per run — not committed to the
+config. The Argo reconciler handles the base config declaratively; these
+per-tenant source connection values are operator-supplied via this script.
 
 `all` is a **convergence/repair** run: it updates the existing tenant's objects to
 the config's desired state (idempotent upserts) — it does not wipe, and does not

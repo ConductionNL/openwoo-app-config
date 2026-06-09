@@ -309,8 +309,9 @@ def provision_jobs(client, doc):
     return done
 
 
-def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
-                  do_import=True, catalog=True, run_syncs=False, sync_mode="test"):
+def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
+                  settings=None, oc_settings=True, do_import=True, catalog=True,
+                  run_syncs=False, sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
@@ -354,7 +355,8 @@ def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
         log("[5/9] catalog — skipped")
 
     log("[6/9] credentials")
-    provision_credentials(client, doc, apikey=apikey)
+    provision_credentials(client, doc, apikey=apikey, source_url=source_url,
+                          interface_id=interface_id)
 
     log("[7/9] sync-check")
     chk = sync_check(client, doc)
@@ -603,16 +605,22 @@ def merge_header(configuration, header, value):
     return base
 
 
-def provision_credentials(client, doc, apikey=None, header=API_KEY_HEADER):
-    """Set every config source's API-key header, GET it back, assert it stuck.
+INTERFACE_ID_HEADER = "headers.API-Interface-ID"
 
-    `apikey` is the real key (from --apikey / --apikey-env); when None a per-slug
-    dummy is used so the path is still exercised in CI without a secret. The key
-    is merged into the source `configuration` (read-modify-write) so existing
-    headers like API-Interface-ID are preserved.
+
+def provision_credentials(client, doc, apikey=None, source_url=None, interface_id=None,
+                          header=API_KEY_HEADER):
+    """Set every config source's connection params on the tenant and assert they stick.
+
+    Per-tenant params (none committed to the config): `apikey` (the API-KEY
+    header), `source_url` (the source `location`), and `interface_id` (the
+    API-Interface-ID header). When `apikey` is None a per-slug dummy is used so
+    the path is still exercised in CI; `source_url`/`interface_id` left None keep
+    whatever the config imported. Headers are merged into the source
+    `configuration` (read-modify-write) so other headers are preserved.
 
     Returns the number of sources provisioned. Raises ProvisionError on the first
-    hard failure (missing source, refused auth, key did not reflect).
+    hard failure (missing source, refused auth, a value did not reflect).
     """
     slugs = config_source_slugs(doc)
     if not slugs:
@@ -620,7 +628,9 @@ def provision_credentials(client, doc, apikey=None, header=API_KEY_HEADER):
         return 0
 
     using_dummy = apikey is None
-    log(f"key source: {'dummy (test mode)' if using_dummy else 'supplied key'}")
+    log(f"key source: {'dummy (test mode)' if using_dummy else 'supplied key'}"
+        f"{'; setting source URL' if source_url else ''}"
+        f"{'; setting API-Interface-ID' if interface_id else ''}")
     sources = results_list(client.get(SOURCES_PATH))
     done = 0
     for slug in slugs:
@@ -633,18 +643,28 @@ def provision_credentials(client, doc, apikey=None, header=API_KEY_HEADER):
         source_id = source.get("id")
         key = dummy_apikey(slug) if using_dummy else apikey
         new_config = merge_header(source.get("configuration"), header, key)
-        log(f"  source '{slug}' (id={source_id}): set {header}")
-        client.put(f"{SOURCES_PATH}/{source_id}", {"configuration": new_config})
+        if interface_id is not None:
+            new_config[INTERFACE_ID_HEADER] = interface_id
+        body = {"configuration": new_config}
+        if source_url:
+            body["location"] = source_url
+        log(f"  source '{slug}' (id={source_id}): set {header}"
+            f"{' + location' if source_url else ''}"
+            f"{' + API-Interface-ID' if interface_id is not None else ''}")
+        client.put(f"{SOURCES_PATH}/{source_id}", body)
 
         after = client.get(f"{SOURCES_PATH}/{source_id}")
-        got = (after.get("configuration") or {}).get(header) \
-            if isinstance(after.get("configuration"), dict) else None
-        if got != key:
-            raise ProvisionError(
-                f"source '{slug}': {header} did not reflect after PUT "
-                f"(got {got!r})"
-            )
-        log(f"  source '{slug}': {header} reflected OK")
+        conf = after.get("configuration") if isinstance(after.get("configuration"), dict) else {}
+        problems = []
+        if conf.get(header) != key:
+            problems.append(f"{header}={conf.get(header)!r}")
+        if interface_id is not None and conf.get(INTERFACE_ID_HEADER) != interface_id:
+            problems.append(f"{INTERFACE_ID_HEADER}={conf.get(INTERFACE_ID_HEADER)!r}")
+        if source_url and after.get("location") != source_url:
+            problems.append(f"location={after.get('location')!r}")
+        if problems:
+            raise ProvisionError(f"source '{slug}': did not reflect after PUT ({', '.join(problems)})")
+        log(f"  source '{slug}': connection params reflected OK")
         done += 1
     return done
 
@@ -712,6 +732,26 @@ def resolve_apikey(args):
     return None
 
 
+def _prompt_optional(args, attr, label):
+    """A non-secret per-tenant value from a flag or a blank-able prompt (else None)."""
+    value = getattr(args, attr, None)
+    if value:
+        return value
+    if sys.stdin.isatty():
+        return input(f"{label} (blank = keep config default): ").strip() or None
+    return None
+
+
+def resolve_source_url(args):
+    """Source URL (`location`) from --source-url or a prompt; None keeps config."""
+    return _prompt_optional(args, "source_url", "Source URL")
+
+
+def resolve_interface_id(args):
+    """API-Interface-ID from --api-interface-id or a prompt; None keeps config."""
+    return _prompt_optional(args, "api_interface_id", "API-Interface-ID")
+
+
 def make_client(args):
     """Build a Client, resolving user + password (flags or interactive prompt)."""
     user = resolve_user(args)
@@ -721,9 +761,12 @@ def make_client(args):
 def cmd_credentials(args):
     doc = load_config(args.config)
     apikey = resolve_apikey(args)
+    source_url = resolve_source_url(args)
+    interface_id = resolve_interface_id(args)
     client = make_client(args)
     log(f"provisioning credentials against {args.base}")
-    count = provision_credentials(client, doc, apikey=apikey, header=args.header)
+    count = provision_credentials(client, doc, apikey=apikey, source_url=source_url,
+                                  interface_id=interface_id, header=args.header)
     log(f"CREDENTIALS PROVISIONED OK ({count} source(s))")
     return 0
 
@@ -769,6 +812,8 @@ def cmd_all(args):
         client,
         doc,
         apikey=resolve_apikey(args),
+        source_url=resolve_source_url(args),
+        interface_id=resolve_interface_id(args),
         settings=_settings_from_args(args),
         oc_settings=not args.skip_oc_settings,
         do_import=not args.skip_import,
@@ -918,6 +963,8 @@ def build_parser():
     cred.add_argument(
         "--header", default=API_KEY_HEADER, help="source configuration key to set (default: %(default)s)"
     )
+    cred.add_argument("--source-url", default=None, help="source location URL (prompted if omitted; blank keeps config)")
+    cred.add_argument("--api-interface-id", default=None, help="API-Interface-ID header (prompted if omitted; blank keeps config)")
     cred.set_defaults(func=cmd_credentials)
 
     st = sub.add_parser(
@@ -1018,6 +1065,8 @@ def build_parser():
     _add_connection_args(al)
     al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")
     al.add_argument("--apikey-env", default=None, help="read the real API key from this env var")
+    al.add_argument("--source-url", default=None, help="source location URL (prompted if omitted; blank keeps config)")
+    al.add_argument("--api-interface-id", default=None, help="API-Interface-ID header (prompted if omitted; blank keeps config)")
     al.add_argument("--default-organisation", default=None, help="org UUID (omit to rely on auto-create)")
     al.add_argument("--multitenancy", action="store_true", help="enable multitenancy (default: disabled)")
     al.add_argument("--skip-settings", action="store_true", help="do not touch settings")

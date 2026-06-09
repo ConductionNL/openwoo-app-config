@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (per-tenant source connection params)
+- `provision.py credentials` / `all` now also set the source **`location` (URL)**
+  and **`API-Interface-ID`** header alongside the API key — all three are
+  per-tenant (each client's source system differs) and supplied at provision time
+  (`--source-url` / `--api-interface-id` or interactive prompt; blank keeps the
+  config default). Not committed to the config. The Argo reconciler handles the
+  base config; these per-tenant source values are operator-supplied. 2 unit tests.
+- `provision.py` is now fully interactive: omitting `--user` / `--password` /
+  `--apikey` / `--source-url` / `--api-interface-id` prompts for them on a
+  terminal (getpass for secrets), so `provision.py all --base <tenant>` asks for
+  everything. Non-terminal runs still require flags/env.
+
 ### Added — 2026-06-09 (jobs synchronizationId resolution)
 - `scripts/provision.py jobs` — after import, each job's `arguments.synchronizationId`
   is still the sync **slug** (the import does not resolve it, unlike sync

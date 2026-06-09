@@ -110,6 +110,28 @@ def test_credentials_uses_supplied_real_key():
     assert body["configuration"][HDR] == "REAL-KEY"
 
 
+def test_credentials_sets_source_url_and_interface_id():
+    doc = _doc(sources=[{"slug": "demo-xxllnc"}])
+    client = FakeClient([{"id": 1, "slug": "demo-xxllnc",
+                          "configuration": {"headers.API-Interface-ID": "44"}}])
+    provision.provision_credentials(client, doc, apikey="K",
+                                    source_url="https://klant.example/api", interface_id="99")
+    (_sid, body), = client.puts
+    assert body["location"] == "https://klant.example/api"
+    assert body["configuration"]["headers.API-Interface-ID"] == "99"   # overridden
+    assert body["configuration"][HDR] == "K"
+
+
+def test_credentials_keeps_config_defaults_when_url_and_iid_omitted():
+    doc = _doc(sources=[{"slug": "demo-xxllnc"}])
+    client = FakeClient([{"id": 1, "slug": "demo-xxllnc",
+                          "configuration": {"headers.API-Interface-ID": "44"}}])
+    provision.provision_credentials(client, doc, apikey="K")
+    (_sid, body), = client.puts
+    assert "location" not in body                       # not touched
+    assert body["configuration"]["headers.API-Interface-ID"] == "44"   # preserved
+
+
 def test_credentials_raises_when_source_missing_on_instance():
     doc = _doc(sources=[{"slug": "ghost"}])
     client = FakeClient([{"id": 1, "slug": "demo-xxllnc"}])
@@ -542,7 +564,7 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
     monkeypatch.setattr(provision, "provision_catalog",
                         lambda c, d: calls.append("catalog"))
     monkeypatch.setattr(provision, "provision_credentials",
-                        lambda c, d, apikey=None: calls.append("credentials"))
+                        lambda c, d, **kw: calls.append("credentials"))
     monkeypatch.setattr(provision, "sync_check",
                         lambda c, d: (calls.append("sync-check"),
                                       {"total": 1, "dangling": dangling or []})[1])
