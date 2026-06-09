@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (jobs synchronizationId resolution)
+- `scripts/provision.py jobs` — after import, each job's `arguments.synchronizationId`
+  is still the sync **slug** (the import does not resolve it, unlike sync
+  `targetId`), but the `SynchronizationAction` needs the **numeric** sync id to
+  trigger. This step resolves the sync slug → the tenant's numeric sync id and
+  PUTs it onto the job, asserting it reflects. The config keeps the portable
+  slug; the provisioner resolves it per tenant (like `catalog`). Added to the
+  `all` flow (now 9 steps, after `sync-check`). Verified on canary: all 16 jobs'
+  synchronizationId became numeric ids. 4 unit tests.
+
 ### Changed — 2026-06-09 (review + refactor, pre-Argo)
 - Post-`/review` + `/security-review` cleanup (security review: no findings):
   - rewrote `scripts/provision.py`'s module header to describe all 11 subcommands

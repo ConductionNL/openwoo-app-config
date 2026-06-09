@@ -273,6 +273,42 @@ def provision_sync_run(client, doc, mode="run"):
     return done
 
 
+def provision_jobs(client, doc):
+    """Resolve each job's synchronizationId from the sync slug to the tenant's
+    numeric sync id and assert it reflects.
+
+    The config (portable) carries the sync *slug* in `arguments.synchronizationId`;
+    the import leaves it a slug, but the SynchronizationAction needs the numeric
+    sync id to trigger. Driven by config jobs, matched to tenant jobs by slug.
+    Skips jobs whose synchronizationId is already numeric. Raises on a missing
+    job or an unresolvable sync slug.
+    """
+    sync_ids = slug_to_id(results_list(client.get(SYNCS_PATH)))
+    tenant_jobs = {j.get("slug"): j for j in results_list(client.get(JOBS_PATH)) if j.get("slug")}
+    done = 0
+    for job in bucket_items(doc, "jobs"):
+        slug = job.get("slug")
+        ref = (job.get("arguments") or {}).get("synchronizationId")
+        if not slug or ref is None:
+            continue
+        if isinstance(ref, int) or (isinstance(ref, str) and ref.isdigit()):
+            continue  # already a numeric id — nothing to resolve
+        if ref not in sync_ids:
+            raise ProvisionError(f"jobs: job '{slug}' synchronizationId '{ref}' is not a tenant sync slug")
+        if slug not in tenant_jobs:
+            raise ProvisionError(f"jobs: job '{slug}' not on the tenant")
+        tj = tenant_jobs[slug]
+        numeric = sync_ids[ref]
+        merged = {**(tj.get("arguments") or {}), "synchronizationId": numeric}
+        resp = client.put(f"{JOBS_PATH}/{tj['id']}", {"arguments": merged})
+        got = (resp.get("arguments") or {}).get("synchronizationId") if isinstance(resp, dict) else None
+        if got != numeric:
+            raise ProvisionError(f"jobs: job '{slug}' synchronizationId did not reflect (got {got!r})")
+        log(f"  job '{slug}': synchronizationId {ref} -> {numeric} OK")
+        done += 1
+    return done
+
+
 def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
                   do_import=True, catalog=True, run_syncs=False, sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
@@ -288,48 +324,52 @@ def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
     and job runs stay separate.
     """
     if settings is not None:
-        log("[1/8] settings")
+        log("[1/9] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/8] settings — skipped")
+        log("[1/9] settings — skipped")
 
     if oc_settings:
-        log("[2/8] oc-settings")
+        log("[2/9] oc-settings")
         provision_oc_settings(client)
     else:
-        log("[2/8] oc-settings — skipped")
+        log("[2/9] oc-settings — skipped")
 
     if do_import:
-        log("[3/8] import")
+        log("[3/9] import")
         provision_import(client, doc)
     else:
-        log("[3/8] import — skipped")
+        log("[3/9] import — skipped")
 
-    log("[4/8] verify-import")
+    log("[4/9] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
     if catalog:
-        log("[5/8] catalog")
+        log("[5/9] catalog")
         provision_catalog(client, doc)
     else:
-        log("[5/8] catalog — skipped")
+        log("[5/9] catalog — skipped")
 
-    log("[6/8] credentials")
+    log("[6/9] credentials")
     provision_credentials(client, doc, apikey=apikey)
 
-    log("[7/8] sync-check")
+    log("[7/9] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
+    log("[8/9] jobs")
+    n = provision_jobs(client, doc)
+    log(f"  jobs: {n} synchronizationId(s) resolved to numeric ids")
+
     if run_syncs:
-        log(f"[8/8] sync-run ({sync_mode})")
+        log(f"[9/9] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[8/8] sync-run — skipped (pass --run-syncs)")
+        log("[9/9] sync-run — skipped (pass --run-syncs)")
     return True
 
 
@@ -763,6 +803,15 @@ def cmd_authorization(args):
     return 0
 
 
+def cmd_jobs(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"resolving job synchronizationIds on {args.base}")
+    n = provision_jobs(client, doc)
+    log(f"JOBS OK ({n} synchronizationId(s) resolved to numeric ids)")
+    return 0
+
+
 def cmd_oc_settings(args):
     client = Client(args.base, args.user, resolve_password(args))
     log(f"provisioning OpenCatalogi settings against {args.base}")
@@ -878,6 +927,13 @@ def build_parser():
     _add_connection_args(au)
     au.set_defaults(func=cmd_authorization)
 
+    jb = sub.add_parser(
+        "jobs",
+        help="resolve each job's synchronizationId (sync slug -> tenant numeric id) and assert",
+    )
+    _add_connection_args(jb)
+    jb.set_defaults(func=cmd_jobs)
+
     ocs = sub.add_parser(
         "oc-settings",
         help="couple OpenCatalogi object types (catalog/listing/…) to their register + schema",
@@ -933,7 +989,7 @@ def build_parser():
 
     al = sub.add_parser(
         "all",
-        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> credentials -> sync-check [-> sync-run]",
+        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> credentials -> sync-check -> jobs [-> sync-run]",
     )
     _add_connection_args(al)
     al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")

@@ -369,6 +369,67 @@ def test_sync_run_raises_when_sync_missing():
         provision.provision_sync_run(client, doc, mode="run")
 
 
+# --- jobs (resolve synchronizationId slug -> numeric id) ---
+
+
+class FakeJobsClient:
+    """Serves syncs + jobs lists; PUT echoes the merged arguments back."""
+
+    def __init__(self, syncs, jobs, reflect=True):
+        self._syncs = syncs
+        self._jobs = {j["id"]: dict(j) for j in jobs}
+        self._reflect = reflect
+        self.puts = []
+
+    def get(self, path):
+        if path.endswith("/synchronizations"):
+            return {"results": self._syncs}
+        if path.endswith("/jobs"):
+            return {"results": list(self._jobs.values())}
+        raise AssertionError(path)
+
+    def put(self, path, body):
+        jid = int(path.rsplit("/", 1)[1])
+        self.puts.append((jid, body))
+        merged = body["arguments"] if self._reflect else {"synchronizationId": "still-slug"}
+        return {"id": jid, "arguments": merged}
+
+
+def test_jobs_resolves_sync_slug_to_numeric():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": "sync-a"}}])
+    client = FakeJobsClient(
+        syncs=[{"slug": "sync-a", "id": 65}],
+        jobs=[{"slug": "job-a", "id": 65, "arguments": {"synchronizationId": "sync-a"}}],
+    )
+    assert provision.provision_jobs(client, doc) == 1
+    (_jid, body), = client.puts
+    assert body["arguments"]["synchronizationId"] == 65
+
+
+def test_jobs_skips_already_numeric():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": 65}}])
+    client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
+                            jobs=[{"slug": "job-a", "id": 65}])
+    assert provision.provision_jobs(client, doc) == 0
+    assert client.puts == []
+
+
+def test_jobs_raises_on_unresolvable_sync_slug():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": "ghost"}}])
+    client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
+                            jobs=[{"slug": "job-a", "id": 65}])
+    with pytest.raises(provision.ProvisionError, match="not a tenant sync slug"):
+        provision.provision_jobs(client, doc)
+
+
+def test_jobs_raises_when_not_reflected():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": "sync-a"}}])
+    client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
+                            jobs=[{"slug": "job-a", "id": 65}], reflect=False)
+    with pytest.raises(provision.ProvisionError, match="did not reflect"):
+        provision.provision_jobs(client, doc)
+
+
 # --- objects ---
 
 
@@ -478,6 +539,8 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
     monkeypatch.setattr(provision, "sync_check",
                         lambda c, d: (calls.append("sync-check"),
                                       {"total": 1, "dangling": dangling or []})[1])
+    monkeypatch.setattr(provision, "provision_jobs",
+                        lambda c, d: calls.append("jobs") or 0)
     monkeypatch.setattr(provision, "provision_sync_run",
                         lambda c, d, mode="run": calls.append(f"sync-run:{mode}"))
 
@@ -487,7 +550,7 @@ def test_provision_all_runs_steps_in_order(monkeypatch):
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
     assert calls == ["settings", "oc-settings", "import", "verify",
-                     "catalog", "credentials", "sync-check"]
+                     "catalog", "credentials", "sync-check", "jobs"]
 
 
 def test_provision_all_skips_optional_steps(monkeypatch):
@@ -495,7 +558,7 @@ def test_provision_all_skips_optional_steps(monkeypatch):
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings=None, oc_settings=False, do_import=False,
                             catalog=False, run_syncs=True, sync_mode="test")
-    assert calls == ["verify", "credentials", "sync-check", "sync-run:test"]
+    assert calls == ["verify", "credentials", "sync-check", "jobs", "sync-run:test"]
 
 
 def test_provision_all_stops_on_incomplete_import(monkeypatch):

@@ -72,6 +72,15 @@ bare "Import successful".
    (`GET /api/schemas`), confirmed in `oc_openregister_schemas` (0 rows for the
    slugs), and their syncs show `targetId = <register>/<slug>` unresolved.
 
+## Related: jobs `synchronizationId` not resolved on import
+
+Separate but adjacent: the import resolves a synchronization's `targetId`
+(schema slug → numeric id) but does **not** resolve a job's
+`arguments.synchronizationId` — it leaves the sync **slug** there, while the
+`SynchronizationAction` needs the numeric sync id to trigger. Ideally the import
+resolves this the same way it resolves `targetId`. Workaround: `provision.py
+jobs` resolves the sync slug → numeric id and PUTs it onto each job.
+
 ## Workaround (this repo)
 
 `scripts/provision.py import` strips `inheritFromPublic` for the upload so every

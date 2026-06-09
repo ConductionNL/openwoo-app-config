@@ -201,6 +201,7 @@ post-install steps the config owns, over the API, each asserting it took effect
 | `sync-check` | inspect tenant synchronizations | every target schema resolved (no dangling `reg/<slug>`) |
 | `credentials` | set each source's `headers.API-KEY` | GET reflects the key |
 | `sync-run` | POST run/`--test` per synchronization | no error (real run fetches live data) |
+| `jobs` | resolve each job's `synchronizationId` (sync slug → tenant numeric id) | the job reflects the numeric id |
 | `objects` | create one object in a register/schema | response carries an id/uuid |
 | `catalog` | point the OpenCatalogi catalog at the WOO register + all its schemas | registers/schemas reflect (slugs resolved to tenant ids) |
 | `all` | run the bring-up in order, gating each step | settings → verify-import → credentials → sync-check → (`--run-syncs`) |
