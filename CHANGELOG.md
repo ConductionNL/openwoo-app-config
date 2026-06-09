@@ -5,13 +5,14 @@ All notable changes to this repository are documented here.
 ## [Unreleased]
 
 ### Added — 2026-06-09 (job-user workaround for the Anonymous-job bug)
-- `provision.py jobs` / `all` gained `--job-user <user>` (opt-in) which also sets
-  each job's `userId`. Workaround for scheduled SynchronizationAction jobs running
-  as `Anonymous` and being denied object writes
-  (docs/BUG-sync-job-anonymous-permission.md) — effective only if the runner
-  honours `userId`, so it is opt-in and unverified. The GUI exposes it as an
-  optional "Job user" field. 3 unit tests; the `jobs` step no longer skips a job
-  when only the userId needs setting.
+- The `jobs` step now **always sets each job's `userId`** — defaulting to the
+  admin `--user`, overridable with `--job-user <user>` (GUI: "Job user" field,
+  blank = admin). Workaround for scheduled SynchronizationAction jobs running as
+  `Anonymous` and being denied object writes
+  (docs/BUG-sync-job-anonymous-permission.md); effective only if the runner
+  honours `userId` (unverified — a manual authenticated run works regardless, so
+  only the scheduled cron run proves it). The `jobs` step no longer skips a job
+  when only the userId needs setting. 3 unit tests.
 
 ### Added — 2026-06-09 (Tkinter front-end)
 - `scripts/provision_gui.py` — optional Tkinter form (tenant URL, admin user, app

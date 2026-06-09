@@ -126,6 +126,7 @@ class Client:
 
     def __init__(self, base, user, password):
         self.base = base.rstrip("/")
+        self.user = user
         if self.base.startswith("http://") and not any(
             h in self.base for h in ("localhost", "127.0.0.1")
         ):
@@ -283,8 +284,9 @@ def provision_jobs(client, doc, job_user=None):
 
     The config (portable) carries the sync *slug* in `arguments.synchronizationId`;
     the import leaves it a slug, but the SynchronizationAction needs the numeric
-    sync id to trigger. `job_user` (opt-in) sets each job's `userId` — a workaround
-    for scheduled jobs running as Anonymous and being denied object writes (see
+    sync id to trigger. `job_user`, when given, sets each job's `userId` (the CLI
+    defaults it to the admin --user) — a workaround for scheduled jobs running as
+    Anonymous and being denied object writes (see
     docs/BUG-sync-job-anonymous-permission.md); only effective if the runner
     honours userId. Driven by config jobs, matched to tenant jobs by slug. Skips a
     job only when there is nothing to change. Raises on a missing job or an
@@ -840,7 +842,7 @@ def cmd_all(args):
         oc_settings=not args.skip_oc_settings,
         do_import=not args.skip_import,
         catalog=not args.skip_catalog,
-        job_user=args.job_user,
+        job_user=args.job_user or client.user,
         run_syncs=args.run_syncs,
         sync_mode="test" if args.test else "run",
     )
@@ -898,8 +900,9 @@ def cmd_authorization(args):
 def cmd_jobs(args):
     doc = load_config(args.config)
     client = make_client(args)
-    log(f"resolving job synchronizationIds on {args.base}")
-    n = provision_jobs(client, doc, job_user=args.job_user)
+    job_user = args.job_user or client.user
+    log(f"resolving job synchronizationIds on {args.base} (userId={job_user})")
+    n = provision_jobs(client, doc, job_user=job_user)
     log(f"JOBS OK ({n} job(s) updated)")
     return 0
 
@@ -1027,7 +1030,7 @@ def build_parser():
     )
     _add_connection_args(jb)
     jb.add_argument("--job-user", default=None,
-                    help="also set each job's userId (workaround for Anonymous job runs; see bug doc)")
+                    help="job userId to set on every job (default: the admin --user; workaround for Anonymous job runs)")
     jb.set_defaults(func=cmd_jobs)
 
     ocs = sub.add_parser(
@@ -1099,7 +1102,7 @@ def build_parser():
     al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
     al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
     al.add_argument("--job-user", default=None,
-                    help="set each job's userId (workaround for Anonymous job runs; see bug doc)")
+                    help="job userId to set on every job (default: the admin --user; workaround for Anonymous job runs)")
     al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")
     al.add_argument("--test", action="store_true", help="with --run-syncs, use the /test dry-run endpoint")
     al.set_defaults(func=cmd_all)

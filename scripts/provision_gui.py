@@ -41,7 +41,7 @@ FIELDS = [
     ("source_url", "Source URL (blank = keep config)", False, ""),
     ("api_interface_id", "API-Interface-ID (blank = keep config)", False, ""),
     ("apikey", "Source API key (blank = dummy)", True, ""),
-    ("job_user", "Job user (optional — Anonymous-bug workaround)", False, ""),
+    ("job_user", "Job user (blank = admin; Anonymous-bug workaround)", False, ""),
 ]
 
 
