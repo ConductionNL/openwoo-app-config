@@ -4,6 +4,17 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-09 (simplified now that the import bug is fixed)
+- OpenRegister **1.0.3** imports `authorization.inheritFromPublic` natively
+  (the 0.2.3 bug is fixed — verified by an A/B clean test on canary: the raw
+  config imports 17/17 schemas with the flag preserved in the DB). So:
+  - `provision.py import` now uploads the config **as-is** (no strip).
+  - the `authorization` step is **removed from the default `all` flow** and kept
+    as a **standalone repair command** (e.g. flip `inheritFromPublic=false` on an
+    existing tenant for department isolation). `all` is now 8 steps.
+- `provision.py all` verified end-to-end on a freshly-reset canary: 17/17 schemas
+  with `inheritFromPublic=true` in the DB **without** the restore step.
+
 ### Fixed — 2026-06-09 (handle inheritFromPublic instead of dropping it)
 - Root cause of the 4 silently-dropped schemas (`adviezen`, `convenanten`,
   `wetten_en_algemeen_verbindende_voorschriften`, `woo_verzoeken_en_besluiten`):

@@ -271,88 +271,75 @@ def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
-    coupling -> import the config -> verify it landed -> restore schema
-    authorization (inheritFromPublic, which the import strips) -> point the
-    catalog at the WOO schemas -> source credentials -> synchronizations resolved
-    -> optional per-sync run. Raises ProvisionError on the first failed assertion.
-    The oc-settings / catalog / authorization steps need the OpenCatalogi base
-    and the openregister schema API; skip oc-settings/catalog for a WOO-only
-    tenant. Object creation and job runs stay separate.
+    coupling -> import the config -> verify it landed -> point the catalog at the
+    WOO schemas -> source credentials -> synchronizations resolved -> optional
+    per-sync run. Raises ProvisionError on the first failed assertion. The
+    oc-settings / catalog steps need the OpenCatalogi base and the openregister
+    schema API; skip them for a WOO-only tenant. Authorization flags
+    (inheritFromPublic) import natively on OpenRegister 1.0.3+, so the
+    `authorization` repair step is not part of the default flow. Object creation
+    and job runs stay separate.
     """
     if settings is not None:
-        log("[1/9] settings")
+        log("[1/8] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/9] settings — skipped")
+        log("[1/8] settings — skipped")
 
     if oc_settings:
-        log("[2/9] oc-settings")
+        log("[2/8] oc-settings")
         provision_oc_settings(client)
     else:
-        log("[2/9] oc-settings — skipped")
+        log("[2/8] oc-settings — skipped")
 
     if do_import:
-        log("[3/9] import")
+        log("[3/8] import")
         provision_import(client, doc)
     else:
-        log("[3/9] import — skipped")
+        log("[3/8] import — skipped")
 
-    log("[4/9] verify-import")
+    log("[4/8] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
-    log("[5/9] authorization")
-    n = provision_authorization(client, doc)
-    log(f"  authorization: {n} schema(s) patched")
-
     if catalog:
-        log("[6/9] catalog")
+        log("[5/8] catalog")
         provision_catalog(client, doc)
     else:
-        log("[6/9] catalog — skipped")
+        log("[5/8] catalog — skipped")
 
-    log("[7/9] credentials")
+    log("[6/8] credentials")
     provision_credentials(client, doc, apikey=apikey)
 
-    log("[8/9] sync-check")
+    log("[7/8] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
     if run_syncs:
-        log(f"[9/9] sync-run ({sync_mode})")
+        log(f"[8/8] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[9/9] sync-run — skipped (pass --run-syncs)")
+        log("[8/8] sync-run — skipped (pass --run-syncs)")
     return True
 
 
 IMPORT_PATH = "/index.php/apps/openregister/api/configurations/import"
-# Authorization keys the import endpoint rejects (silently dropping the schema).
-# We strip them for the import call, then restore them via the schema UPDATE API
-# (which DOES accept them) in provision_authorization. inheritFromPublic defaults
-# to true; explicit false isolates publications per department (e.g. Almere).
-IMPORT_STRIP_AUTH_KEYS = {"inheritFromPublic"}
-
-
-def import_safe_doc(doc):
-    """Deep copy of the config with import-hostile authorization keys removed."""
-    import copy
-
-    safe = copy.deepcopy(doc)
-    for schema in bucket_items(safe, "schemas"):
-        auth = schema.get("authorization")
-        if isinstance(auth, dict):
-            for key in IMPORT_STRIP_AUTH_KEYS:
-                auth.pop(key, None)
-    return safe
+# Authorization flag keys the `authorization` repair command enforces on the
+# tenant. inheritFromPublic defaults to true; explicit false isolates
+# publications per department (e.g. Almere). NOTE: OpenRegister 0.2.3's import
+# rejected this key and silently dropped the schema; fixed in 1.0.3, which
+# imports it natively (see docs/BUG-import-inheritFromPublic.md). `import` now
+# uploads the config as-is; `authorization` remains for explicit repair (e.g.
+# flipping inheritFromPublic to false on an existing tenant).
+AUTH_FLAG_KEYS = {"inheritFromPublic"}
 
 
 def provision_import(client, doc):
-    """Upload the config (with import-hostile keys stripped) and assert success."""
-    payload = json.dumps(import_safe_doc(doc)).encode()
+    """Upload the config as-is and assert the import reports success."""
+    payload = json.dumps(doc).encode()
     log(f"  importing config ({len(bucket_items(doc, 'schemas'))} schemas)")
     raw = client.post_file(IMPORT_PATH, "woo.configuration.json", payload)
     if "Import successful" not in raw:
@@ -362,11 +349,13 @@ def provision_import(client, doc):
 
 
 def provision_authorization(client, doc):
-    """Restore import-stripped authorization keys (e.g. inheritFromPublic) on each
-    schema via the schema UPDATE API, which accepts them, and assert they reflect.
+    """Enforce the config's authorization flags (e.g. inheritFromPublic) on each
+    schema via the schema UPDATE API and assert they reflect. A standalone repair
+    step — the 1.0.3 import already carries these flags, but this can flip them on
+    an existing tenant (e.g. set inheritFromPublic=false for department isolation).
 
-    Only touches schemas whose config authorization carries a stripped key, and
-    merges into the schema's current authorization so the import's actions stay.
+    Only touches schemas whose config authorization carries a flag key, and merges
+    into the schema's current authorization so the existing actions stay.
     """
     sch_ids = slug_to_id(results_list(client.get(SCHEMAS_PATH)))
     done = 0
@@ -375,7 +364,7 @@ def provision_authorization(client, doc):
         auth = schema.get("authorization")
         if not slug or not isinstance(auth, dict):
             continue
-        flags = {k: auth[k] for k in IMPORT_STRIP_AUTH_KEYS if k in auth}
+        flags = {k: auth[k] for k in AUTH_FLAG_KEYS if k in auth}
         if not flags:
             continue
         if slug not in sch_ids:
