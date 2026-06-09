@@ -29,9 +29,6 @@ That noise causes broken diffs and unpredictable imports.
 | `scripts/oac.py` | Linter + sanitizer — pure stdlib Python, **zero dependencies** |
 | `scripts/provision.py` | Target-track provisioner — drives a tenant to the config's state over the API, stdlib only |
 | `scripts/provision_gui.py` | Optional Tkinter form front-end for `provision.py all` |
-| `kustomization.yaml` + `deploy/` | Kustomize app: config-as-ConfigMap + Argo PostSync Job/CronJob (in-cluster target track) |
-| `argocd/` | Example Argo ApplicationSet that deploys this repo per tenant |
-| `Dockerfile` | Optional fallback image (the GitOps ConfigMap path is the default) |
 | `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
 | `tests/test_oac.py` | Unit tests for the linter/sanitizer |
@@ -87,8 +84,9 @@ python3 scripts/provision.py all --base https://<tenant>
 
 The source URL, API-Interface-ID and API key are **per-tenant** (each client's
 source system differs), so they are supplied per run — not committed to the
-config. The Argo reconciler handles the base config declaratively; these
-per-tenant source connection values are operator-supplied via this script.
+config. Provisioning is **operator-driven**: an operator runs the CLI/GUI against
+the tenant's public URL after a deployment (the public host is a trusted domain,
+so it just works — no in-cluster wiring).
 
 For a form-based front-end, `scripts/provision_gui.py` opens a small Tkinter
 window with the same fields and runs `provision.py all` (secrets passed via env,
@@ -266,24 +264,14 @@ Possible extension (not yet wired): round-trip — after import, `GET
 register/schema/source/sync slug-set matches the input. That would also prove the
 sanitizer captures every runtime field OpenRegister emits.
 
-## In-cluster: the Argo target track
+## Provisioning is operator-driven (not in-cluster)
 
-`Nextcloud-base` (the Argo ApplicationSet) brings up a tenant; the provisioner
-then converges its WOO config in-cluster — fully GitOps, no custom image. The
-script + tagged config ship as a **ConfigMap** (~300 KB, under the 1 MiB limit)
-mounted into a stock `python:3-slim`, run by a per-tenant Argo **PostSync** Job:
-`provision.py all --skip-credentials`. The base config is Argo-owned and
-declarative; the per-tenant **source connection** (URL, API-Interface-ID, API
-key) is set out-of-band by an operator (CLI/GUI), never by the reconciler. Every
-step is idempotent, so the Job re-converges safely on every sync; a CronJob can
-reconcile drift.
-
-This repo is itself a **kustomize app** (root `kustomization.yaml`): a
-`configMapGenerator` builds the ConfigMap from `provision.py` + the config (no
-vendoring), and `deploy/` holds the Job/CronJob. `argocd/applicationset.yaml` is
-the example that makes Argo deploy it per tenant — that Application config lives
-in the GitOps repo (`nextcloud-platform`), not here, since this repo is the
-*source*. A `Dockerfile` exists as an optional fallback only.
+The target track runs from **outside** the cluster, against a tenant's **public
+URL** (a trusted domain), so it needs no in-cluster wiring: after `Nextcloud-base`
+deploys a tenant, an operator runs `provision.py` (or the GUI) to converge the
+WOO config and set the source connection. Driving tenants in-cluster was tried
+and dropped — the internal service Host isn't a trusted domain, and it added
+standing Argo apps nobody wanted. Outbound-from-outside is simpler and works.
 
 ## How Nextcloud-base consumes this
 

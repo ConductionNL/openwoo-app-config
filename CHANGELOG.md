@@ -4,24 +4,15 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
-### Added — 2026-06-09 (in-cluster GitOps target track)
-- The repo is now a **kustomize app** (root `kustomization.yaml`): a
-  `configMapGenerator` turns `scripts/provision.py` + the tagged config into a
-  ConfigMap (~300 KB, < 1 MiB; read from the repo, no vendoring), mounted into a
-  stock `python:3-slim`. **No custom image, registry, build step or token.**
-  Validated with `kubectl kustomize .` (ConfigMap hash + Job volume reference
-  rewritten).
-- `deploy/provision-job.yaml` — Argo **PostSync** Job running
-  `provision.py all --skip-credentials`; `deploy/provision-cronjob.yaml` —
-  optional drift reconcile. Plain manifests (no namespace → Argo
-  `destination.namespace`); admin creds from `nextcloud-secrets`; base =
-  in-cluster `nextcloud`.
-- `argocd/applicationset.yaml` — example ApplicationSet that deploys this repo
-  per tenant (lives in the GitOps repo; this repo is the source).
-- `provision.py all --skip-credentials` — base config only; per-tenant source
-  connection set out-of-band. 1 unit test.
-- `Dockerfile` + `make image/push` kept as an **optional fallback** (config >
-  1 MiB ConfigMap limit, or air-gapped clusters); the ConfigMap path is default.
+### Decided — 2026-06-09 (provisioning is operator-driven, not in-cluster)
+- Provisioning runs from **outside** the cluster against a tenant's **public URL**
+  (a trusted domain) via the CLI/GUI — not as in-cluster Argo Jobs. An in-cluster
+  Argo path was prototyped (kustomize ConfigMap + per-tenant PostSync Job +
+  ApplicationSet) and **removed**: the internal service Host (`nextcloud:8080`)
+  isn't a trusted_domain (HTTP 400), and it created standing per-tenant Argo apps
+  that weren't wanted. Removed `kustomization.yaml`, `deploy/`, `argocd/`,
+  `Dockerfile`, and the `make image/push` targets. `provision.py all
+  --skip-credentials` and `--host-header` remain (useful for any internal run).
 
 ### Changed — 2026-06-09 (idempotent — skip writes when already converged)
 - Every write step now GET-checks first and **skips the write when the tenant is
