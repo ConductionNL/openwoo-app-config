@@ -4,6 +4,13 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (Tkinter front-end)
+- `scripts/provision_gui.py` — optional Tkinter form (tenant URL, admin user, app
+  password, source URL, API-Interface-ID, source API key) that runs
+  `provision.py all`, passing secrets via env (never argv) and streaming output.
+  Pure-stdlib; with no Tkinter/display it falls back to printing the terminal
+  command. Testable `build_command` core (3 unit tests).
+
 ### Added — 2026-06-09 (per-tenant source connection params)
 - `provision.py credentials` / `all` now also set the source **`location` (URL)**
   and **`API-Interface-ID`** header alongside the API key — all three are

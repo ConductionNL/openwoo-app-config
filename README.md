@@ -27,7 +27,8 @@ That noise causes broken diffs and unpredictable imports.
 |------|------|
 | `config/woo.configuration.json` | The canonical, **sanitized** config (commit this) |
 | `scripts/oac.py` | Linter + sanitizer — pure stdlib Python, **zero dependencies** |
-| `scripts/provision.py` | Post-import provisioner — sets source API-key credentials over the API, stdlib only |
+| `scripts/provision.py` | Target-track provisioner — drives a tenant to the config's state over the API, stdlib only |
+| `scripts/provision_gui.py` | Optional Tkinter form front-end for `provision.py all` |
 | `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
 | `tests/test_oac.py` | Unit tests for the linter/sanitizer |
@@ -85,6 +86,10 @@ The source URL, API-Interface-ID and API key are **per-tenant** (each client's
 source system differs), so they are supplied per run — not committed to the
 config. The Argo reconciler handles the base config declaratively; these
 per-tenant source connection values are operator-supplied via this script.
+
+For a form-based front-end, `scripts/provision_gui.py` opens a small Tkinter
+window with the same fields and runs `provision.py all` (secrets passed via env,
+never argv). With no Tkinter/display it prints the equivalent terminal command.
 
 `all` is a **convergence/repair** run: it updates the existing tenant's objects to
 the config's desired state (idempotent upserts) — it does not wipe, and does not
