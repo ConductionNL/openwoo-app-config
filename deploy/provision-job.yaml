@@ -1,18 +1,16 @@
-{{- if .Values.woo.enabled }}
----
-# Provision the WOO base config after Nextcloud + OpenCatalogi base are up.
-# Argo PostSync hook; mounts the openwoo-provisioner ConfigMap into a stock
-# python image (no custom image needed). Runs `provision.py all --skip-credentials`:
-# the base config is Argo-owned; the per-tenant source connection (URL +
-# API-Interface-ID + API key) is set out-of-band by an operator (CLI/GUI).
-# Idempotent — safe to run on every sync.
+# Provision the WOO base config (Argo PostSync hook). Plain manifest — kustomize
+# (../kustomization.yaml) supplies the openwoo-provisioner ConfigMap and rewrites
+# the volume reference to its hashed name; Argo applies it in the Application's
+# destination namespace (the tenant's). Runs `provision.py all --skip-credentials`
+# on a stock python image: base config is Argo-owned; the per-tenant source
+# connection (URL + API-Interface-ID + API key) is set out-of-band (CLI/GUI).
+# Idempotent — safe to re-run on every sync.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: openwoo-provision-{{ .Values.tenant.name }}
-  namespace: {{ .Values.tenant.namespace | default (printf "nc-%s" .Values.tenant.name) }}
+  name: openwoo-provision
   labels:
-    {{- include "tenant-resources.labels" . | nindent 4 }}
+    app.kubernetes.io/part-of: openwoo
     app.kubernetes.io/component: woo-provisioning
   annotations:
     argocd.argoproj.io/hook: PostSync
@@ -23,7 +21,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "tenant-resources.labels" . | nindent 8 }}
+        app.kubernetes.io/part-of: openwoo
         app.kubernetes.io/component: woo-provisioning
     spec:
       restartPolicy: OnFailure
@@ -36,12 +34,12 @@ spec:
       volumes:
         - name: provisioner
           configMap:
-            name: openwoo-provisioner-{{ .Values.tenant.name }}
+            name: openwoo-provisioner   # kustomize rewrites to the hashed name
         - name: tmp
           emptyDir: {}
       containers:
         - name: provision
-          image: {{ .Values.woo.pythonImage | default "python:3.12-slim" }}
+          image: python:3.12-slim
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -52,18 +50,12 @@ spec:
           command: ["python3", "/provisioner/provision.py"]
           args:
             - all
-            - --base={{ .Values.woo.base | default "http://nextcloud" }}
+            - --base=http://nextcloud           # in-cluster service in the tenant ns
             - --user=$(NC_ADMIN_USER)
             - --password-env=NC_ADMIN_PASSWORD
             - --config=/provisioner/woo.configuration.json
-            - --skip-credentials
-            {{- if not .Values.woo.openCatalogiBase }}
-            - --skip-oc-settings
-            - --skip-catalog
-            {{- end }}
-            {{- if .Values.woo.forceImport }}
-            - --force-import
-            {{- end }}
+            - --skip-credentials                # source connection set out-of-band
+            # add --skip-oc-settings --skip-catalog for a tenant without the OpenCatalogi base
           env:
             - name: NC_ADMIN_USER
               valueFrom:
@@ -84,4 +76,3 @@ spec:
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 250m, memory: 128Mi}
-{{- end }}

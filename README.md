@@ -29,7 +29,8 @@ That noise causes broken diffs and unpredictable imports.
 | `scripts/oac.py` | Linter + sanitizer — pure stdlib Python, **zero dependencies** |
 | `scripts/provision.py` | Target-track provisioner — drives a tenant to the config's state over the API, stdlib only |
 | `scripts/provision_gui.py` | Optional Tkinter form front-end for `provision.py all` |
-| `deploy/` | GitOps Argo manifests (ConfigMap + Job + CronJob Helm templates) for the in-cluster target track |
+| `kustomization.yaml` + `deploy/` | Kustomize app: config-as-ConfigMap + Argo PostSync Job/CronJob (in-cluster target track) |
+| `argocd/` | Example Argo ApplicationSet that deploys this repo per tenant |
 | `Dockerfile` | Optional fallback image (the GitOps ConfigMap path is the default) |
 | `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
@@ -275,8 +276,14 @@ mounted into a stock `python:3-slim`, run by a per-tenant Argo **PostSync** Job:
 declarative; the per-tenant **source connection** (URL, API-Interface-ID, API
 key) is set out-of-band by an operator (CLI/GUI), never by the reconciler. Every
 step is idempotent, so the Job re-converges safely on every sync; a CronJob can
-reconcile drift. See `deploy/` (ConfigMap + Job + CronJob Helm templates +
-README). A `Dockerfile` exists as an optional fallback only.
+reconcile drift.
+
+This repo is itself a **kustomize app** (root `kustomization.yaml`): a
+`configMapGenerator` builds the ConfigMap from `provision.py` + the config (no
+vendoring), and `deploy/` holds the Job/CronJob. `argocd/applicationset.yaml` is
+the example that makes Argo deploy it per tenant — that Application config lives
+in the GitOps repo (`nextcloud-platform`), not here, since this repo is the
+*source*. A `Dockerfile` exists as an optional fallback only.
 
 ## How Nextcloud-base consumes this
 

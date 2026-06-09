@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Kustomize entrypoint: deploy this repo as the WOO provisioning app.
+#
+# GitOps-native, no custom image: configMapGenerator turns provision.py + the
+# tagged config into a ConfigMap (read from this repo at the pinned revision —
+# both files live under the repo root so the default kustomize load-restrictor
+# is satisfied), which the Job (deploy/) mounts into a stock python image.
+#
+# An Argo Application points at this repo (path: ".", targetRevision: <tag>); the
+# resources land in the Application's destination namespace (the tenant's).
+# See argocd/ for an ApplicationSet that does this per tenant.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+configMapGenerator:
+  - name: openwoo-provisioner
+    files:
+      - scripts/provision.py
+      - config/woo.configuration.json
+
+resources:
+  - deploy/provision-job.yaml
+  # Optional drift reconciliation — uncomment to also deploy the CronJob:
+  # - deploy/provision-cronjob.yaml

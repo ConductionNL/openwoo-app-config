@@ -1,19 +1,16 @@
-{{- if and .Values.woo.enabled .Values.woo.reconcile }}
----
-# Optional continuous reconciliation (drift repair) for WOO tenants. Same
-# idempotent base-config provisioning on a schedule — a near no-op when nothing
-# drifted, self-healing when something did. Mounts the openwoo-provisioner
-# ConfigMap into a stock python image. Enable with .Values.woo.reconcile.
+# Optional continuous reconciliation (drift repair). Plain manifest — enable by
+# uncommenting it in ../kustomization.yaml. Same idempotent base-config
+# provisioning on a schedule (near no-op when converged). Mounts the
+# openwoo-provisioner ConfigMap into a stock python image.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: openwoo-provision-reconcile-{{ .Values.tenant.name }}
-  namespace: {{ .Values.tenant.namespace | default (printf "nc-%s" .Values.tenant.name) }}
+  name: openwoo-provision-reconcile
   labels:
-    {{- include "tenant-resources.labels" . | nindent 4 }}
+    app.kubernetes.io/part-of: openwoo
     app.kubernetes.io/component: woo-provisioning
 spec:
-  schedule: {{ .Values.woo.reconcileSchedule | default "*/30 * * * *" | quote }}
+  schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
@@ -32,12 +29,12 @@ spec:
           volumes:
             - name: provisioner
               configMap:
-                name: openwoo-provisioner-{{ .Values.tenant.name }}
+                name: openwoo-provisioner
             - name: tmp
               emptyDir: {}
           containers:
             - name: provision
-              image: {{ .Values.woo.pythonImage | default "python:3.12-slim" }}
+              image: python:3.12-slim
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -48,15 +45,11 @@ spec:
               command: ["python3", "/provisioner/provision.py"]
               args:
                 - all
-                - --base={{ .Values.woo.base | default "http://nextcloud" }}
+                - --base=http://nextcloud
                 - --user=$(NC_ADMIN_USER)
                 - --password-env=NC_ADMIN_PASSWORD
                 - --config=/provisioner/woo.configuration.json
                 - --skip-credentials
-                {{- if not .Values.woo.openCatalogiBase }}
-                - --skip-oc-settings
-                - --skip-catalog
-                {{- end }}
               env:
                 - name: NC_ADMIN_USER
                   valueFrom:
@@ -73,4 +66,3 @@ spec:
               resources:
                 requests: {cpu: 50m, memory: 64Mi}
                 limits: {cpu: 250m, memory: 128Mi}
-{{- end }}

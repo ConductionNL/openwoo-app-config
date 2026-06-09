@@ -5,16 +5,21 @@ All notable changes to this repository are documented here.
 ## [Unreleased]
 
 ### Added — 2026-06-09 (in-cluster GitOps target track)
-- `deploy/` — GitOps-native Argo manifests (Helm templates for
-  `nextcloud-platform`'s `tenant-resources`): a **ConfigMap**
-  (`provision.py` + the tagged config, ~300 KB, rendered via `.Files.Get`) mounted
-  into a stock `python:3-slim`, run by an Argo **PostSync** Job
-  (`provision-job.yaml`) and optional reconcile **CronJob**. No custom image,
-  registry, build step or token. Admin creds from `nextcloud-secrets`; base =
-  in-cluster `nextcloud` service. Gated on `.Values.woo.enabled`; values block in
-  `deploy/README.md`.
-- `provision.py all --skip-credentials` — base config only (for the Argo Job);
-  per-tenant source connection set out-of-band. 1 unit test.
+- The repo is now a **kustomize app** (root `kustomization.yaml`): a
+  `configMapGenerator` turns `scripts/provision.py` + the tagged config into a
+  ConfigMap (~300 KB, < 1 MiB; read from the repo, no vendoring), mounted into a
+  stock `python:3-slim`. **No custom image, registry, build step or token.**
+  Validated with `kubectl kustomize .` (ConfigMap hash + Job volume reference
+  rewritten).
+- `deploy/provision-job.yaml` — Argo **PostSync** Job running
+  `provision.py all --skip-credentials`; `deploy/provision-cronjob.yaml` —
+  optional drift reconcile. Plain manifests (no namespace → Argo
+  `destination.namespace`); admin creds from `nextcloud-secrets`; base =
+  in-cluster `nextcloud`.
+- `argocd/applicationset.yaml` — example ApplicationSet that deploys this repo
+  per tenant (lives in the GitOps repo; this repo is the source).
+- `provision.py all --skip-credentials` — base config only; per-tenant source
+  connection set out-of-band. 1 unit test.
 - `Dockerfile` + `make image/push` kept as an **optional fallback** (config >
   1 MiB ConfigMap limit, or air-gapped clusters); the ConfigMap path is default.
 
