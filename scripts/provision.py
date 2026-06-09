@@ -2,50 +2,52 @@
 # SPDX-License-Identifier: EUPL-1.2
 # role: tool
 #
-# scripts/provision.py — post-import tenant provisioning steps over the API.
+# scripts/provision.py — tenant provisioning + validation over the API.
 #
-# After a config is imported (scripts/functional-test.sh, import step), a real
-# tenant bring-up still needs a few API-driven steps. This tool performs the
-# ones that the WOO configuration itself owns and asserts they took effect —
-# "test what you ship". It is driven by the same sanitized config the import
-# uses, so the entities it touches are exactly the ones the config defines.
+# The "target track" of this repo: drive a running Nextcloud tenant
+# (OpenRegister / OpenConnector / OpenCatalogi) into the state the WOO config
+# describes, and assert each step took effect — "test what you ship". Driven by
+# the same sanitized config, so the entities it touches are exactly the config's.
+# Idempotent convergence: every step is an upsert/PUT to the desired state, so it
+# is safe to re-run (it does not wipe, and does not prune entities absent from
+# the config).
 #
-# Scope (WOO-config-owned, verified against a live stack):
-#   credentials  — for every source in the config, resolve it by slug on the
-#                  running instance, PUT a dummy apikey, then GET it back and
-#                  assert the apikey reflects. Proves the credential-provisioning
-#                  path works without performing any real data fetch (the demo
-#                  source is auth:none; we never store a real secret here — real
-#                  credentials come from a K8s secret / ESO, never the config).
+# Subcommands:
+#   settings       — PUT OpenRegister organisation + multitenancy settings
+#   oc-settings    — couple OpenCatalogi object types (catalog/listing/...) to
+#                    their register + schema (slugs resolved to tenant ids)
+#   import         — upload the config and assert "Import successful"
+#   verify-import  — assert every config slug (registers/schemas/sources/syncs/
+#                    jobs) is present on the tenant (catches silent partial import)
+#   authorization  — (repair) enforce schema authorization flags (inheritFromPublic)
+#   catalog        — point the OpenCatalogi catalog at the WOO register + schemas
+#   credentials    — set each source's API-key header and assert it reflects
+#   sync-check     — assert every sync resolved its target schema (no dangling)
+#   sync-run       — POST run/--test per synchronization (real run fetches data)
+#   objects        — create one object in a register/schema from a JSON payload
+#   all            — the full bring-up in order, gating each step
 #
-# Deliberately NOT here: OpenCatalogi settings / default-catalog / home-page
-# steps. Those operate on OpenCatalogi's *own* entities (a `publication`
-# register, `catalog`/`listing`/... schemas) which are NOT in the WOO config and
-# do not exist on an instance that imported only this config (verified: a fresh
-# import yields register `woo` + 17 WOO schemas and no `publication` register).
-# They belong to a separate OpenCatalogi-base provisioning flow — see
-# docs/PROVISIONING-TEST-PLAN.md.
-#
-# Auth: basic-auth (admin user / app password). The source list + update routes
-# (GET/PUT /apps/openconnector/api/sources[/{id}]) accept basic-auth and need no
-# CSRF requesttoken, verified against openconnector 0.2.20. The OpenRegister
-# registers/schemas *list* routes do require a browser CSRF session and are not
-# used here.
+# Auth: basic-auth (admin user / app password). Credentials come from
+# --password / --password-env / an interactive getpass prompt and the source key
+# from --apikey / --apikey-env — never argv-only secrets, never logged. Real
+# credentials live in a K8s secret / ESO, never in the committed config.
 #
 # Pure Python standard library — no third-party dependencies, by design
 # (auditability + no supply-chain surface). Mirrors scripts/oac.py.
 #
-# Writes: read-only on the repo; mutates the *running test instance* (source
-#         apikey). Intended for the ephemeral functional-test stack.
-# Idempotent: yes — re-running sets the same dummy key and re-asserts.
+# Writes: read-only on the repo; mutates the *target tenant*.
+# Idempotent: yes — re-running converges to the same state and re-asserts.
 # Requires: python3.8+, a running instance reachable at --base.
+# NOTE: the list endpoints are assumed to return all rows (unpaginated); verified
+#   against the current apps. If a future version paginates, verify-import /
+#   catalog / oc-settings would need a limit/paging parameter.
 #
 # Usage:
-#   python3 scripts/provision.py credentials \
-#       --base http://localhost:8080 --user admin --password admin_test_only
-#   python3 scripts/provision.py credentials --base ... --user ... --password ... \
-#       --config config/woo.configuration.json
-"""Post-import tenant provisioning steps over the OpenRegister/OpenConnector API."""
+#   python3 scripts/provision.py all \
+#       --base https://<tenant> --user admin --apikey-env OPENWOO_APIKEY   # prompts for password
+#   python3 scripts/provision.py verify-import --base ... --user ... --password-env PW
+#   python3 scripts/provision.py credentials --base ... --user ... --apikey-env OPENWOO_APIKEY
+"""Tenant provisioning + validation over the OpenRegister/OpenConnector/OpenCatalogi API."""
 
 import argparse
 import base64
@@ -89,7 +91,7 @@ def bucket_items(doc, bucket):
 
 def config_source_slugs(doc):
     """Slugs of every source defined in the config (skip entries without one)."""
-    return [s["slug"] for s in bucket_items(doc, "sources") if s.get("slug")]
+    return config_slugs(doc, "sources")
 
 
 def results_list(payload):
@@ -124,6 +126,11 @@ class Client:
 
     def __init__(self, base, user, password):
         self.base = base.rstrip("/")
+        if self.base.startswith("http://") and not any(
+            h in self.base for h in ("localhost", "127.0.0.1")
+        ):
+            log(f"WARNING: {self.base} is not HTTPS — basic-auth credentials "
+                f"would be sent in cleartext")
         token = base64.b64encode(f"{user}:{password}".encode()).decode()
         self.auth_header = f"Basic {token}"
 
@@ -639,9 +646,8 @@ def resolve_password(args):
     if args.password_env:
         return _from_env(args.password_env, "--password-env")
     import getpass
-    import sys as _sys
 
-    if _sys.stdin.isatty():
+    if sys.stdin.isatty():
         value = getpass.getpass(f"App password for {args.user} @ {args.base}: ")
         if value:
             return value
@@ -860,14 +866,14 @@ def build_parser():
 
     im = sub.add_parser(
         "import",
-        help="upload the config (stripping import-hostile authorization keys) and assert success",
+        help="upload the config and assert the import reports success",
     )
     _add_connection_args(im)
     im.set_defaults(func=cmd_import)
 
     au = sub.add_parser(
         "authorization",
-        help="restore import-stripped authorization keys (e.g. inheritFromPublic) via the schema API",
+        help="(repair) enforce schema authorization flags (e.g. inheritFromPublic) via the schema API",
     )
     _add_connection_args(au)
     au.set_defaults(func=cmd_authorization)
@@ -927,7 +933,7 @@ def build_parser():
 
     al = sub.add_parser(
         "all",
-        help="run the full bring-up in order: settings -> verify-import -> credentials -> sync-check [-> sync-run]",
+        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> credentials -> sync-check [-> sync-run]",
     )
     _add_connection_args(al)
     al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")

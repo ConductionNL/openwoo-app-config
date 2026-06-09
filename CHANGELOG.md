@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-09 (review + refactor, pre-Argo)
+- Post-`/review` + `/security-review` cleanup (security review: no findings):
+  - rewrote `scripts/provision.py`'s module header to describe all 11 subcommands
+    + the idempotent-convergence model (was stale, only described `credentials`);
+    refreshed the `import` / `authorization` / `all` `--help` strings.
+  - `Client` now warns when `--base` is plain `http://` (non-localhost) — basic-auth
+    would go in cleartext. Warning only, does not block.
+  - documented that the list endpoints are assumed unpaginated (verify-import /
+    catalog / oc-settings) so a future paginating API gets caught in review.
+  - small: `config_source_slugs` delegates to `config_slugs`; dropped a redundant
+    `import sys`.
+
 ### Changed — 2026-06-09 (simplified now that the import bug is fixed)
 - OpenRegister **1.0.3** imports `authorization.inheritFromPublic` natively
   (the 0.2.3 bug is fixed — verified by an A/B clean test on canary: the raw
