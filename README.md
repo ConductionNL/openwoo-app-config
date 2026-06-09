@@ -37,6 +37,40 @@ That noise causes broken diffs and unpredictable imports.
 Zero third-party dependencies is deliberate: full auditability, no supply-chain
 surface, reproducible anywhere `python3` exists.
 
+## Two tracks: source validation and target configuration
+
+This repo works along two independent tracks:
+
+| Track | Question it answers | Tooling | Needs a tenant? |
+|-------|---------------------|---------|-----------------|
+| **Source** — config validation | Is the config artefact correct and portable? | `scripts/oac.py` (`lint` / `sanitize`) + `tests/` | no — runs on the file |
+| **Target** — configuration, validation & repair | Is a running tenant in the desired state, and bring it there | `scripts/provision.py` | yes — points at a tenant URL |
+
+The **source track** is the CI gate: pollution, dangling refs and bad
+authorization keys are caught on the JSON before it can reach a tenant. The
+**target track** drives a real tenant over the API and asserts each step — some
+steps *validate* (`verify-import`, `sync-check`), others *configure or repair*
+(`settings`, `oc-settings`, `import`, `authorization`, `catalog`, `credentials`).
+
+### Pointing the target track at a tenant (handover)
+
+Any operator who can reach a tenant can run the target track — it is pure-stdlib
+Python over HTTPS, no repo-specific state. Supply the tenant URL and an admin /
+app-password credential (kept out of argv via env):
+
+```bash
+# one .env file per target (gitignored; see .env.canary.example)
+#   CANARY_USER=...      CANARY_PASS=<app password>      OPENWOO_APIKEY=<source key>
+set -a; . .env.<target>; set +a
+python3 scripts/provision.py all \
+    --base https://<tenant> --user "$CANARY_USER" \
+    --password-env CANARY_PASS --apikey-env OPENWOO_APIKEY
+```
+
+Or run a single step (`verify-import`, `sync-check`, …) to *validate* an existing
+tenant without changing it. Credentials come from the operator's own env/secret,
+never from this repo.
+
 ## The rule: every config change goes through this repo
 
 The OpenWoo config is **not** edited live in a tenant and is **not** imported
