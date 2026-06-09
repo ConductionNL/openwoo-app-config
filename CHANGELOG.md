@@ -4,6 +4,26 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-09 (web control-plane — Phase 2: auth via oauth2-proxy → Keycloak)
+- The web GUI is now **fronted by oauth2-proxy → Keycloak** (realm `commonground`,
+  `iam.commonground.nu`), which **brokers Google** as identity provider — operators
+  log in with Google, the app integrates only with Keycloak (OIDC).
+- **App fails closed**: `server.py` now enforces `REQUIRE_AUTH` (default on) — every
+  route except `/healthz` returns `403` without an `X-Forwarded-Email`/`-User`
+  identity header. So a request that bypasses the proxy is refused, not served.
+  The header is trustworthy only because oauth2-proxy is the **sole ingress**
+  (app bound to localhost / NetworkPolicy). Local dev: `REQUIRE_AUTH=false`.
+- `webgui/auth/oauth2-proxy.cfg` — proxy config (Keycloak OIDC upstream→Flask;
+  `pass_user_headers`; `cookie_samesite=lax` closes the cross-site POST CSRF noted
+  in the Phase-1 review). Secrets (`OAUTH2_PROXY_CLIENT_SECRET` / `_COOKIE_SECRET`)
+  injected from env, never in the file.
+- `webgui/auth/README.md` — trust model, the Keycloak `openwoo-provisioner` client +
+  Google IdP to add (KeyCloak repo), required secrets, local fail-closed smoke test.
+- Tests: 3 new auth-guard tests (403 unauthenticated, 200 with header, `/healthz`
+  stays open). 8 webgui tests green under the venv; 69 + 1 skipped (system python).
+- **KeyCloak repo** (separate, prod-path): adds the `openwoo-provisioner` OIDC
+  client + Google identity provider to `realm-commonground.yaml`.
+
 ### Added — 2026-06-09 (hosted web control-plane — Phase 1: core, no auth)
 - `webgui/` — a small **Flask** app that drives provisioning from **outside** the
   cluster against a tenant's **public URL**, reusing the tested

@@ -19,7 +19,10 @@ import server  # noqa: E402
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    # Route-behaviour tests run with auth disabled; the auth guard has its own
+    # tests below. REQUIRE_AUTH is read per-request from the module global.
+    monkeypatch.setattr(server, "REQUIRE_AUTH", False)
     server.app.config["TESTING"] = True
     return server.app.test_client()
 
@@ -80,3 +83,30 @@ def test_current_user_reads_proxy_header(client):
         assert server.current_user() == "op@example.org"
     with server.app.test_request_context():
         assert server.current_user() == "-"
+
+
+# --- Phase 2: fail-closed auth guard (REQUIRE_AUTH) ---
+
+@pytest.fixture
+def authed_client(monkeypatch):
+    """Client with REQUIRE_AUTH ON (the production default)."""
+    monkeypatch.setattr(server, "REQUIRE_AUTH", True)
+    server.app.config["TESTING"] = True
+    return server.app.test_client()
+
+
+def test_auth_required_blocks_unauthenticated(authed_client):
+    # No identity header -> 403 on a real route...
+    assert authed_client.get("/").status_code == 403
+    assert authed_client.post("/provision", data={"base": "https://x"}).status_code == 403
+
+
+def test_auth_required_allows_with_proxy_header(authed_client):
+    resp = authed_client.get("/", headers={"X-Forwarded-Email": "op@conduction.nl"})
+    assert resp.status_code == 200
+    assert b"OpenWoo tenant provisioning" in resp.data
+
+
+def test_healthz_open_even_with_auth(authed_client):
+    # The k8s probe must work without an identity header.
+    assert authed_client.get("/healthz").status_code == 200

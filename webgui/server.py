@@ -14,9 +14,14 @@
 # Creds model A (chosen): the operator enters the tenant admin password + source
 # API key in the form per run. The app stores NOTHING — no standing credentials.
 #
-# Auth: NONE in Phase 1 (run locally / behind a trusted network). Phase 2 puts it
-# behind oauth2-proxy → Keycloak (which brokers Google); the app then reads the
-# operator identity from the proxy header (current_user()).
+# Auth (Phase 2): the app sits behind oauth2-proxy → Keycloak (which brokers
+# Google). oauth2-proxy authenticates the operator and sets X-Forwarded-Email /
+# X-Forwarded-User on the upstream request; the app reads that via current_user().
+# When REQUIRE_AUTH is on (the default), every request except /healthz is refused
+# (403) unless such a header is present — so a direct hit that bypasses the proxy
+# fails closed. The proxy MUST be the only ingress (app bound to localhost / a
+# NetworkPolicy); the header is trustworthy only because nothing else can reach
+# the app. For local dev without a proxy, set REQUIRE_AUTH=false.
 #
 # Writes: read-only on the repo; the spawned provision.py mutates the *target
 #   tenant* (the URL the operator enters). Secrets are never logged.
@@ -25,9 +30,10 @@
 #
 # Usage:
 #   pip install -r webgui/requirements.txt
-#   python3 webgui/server.py            # http://127.0.0.1:8081
+#   REQUIRE_AUTH=false python3 webgui/server.py   # local dev, no proxy
+#   python3 webgui/server.py                       # behind oauth2-proxy (default)
 #   PORT=9000 python3 webgui/server.py
-"""Hosted provisioning control-plane (Flask, Phase 1)."""
+"""Hosted provisioning control-plane (Flask, Phase 2: behind oauth2-proxy)."""
 
 import logging
 import os
@@ -46,13 +52,32 @@ logging.basicConfig(level=logging.INFO,
 app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
 
+# Fail closed by default: refuse any request without an oauth2-proxy identity.
+# Set REQUIRE_AUTH=false only for local dev where no proxy fronts the app.
+REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "true").strip().lower() not in (
+    "false", "0", "no", "off")
+
 
 def current_user():
-    """Operator identity. Phase 2 (oauth2-proxy) sets these headers; Phase 1 has
-    no auth so it falls back to '-'."""
+    """Operator identity, set by oauth2-proxy (Keycloak/Google). Falls back to
+    '-' when no proxy header is present (i.e. unauthenticated)."""
     return (request.headers.get("X-Forwarded-Email")
             or request.headers.get("X-Forwarded-User")
             or "-")
+
+
+@app.before_request
+def _require_operator():
+    """Defence in depth: with REQUIRE_AUTH on, every route except the health
+    probe needs an authenticated operator. The header is only trustworthy
+    because oauth2-proxy is the sole ingress — see the module docstring."""
+    if request.path == "/healthz":
+        return None
+    if REQUIRE_AUTH and current_user() == "-":
+        return Response("forbidden: no authenticated operator — this app must be "
+                        "reached via oauth2-proxy\n",
+                        status=403, mimetype="text/plain")
+    return None
 
 
 @app.get("/")
