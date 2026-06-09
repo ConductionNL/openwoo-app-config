@@ -2,7 +2,22 @@
 
 **Component:** OpenRegister — `lib/Service/Configuration/ImportHandler.php` (Pass 1, ~line 1380)
 **Severity:** high (silent data loss on import; HTTP 200 hides it)
-**Found:** 2026-06-08/09, canary.accept.commonground.nu, Nextcloud 32.0.5, OpenRegister 0.2.3
+**Found:** 2026-06-08/09, canary.accept.commonground.nu, Nextcloud 32.0.5, OpenRegister **0.2.3**
+**Status:** ✅ **FIXED in OpenRegister 1.0.3** (verified on canary 2026-06-09).
+
+## Fix verification (2026-06-09)
+
+On OpenRegister **1.0.3**, an A/B clean test (openregister/openconnector tables
+emptied, OpenCatalogi base kept) showed the **raw** config — with
+`authorization.inheritFromPublic` left in — imports **all 17 schemas** and
+preserves `inheritFromPublic: true` in `oc_openregister_schemas` (confirmed in
+the DB). No schemas dropped. So the import now accepts the flag.
+
+Consequence for this repo: the `provision.py import` strip + `authorization`
+restore workaround is **no longer required on 1.0.3+** (kept only as defensive
+support for older deployments). Everything below describes the original 0.2.3 bug.
+
+---
 
 ## Summary
 
