@@ -4,20 +4,28 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
-### Fixed — 2026-06-08 (root cause of the silent partial import)
-- **4 schemas** (`adviezen`, `convenanten`, `wetten_en_algemeen_verbindende_voorschriften`,
-  `woo_verzoeken_en_besluiten`) carried an invalid `authorization` key
-  `inheritFromPublic: true`. OpenRegister's import rejects any authorization key
-  that is not `create`/`read`/`update`/`delete` and then **silently drops the
-  whole schema** (HTTP 200, no failure in the response), which also left the 4
-  matching synchronizations dangling. Confirmed from the canary Nextcloud log
-  (`[ImportHandler] Failed to create schema (Pass 1) ... Invalid authorization
-  action 'inheritFromPublic'`). Removed the stray flag from the 4 schemas.
-- `scripts/oac.py`: new **bad-authorization** lint check — a schema
-  `authorization` key that is not a valid action now fails the gate (would have
-  caught this before it reached a tenant). 2 unit tests.
-- Verified on a clean canary (NC 32.0.5): the fixed config imports **17/17
-  schemas**, the catalog links all 17, and `sync-check` reports no dangling.
+### Fixed — 2026-06-09 (handle inheritFromPublic instead of dropping it)
+- Root cause of the 4 silently-dropped schemas (`adviezen`, `convenanten`,
+  `wetten_en_algemeen_verbindende_voorschriften`, `woo_verzoeken_en_besluiten`):
+  each carries `authorization.inheritFromPublic`. OpenRegister's **import**
+  rejects that key and silently drops the schema (HTTP 200, `failed:[]`),
+  leaving the 4 syncs dangling. Confirmed from the canary log
+  (`[ImportHandler] ... Invalid authorization action 'inheritFromPublic'`) and
+  reproduced from a clean NC 32.0.5 reinstall.
+- `inheritFromPublic` is a **legitimate, intended** authorization flag (default
+  `true`; setting it `false` isolates publications per department, e.g. Almere),
+  so it is **kept in the config**, not stripped. The schema UPDATE API *does*
+  accept it — only the import does not.
+- Handling (provisioner): `provision.py import` strips `inheritFromPublic` for
+  the import call so every schema lands, then `provision.py authorization`
+  restores it via the schema UPDATE API and asserts it reflects.
+  `scripts/functional-test.sh` now imports through `provision.py import`.
+- `scripts/oac.py`: **bad-authorization** lint check now allows the
+  `inheritFromPublic` flag alongside the create/read/update/delete actions, and
+  flags any *other* unrecognised authorization key.
+- Verified A-to-Z on a clean canary: import → 17/17 schemas → authorization sets
+  `inheritFromPublic=true` on the 4 (confirmed in the DB) → catalog links all 17
+  → sync-check clean.
 
 ### Changed — 2026-06-08 (orchestrator)
 - `scripts/provision.py all` now runs the full bring-up: settings → **oc-settings**

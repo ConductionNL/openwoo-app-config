@@ -96,15 +96,16 @@ def test_job_valid_synchronization_slug_passes():
     assert not any(c == "dangling-ref" for _s, c, _m in oac.lint(doc))
 
 
-def test_invalid_authorization_action_flagged():
-    doc = _doc(schemas={"s1": {"authorization": {"read": [], "inheritFromPublic": True}}})
+def test_unrecognised_authorization_key_flagged():
+    doc = _doc(schemas={"s1": {"authorization": {"read": [], "bogusKey": True}}})
     findings = oac.lint(doc)
-    assert any(c == "bad-authorization" and "inheritFromPublic" in m
-               for _s, c, m in findings)
+    assert any(c == "bad-authorization" and "bogusKey" in m for _s, c, m in findings)
 
 
-def test_valid_authorization_actions_pass():
-    doc = _doc(schemas={"s1": {"authorization": {"read": [], "create": [], "update": [], "delete": []}}})
+def test_valid_authorization_actions_and_flags_pass():
+    # the four actions plus the inheritFromPublic flag are all allowed
+    doc = _doc(schemas={"s1": {"authorization": {
+        "read": [], "create": [], "update": [], "delete": [], "inheritFromPublic": False}}})
     assert not any(c == "bad-authorization" for _s, c, _m in oac.lint(doc))
 
 

@@ -466,9 +466,13 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
                         lambda c, o, m: calls.append("settings"))
     monkeypatch.setattr(provision, "provision_oc_settings",
                         lambda c: calls.append("oc-settings"))
+    monkeypatch.setattr(provision, "provision_import",
+                        lambda c, d: calls.append("import"))
     monkeypatch.setattr(provision, "verify_import",
                         lambda c, d: (calls.append("verify"),
                                       {"schemas": {"expected": 1, "missing": verify_missing or []}})[1])
+    monkeypatch.setattr(provision, "provision_authorization",
+                        lambda c, d: calls.append("authorization") or 0)
     monkeypatch.setattr(provision, "provision_catalog",
                         lambda c, d: calls.append("catalog"))
     monkeypatch.setattr(provision, "provision_credentials",
@@ -484,15 +488,16 @@ def test_provision_all_runs_steps_in_order(monkeypatch):
     calls = []
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
-    assert calls == ["settings", "oc-settings", "verify", "catalog", "credentials", "sync-check"]
+    assert calls == ["settings", "oc-settings", "import", "verify", "authorization",
+                     "catalog", "credentials", "sync-check"]
 
 
 def test_provision_all_skips_optional_steps(monkeypatch):
     calls = []
     _patch_steps(monkeypatch, calls)
-    provision.provision_all(None, _doc(), settings=None, oc_settings=False, catalog=False,
-                            run_syncs=True, sync_mode="test")
-    assert calls == ["verify", "credentials", "sync-check", "sync-run:test"]
+    provision.provision_all(None, _doc(), settings=None, oc_settings=False, do_import=False,
+                            catalog=False, run_syncs=True, sync_mode="test")
+    assert calls == ["verify", "authorization", "credentials", "sync-check", "sync-run:test"]
 
 
 def test_provision_all_stops_on_incomplete_import(monkeypatch):

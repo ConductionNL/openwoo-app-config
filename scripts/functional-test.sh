@@ -26,7 +26,6 @@ set -euo pipefail
 
 readonly COMPOSE_FILE="docker-compose.test.yml"
 readonly BASE_URL="http://localhost:8080"
-readonly ADMIN="admin:admin_test_only"
 readonly ADMIN_USER="admin"
 readonly ADMIN_PASS="admin_test_only"
 readonly APPS=(openregister openconnector opencatalogi)
@@ -88,18 +87,16 @@ install_apps() {
 
 import_config() {
   [[ -f "${CONFIG}" ]] || die "config not found: ${CONFIG}"
-  log "importing ${CONFIG} via OpenRegister API"
-  local body status
-  body="$(curl -sS -u "${ADMIN}" \
-    -w '\n%{http_code}' \
-    -F "file=@${CONFIG};type=application/json" \
-    "${BASE_URL}/index.php/apps/openregister/api/configurations/import")"
-  status="$(echo "${body}" | tail -n1)"
-  body="$(echo "${body}" | sed '$d')"
-  echo "${body}" >&2
-  [[ "${status}" == "200" ]] || die "import returned HTTP ${status}"
-  echo "${body}" | grep -q 'Import successful' || die "import response missing success marker"
-  log "import OK (HTTP 200, Import successful)"
+  log "importing ${CONFIG} via scripts/provision.py (strips import-hostile auth keys)"
+  # Use the provisioner so the import is identical to a real tenant bring-up:
+  # it strips authorization keys the import endpoint rejects (inheritFromPublic)
+  # so every schema lands; the flag is restored via the schema API in
+  # provision_credentials-adjacent steps (canary), out of scope for this DB-only
+  # local check which verifies row counts next.
+  python3 scripts/provision.py import \
+    --base "${BASE_URL}" --user "${ADMIN_USER}" --password "${ADMIN_PASS}" \
+    --config "${CONFIG}" \
+    || die "import failed"
 }
 
 # Map config bucket -> the table that should hold its rows after import.

@@ -79,12 +79,17 @@ KNOWN_BUCKETS = {
     "jobs", "registers", "schemas", "workflows", "objects",
 }
 
-# A schema's `authorization` object is keyed by action. The importer rejects any
-# other key (e.g. a stray `inheritFromPublic` flag) with "Invalid authorization
-# action ... Must be one of: create, read, update, delete" and then SILENTLY
-# drops the whole schema (HTTP 200, no failure reported in the response). So a
-# bad action here is an import-breaking error we must gate on.
+# A schema's `authorization` object is keyed by action (each mapping to rule
+# arrays) plus a few boolean flags. Anything outside these two sets is an
+# unrecognised key we gate on.
 VALID_AUTH_ACTIONS = {"create", "read", "update", "delete"}
+# Boolean flags that legitimately live alongside the actions. `inheritFromPublic`
+# (default true) controls whether a schema inherits public read access; setting
+# it false isolates publications per department (e.g. Almere). NOTE: the import
+# endpoint currently REJECTS this key and silently drops the schema, so the
+# provisioner strips it for the import call and restores it via the schema
+# UPDATE API afterwards (see scripts/provision.py `import` + `authorization`).
+VALID_AUTH_FLAGS = {"inheritFromPublic"}
 
 
 def strip_keys_for(bucket):
@@ -159,10 +164,10 @@ def check_authorization(comps):
         auth = schema.get("authorization")
         if isinstance(auth, dict):
             for action in auth:
-                if action not in VALID_AUTH_ACTIONS:
+                if action not in VALID_AUTH_ACTIONS and action not in VALID_AUTH_FLAGS:
                     out.append(("error", "bad-authorization",
-                                f"schemas/{name}: invalid authorization action '{action}' "
-                                f"(import drops the schema; allowed: create, read, update, delete)"))
+                                f"schemas/{name}: unrecognised authorization key '{action}' "
+                                f"(allowed: create, read, update, delete, inheritFromPublic)"))
     return out
 
 

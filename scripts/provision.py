@@ -163,6 +163,27 @@ class Client:
     def post(self, path, body=None):
         return self._request("POST", path, body)
 
+    def post_file(self, path, filename, content):
+        """Multipart file upload (for the @NoCSRFRequired config import). Returns text."""
+        boundary = "----provisionfileboundary"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: application/json\r\n\r\n"
+        ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
+        req = urllib.request.Request(f"{self.base}{path}", data=body, method="POST")
+        req.add_header("Authorization", self.auth_header)
+        req.add_header("OCS-APIREQUEST", "true")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                return resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")[:200]
+            raise ProvisionError(f"POST {path} (file) -> HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise ProvisionError(f"POST {path} (file) -> {exc.reason}") from exc
+
 
 class ProvisionError(Exception):
     """A provisioning step failed (HTTP error, refused auth, or failed assert)."""
@@ -246,54 +267,130 @@ def provision_sync_run(client, doc, mode="run"):
 
 
 def provision_all(client, doc, apikey=None, settings=None, oc_settings=True,
-                  catalog=True, run_syncs=False, sync_mode="test"):
+                  do_import=True, catalog=True, run_syncs=False, sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
-    coupling -> verify the import landed -> point the catalog at the WOO schemas
-    -> source credentials -> synchronizations resolved -> optional per-sync run.
-    Raises ProvisionError on the first failed assertion. The oc-settings and
-    catalog steps need the OpenCatalogi base present; skip them for a WOO-only
+    coupling -> import the config -> verify it landed -> restore schema
+    authorization (inheritFromPublic, which the import strips) -> point the
+    catalog at the WOO schemas -> source credentials -> synchronizations resolved
+    -> optional per-sync run. Raises ProvisionError on the first failed assertion.
+    The oc-settings / catalog / authorization steps need the OpenCatalogi base
+    and the openregister schema API; skip oc-settings/catalog for a WOO-only
     tenant. Object creation and job runs stay separate.
     """
     if settings is not None:
-        log("[1/7] settings")
+        log("[1/9] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/7] settings — skipped")
+        log("[1/9] settings — skipped")
 
     if oc_settings:
-        log("[2/7] oc-settings")
+        log("[2/9] oc-settings")
         provision_oc_settings(client)
     else:
-        log("[2/7] oc-settings — skipped")
+        log("[2/9] oc-settings — skipped")
 
-    log("[3/7] verify-import")
+    if do_import:
+        log("[3/9] import")
+        provision_import(client, doc)
+    else:
+        log("[3/9] import — skipped")
+
+    log("[4/9] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
+    log("[5/9] authorization")
+    n = provision_authorization(client, doc)
+    log(f"  authorization: {n} schema(s) patched")
+
     if catalog:
-        log("[4/7] catalog")
+        log("[6/9] catalog")
         provision_catalog(client, doc)
     else:
-        log("[4/7] catalog — skipped")
+        log("[6/9] catalog — skipped")
 
-    log("[5/7] credentials")
+    log("[7/9] credentials")
     provision_credentials(client, doc, apikey=apikey)
 
-    log("[6/7] sync-check")
+    log("[8/9] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
     if run_syncs:
-        log(f"[7/7] sync-run ({sync_mode})")
+        log(f"[9/9] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[7/7] sync-run — skipped (pass --run-syncs)")
+        log("[9/9] sync-run — skipped (pass --run-syncs)")
     return True
+
+
+IMPORT_PATH = "/index.php/apps/openregister/api/configurations/import"
+# Authorization keys the import endpoint rejects (silently dropping the schema).
+# We strip them for the import call, then restore them via the schema UPDATE API
+# (which DOES accept them) in provision_authorization. inheritFromPublic defaults
+# to true; explicit false isolates publications per department (e.g. Almere).
+IMPORT_STRIP_AUTH_KEYS = {"inheritFromPublic"}
+
+
+def import_safe_doc(doc):
+    """Deep copy of the config with import-hostile authorization keys removed."""
+    import copy
+
+    safe = copy.deepcopy(doc)
+    for schema in bucket_items(safe, "schemas"):
+        auth = schema.get("authorization")
+        if isinstance(auth, dict):
+            for key in IMPORT_STRIP_AUTH_KEYS:
+                auth.pop(key, None)
+    return safe
+
+
+def provision_import(client, doc):
+    """Upload the config (with import-hostile keys stripped) and assert success."""
+    payload = json.dumps(import_safe_doc(doc)).encode()
+    log(f"  importing config ({len(bucket_items(doc, 'schemas'))} schemas)")
+    raw = client.post_file(IMPORT_PATH, "woo.configuration.json", payload)
+    if "Import successful" not in raw:
+        raise ProvisionError(f"import did not report success: {raw[:200]}")
+    log("  import OK (Import successful)")
+    return True
+
+
+def provision_authorization(client, doc):
+    """Restore import-stripped authorization keys (e.g. inheritFromPublic) on each
+    schema via the schema UPDATE API, which accepts them, and assert they reflect.
+
+    Only touches schemas whose config authorization carries a stripped key, and
+    merges into the schema's current authorization so the import's actions stay.
+    """
+    sch_ids = slug_to_id(results_list(client.get(SCHEMAS_PATH)))
+    done = 0
+    for schema in bucket_items(doc, "schemas"):
+        slug = schema.get("slug")
+        auth = schema.get("authorization")
+        if not slug or not isinstance(auth, dict):
+            continue
+        flags = {k: auth[k] for k in IMPORT_STRIP_AUTH_KEYS if k in auth}
+        if not flags:
+            continue
+        if slug not in sch_ids:
+            raise ProvisionError(f"authorization: schema '{slug}' not on the tenant")
+        sid = sch_ids[slug]
+        current = client.get(f"{SCHEMAS_PATH}/{sid}").get("authorization") or {}
+        merged = {**(current if isinstance(current, dict) else {}), **flags}
+        client.put(f"{SCHEMAS_PATH}/{sid}", {"authorization": merged})
+        after = client.get(f"{SCHEMAS_PATH}/{sid}").get("authorization") or {}
+        bad = {k: v for k, v in flags.items() if after.get(k) != v}
+        if bad:
+            raise ProvisionError(f"authorization: schema '{slug}' did not reflect {bad}")
+        log(f"  schema '{slug}': {flags} set OK")
+        done += 1
+    return done
 
 
 CATALOG_REGISTER = "publication"
@@ -604,6 +701,7 @@ def cmd_all(args):
         apikey=resolve_apikey(args),
         settings=_settings_from_args(args),
         oc_settings=not args.skip_oc_settings,
+        do_import=not args.skip_import,
         catalog=not args.skip_catalog,
         run_syncs=args.run_syncs,
         sync_mode="test" if args.test else "run",
@@ -638,6 +736,24 @@ def cmd_objects(args):
     log(f"creating object in {args.register}/{args.schema} on {args.base}")
     obj = provision_object(client, args.register, args.schema, payload)
     log(f"OBJECT CREATED OK (id={obj.get('id') or obj.get('uuid')})")
+    return 0
+
+
+def cmd_import(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"importing config into {args.base}")
+    provision_import(client, doc)
+    log("IMPORT OK")
+    return 0
+
+
+def cmd_authorization(args):
+    doc = load_config(args.config)
+    client = Client(args.base, args.user, resolve_password(args))
+    log(f"restoring schema authorization on {args.base}")
+    n = provision_authorization(client, doc)
+    log(f"AUTHORIZATION OK ({n} schema(s) patched)")
     return 0
 
 
@@ -742,6 +858,20 @@ def build_parser():
     )
     st.set_defaults(func=cmd_settings)
 
+    im = sub.add_parser(
+        "import",
+        help="upload the config (stripping import-hostile authorization keys) and assert success",
+    )
+    _add_connection_args(im)
+    im.set_defaults(func=cmd_import)
+
+    au = sub.add_parser(
+        "authorization",
+        help="restore import-stripped authorization keys (e.g. inheritFromPublic) via the schema API",
+    )
+    _add_connection_args(au)
+    au.set_defaults(func=cmd_authorization)
+
     ocs = sub.add_parser(
         "oc-settings",
         help="couple OpenCatalogi object types (catalog/listing/…) to their register + schema",
@@ -805,6 +935,7 @@ def build_parser():
     al.add_argument("--default-organisation", default=None, help="org UUID (omit to rely on auto-create)")
     al.add_argument("--multitenancy", action="store_true", help="enable multitenancy (default: disabled)")
     al.add_argument("--skip-settings", action="store_true", help="do not touch settings")
+    al.add_argument("--skip-import", action="store_true", help="skip the config import (assume already imported)")
     al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
     al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
     al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")

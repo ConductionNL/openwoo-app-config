@@ -101,8 +101,10 @@ automatically.
   every `targetId` of the form `register/schema` resolves to a real register + schema;
   every `SynchronizationAction` job's `synchronizationId` resolves to a synchronization slug.
 - **bad-authorization** — every schema `authorization` key is a valid action
-  (`create`/`read`/`update`/`delete`). An invalid key (e.g. `inheritFromPublic`)
-  makes the import silently drop the whole schema, so it fails the gate.
+  (`create`/`read`/`update`/`delete`) or the `inheritFromPublic` flag. Any other
+  key is unrecognised and fails the gate. (`inheritFromPublic` is valid config
+  but the *import* endpoint rejects it, so `provision.py import` strips it for the
+  upload and `provision.py authorization` restores it afterwards.)
 - **data-leak** (warn) — stored `objects` in a config export.
 
 ## Layer 2 — functional import test (local)
@@ -146,6 +148,8 @@ post-install steps the config owns, over the API, each asserting it took effect
 | Subcommand | Does | Asserts |
 |------------|------|---------|
 | `settings` | PUT organisation + multitenancy settings | GET reflects the sent fields |
+| `import` | upload the config, stripping import-hostile auth keys (`inheritFromPublic`) | response reports "Import successful" |
+| `authorization` | restore import-stripped auth flags (`inheritFromPublic`) via the schema API | the flag reflects on each schema |
 | `oc-settings` | couple OpenCatalogi object types to their register + schema | GET reflects (slugs resolved to tenant ids) |
 | `verify-import` | compare config slugs to the tenant | every register/schema/source/sync present |
 | `sync-check` | inspect tenant synchronizations | every target schema resolved (no dangling `reg/<slug>`) |
