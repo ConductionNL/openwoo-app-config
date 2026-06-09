@@ -40,6 +40,14 @@ def test_build_command_omits_blank_optionals():
         assert absent not in argv
 
 
+def test_build_command_job_user_optional():
+    base = {"base": "https://k.accept.commonground.nu", "user": "admin"}
+    argv, _ = provision_gui.build_command({**base, "job_user": "admin"})
+    assert argv[argv.index("--job-user") + 1] == "admin"
+    argv, _ = provision_gui.build_command(base)
+    assert "--job-user" not in argv
+
+
 def test_build_command_run_syncs_real_and_dry():
     base = {"base": "https://k.accept.commonground.nu", "user": "admin"}
     argv, _ = provision_gui.build_command({**base, "run_syncs": True})

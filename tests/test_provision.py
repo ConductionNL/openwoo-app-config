@@ -420,8 +420,10 @@ class FakeJobsClient:
     def put(self, path, body):
         jid = int(path.rsplit("/", 1)[1])
         self.puts.append((jid, body))
-        merged = body["arguments"] if self._reflect else {"synchronizationId": "still-slug"}
-        return {"id": jid, "arguments": merged}
+        if not self._reflect:
+            return {"id": jid}  # nothing reflects -> provisioner sees a mismatch
+        self._jobs[jid].update(body)
+        return dict(self._jobs[jid])
 
 
 def test_jobs_resolves_sync_slug_to_numeric():
@@ -441,6 +443,25 @@ def test_jobs_skips_already_numeric():
                             jobs=[{"slug": "job-a", "id": 65}])
     assert provision.provision_jobs(client, doc) == 0
     assert client.puts == []
+
+
+def test_jobs_sets_user_even_when_sync_id_already_numeric():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": 65}}])
+    client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
+                            jobs=[{"slug": "job-a", "id": 65}])
+    assert provision.provision_jobs(client, doc, job_user="admin") == 1
+    (_jid, body), = client.puts
+    assert body == {"userId": "admin"}          # only userId; sync id already numeric
+
+
+def test_jobs_sets_sync_id_and_user_together():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": "sync-a"}}])
+    client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
+                            jobs=[{"slug": "job-a", "id": 65,
+                                   "arguments": {"synchronizationId": "sync-a"}}])
+    provision.provision_jobs(client, doc, job_user="svc")
+    (_jid, body), = client.puts
+    assert body["arguments"]["synchronizationId"] == 65 and body["userId"] == "svc"
 
 
 def test_jobs_raises_on_unresolvable_sync_slug():
@@ -569,7 +590,7 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
                         lambda c, d: (calls.append("sync-check"),
                                       {"total": 1, "dangling": dangling or []})[1])
     monkeypatch.setattr(provision, "provision_jobs",
-                        lambda c, d: calls.append("jobs") or 0)
+                        lambda c, d, **kw: calls.append("jobs") or 0)
     monkeypatch.setattr(provision, "provision_sync_run",
                         lambda c, d, mode="run": calls.append(f"sync-run:{mode}"))
 

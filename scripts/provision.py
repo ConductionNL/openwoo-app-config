@@ -273,45 +273,66 @@ def provision_sync_run(client, doc, mode="run"):
     return done
 
 
-def provision_jobs(client, doc):
-    """Resolve each job's synchronizationId from the sync slug to the tenant's
-    numeric sync id and assert it reflects.
+def _is_numeric(value):
+    return isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+
+
+def provision_jobs(client, doc, job_user=None):
+    """Resolve each job's synchronizationId (sync slug -> tenant numeric id) and,
+    optionally, set the job's `userId`.
 
     The config (portable) carries the sync *slug* in `arguments.synchronizationId`;
     the import leaves it a slug, but the SynchronizationAction needs the numeric
-    sync id to trigger. Driven by config jobs, matched to tenant jobs by slug.
-    Skips jobs whose synchronizationId is already numeric. Raises on a missing
-    job or an unresolvable sync slug.
+    sync id to trigger. `job_user` (opt-in) sets each job's `userId` — a workaround
+    for scheduled jobs running as Anonymous and being denied object writes (see
+    docs/BUG-sync-job-anonymous-permission.md); only effective if the runner
+    honours userId. Driven by config jobs, matched to tenant jobs by slug. Skips a
+    job only when there is nothing to change. Raises on a missing job or an
+    unresolvable sync slug.
     """
     sync_ids = slug_to_id(results_list(client.get(SYNCS_PATH)))
     tenant_jobs = {j.get("slug"): j for j in results_list(client.get(JOBS_PATH)) if j.get("slug")}
     done = 0
     for job in bucket_items(doc, "jobs"):
         slug = job.get("slug")
-        ref = (job.get("arguments") or {}).get("synchronizationId")
-        if not slug or ref is None:
+        if not slug:
             continue
-        if isinstance(ref, int) or (isinstance(ref, str) and ref.isdigit()):
-            continue  # already a numeric id — nothing to resolve
-        if ref not in sync_ids:
-            raise ProvisionError(f"jobs: job '{slug}' synchronizationId '{ref}' is not a tenant sync slug")
         if slug not in tenant_jobs:
             raise ProvisionError(f"jobs: job '{slug}' not on the tenant")
         tj = tenant_jobs[slug]
-        numeric = sync_ids[ref]
-        merged = {**(tj.get("arguments") or {}), "synchronizationId": numeric}
-        resp = client.put(f"{JOBS_PATH}/{tj['id']}", {"arguments": merged})
-        got = (resp.get("arguments") or {}).get("synchronizationId") if isinstance(resp, dict) else None
-        if got != numeric:
-            raise ProvisionError(f"jobs: job '{slug}' synchronizationId did not reflect (got {got!r})")
-        log(f"  job '{slug}': synchronizationId {ref} -> {numeric} OK")
+        body = {}
+
+        ref = (job.get("arguments") or {}).get("synchronizationId")
+        if ref is not None and not _is_numeric(ref):
+            if ref not in sync_ids:
+                raise ProvisionError(f"jobs: job '{slug}' synchronizationId '{ref}' is not a tenant sync slug")
+            body["arguments"] = {**(tj.get("arguments") or {}), "synchronizationId": sync_ids[ref]}
+        if job_user is not None:
+            body["userId"] = job_user
+        if not body:
+            continue  # synchronizationId already numeric and no userId to set
+
+        resp = client.put(f"{JOBS_PATH}/{tj['id']}", body)
+        resp = resp if isinstance(resp, dict) else {}
+        if "arguments" in body:
+            want = body["arguments"]["synchronizationId"]
+            if (resp.get("arguments") or {}).get("synchronizationId") != want:
+                raise ProvisionError(f"jobs: job '{slug}' synchronizationId did not reflect")
+        if job_user is not None and resp.get("userId") != job_user:
+            raise ProvisionError(f"jobs: job '{slug}' userId did not reflect (got {resp.get('userId')!r})")
+        changed = []
+        if "arguments" in body:
+            changed.append(f"synchronizationId={body['arguments']['synchronizationId']}")
+        if job_user is not None:
+            changed.append(f"userId={job_user}")
+        log(f"  job '{slug}': {', '.join(changed)} OK")
         done += 1
     return done
 
 
 def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
                   settings=None, oc_settings=True, do_import=True, catalog=True,
-                  run_syncs=False, sync_mode="test"):
+                  job_user=None, run_syncs=False, sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
@@ -364,8 +385,9 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
     log("[8/9] jobs")
-    n = provision_jobs(client, doc)
-    log(f"  jobs: {n} synchronizationId(s) resolved to numeric ids")
+    n = provision_jobs(client, doc, job_user=job_user)
+    log(f"  jobs: {n} job(s) updated"
+        f"{f' (userId={job_user})' if job_user else ''}")
 
     if run_syncs:
         log(f"[9/9] sync-run ({sync_mode})")
@@ -818,6 +840,7 @@ def cmd_all(args):
         oc_settings=not args.skip_oc_settings,
         do_import=not args.skip_import,
         catalog=not args.skip_catalog,
+        job_user=args.job_user,
         run_syncs=args.run_syncs,
         sync_mode="test" if args.test else "run",
     )
@@ -876,8 +899,8 @@ def cmd_jobs(args):
     doc = load_config(args.config)
     client = make_client(args)
     log(f"resolving job synchronizationIds on {args.base}")
-    n = provision_jobs(client, doc)
-    log(f"JOBS OK ({n} synchronizationId(s) resolved to numeric ids)")
+    n = provision_jobs(client, doc, job_user=args.job_user)
+    log(f"JOBS OK ({n} job(s) updated)")
     return 0
 
 
@@ -1003,6 +1026,8 @@ def build_parser():
         help="resolve each job's synchronizationId (sync slug -> tenant numeric id) and assert",
     )
     _add_connection_args(jb)
+    jb.add_argument("--job-user", default=None,
+                    help="also set each job's userId (workaround for Anonymous job runs; see bug doc)")
     jb.set_defaults(func=cmd_jobs)
 
     ocs = sub.add_parser(
@@ -1073,6 +1098,8 @@ def build_parser():
     al.add_argument("--skip-import", action="store_true", help="skip the config import (assume already imported)")
     al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
     al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
+    al.add_argument("--job-user", default=None,
+                    help="set each job's userId (workaround for Anonymous job runs; see bug doc)")
     al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")
     al.add_argument("--test", action="store_true", help="with --run-syncs, use the /test dry-run endpoint")
     al.set_defaults(func=cmd_all)

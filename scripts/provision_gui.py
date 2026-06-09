@@ -41,6 +41,7 @@ FIELDS = [
     ("source_url", "Source URL (blank = keep config)", False, ""),
     ("api_interface_id", "API-Interface-ID (blank = keep config)", False, ""),
     ("apikey", "Source API key (blank = dummy)", True, ""),
+    ("job_user", "Job user (optional — Anonymous-bug workaround)", False, ""),
 ]
 
 
@@ -61,6 +62,8 @@ def build_command(values):
         argv += ["--source-url", values["source_url"].strip()]
     if values.get("api_interface_id"):
         argv += ["--api-interface-id", values["api_interface_id"].strip()]
+    if values.get("job_user"):
+        argv += ["--job-user", values["job_user"].strip()]
     if values.get("run_syncs"):
         argv += ["--run-syncs"]
         if values.get("dry_run"):
