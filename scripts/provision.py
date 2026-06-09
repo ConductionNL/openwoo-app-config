@@ -305,14 +305,20 @@ def provision_jobs(client, doc, job_user=None):
         body = {}
 
         ref = (job.get("arguments") or {}).get("synchronizationId")
-        if ref is not None and not _is_numeric(ref):
-            if ref not in sync_ids:
+        if ref is not None:
+            if _is_numeric(ref):
+                desired = ref
+            elif ref in sync_ids:
+                desired = sync_ids[ref]
+            else:
                 raise ProvisionError(f"jobs: job '{slug}' synchronizationId '{ref}' is not a tenant sync slug")
-            body["arguments"] = {**(tj.get("arguments") or {}), "synchronizationId": sync_ids[ref]}
-        if job_user is not None:
+            current = (tj.get("arguments") or {}).get("synchronizationId")
+            if str(current) != str(desired):   # tenant not yet resolved to the numeric id
+                body["arguments"] = {**(tj.get("arguments") or {}), "synchronizationId": desired}
+        if job_user is not None and tj.get("userId") != job_user:
             body["userId"] = job_user
         if not body:
-            continue  # synchronizationId already numeric and no userId to set
+            continue  # tenant job already has the right synchronizationId and userId
 
         resp = client.put(f"{JOBS_PATH}/{tj['id']}", body)
         resp = resp if isinstance(resp, dict) else {}
@@ -333,8 +339,8 @@ def provision_jobs(client, doc, job_user=None):
 
 
 def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
-                  settings=None, oc_settings=True, do_import=True, catalog=True,
-                  job_user=None, run_syncs=False, sync_mode="test"):
+                  settings=None, oc_settings=True, do_import=True, force_import=False,
+                  catalog=True, job_user=None, run_syncs=False, sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
@@ -361,7 +367,7 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
 
     if do_import:
         log("[3/9] import")
-        provision_import(client, doc)
+        provision_import(client, doc, force=force_import)
     else:
         log("[3/9] import — skipped")
 
@@ -410,8 +416,18 @@ IMPORT_PATH = "/index.php/apps/openregister/api/configurations/import"
 AUTH_FLAG_KEYS = {"inheritFromPublic"}
 
 
-def provision_import(client, doc):
-    """Upload the config as-is and assert the import reports success."""
+def provision_import(client, doc, force=False):
+    """Upload the config and assert the import reports success.
+
+    Idempotent: unless `force`, first checks whether every config slug is already
+    present (verify_import) and skips the upload if so. Use force=True to re-upload
+    when the config *content* changed (a slug-level check can't see that).
+    """
+    if not force:
+        missing = {b: i["missing"] for b, i in verify_import(client, doc).items() if i["missing"]}
+        if not missing:
+            log("  config already present — skipping upload (use --force-import to re-upload)")
+            return True
     payload = json.dumps(doc).encode()
     log(f"  importing config ({len(bucket_items(doc, 'schemas'))} schemas)")
     raw = client.post_file(IMPORT_PATH, "woo.configuration.json", payload)
@@ -486,6 +502,10 @@ def provision_catalog(client, doc, catalog_slug="publications", target_register=
 
     obj_path = f"{OBJECTS_PATH}/{CATALOG_REGISTER}/{CATALOG_SCHEMA}/{catalog_slug}"
     existing = client.get(obj_path)
+    if isinstance(existing, dict) and (existing.get("registers") or []) == register_ids \
+            and sorted(existing.get("schemas") or []) == sorted(schema_ids):
+        log(f"  catalog '{catalog_slug}': already points at {len(schema_ids)} schemas, skipping")
+        return existing
     body = dict(existing) if isinstance(existing, dict) else {}
     body["registers"] = register_ids
     body["schemas"] = schema_ids
@@ -529,6 +549,10 @@ def put_settings_reflected(client, path, key, payload):
     fields we sent, so extra server-side fields (e.g. an auto-created org id) are
     fine.
     """
+    current = client.get(path).get(key, {})
+    if isinstance(current, dict) and all(current.get(k) == v for k, v in payload.items()):
+        log(f"  {key}: already set, skipping")
+        return current
     client.put(path, payload)
     got = client.get(path).get(key, {})
     mismatched = {k: got.get(k) for k, v in payload.items() if got.get(k) != v}
@@ -566,11 +590,18 @@ def provision_oc_settings(client, register="publication", object_types=None):
         payload[f"{t}_source"] = "openregister"
         payload[f"{t}_register"] = str(reg_ids[register])
         payload[f"{t}_schema"] = str(sch_ids[t])
+
+    def coupling(resp):
+        return resp.get("configuration", resp) if isinstance(resp, dict) else {}
+
+    current = coupling(client.get(OC_SETTINGS_PATH))
+    if all(str(current.get(k)) == str(v) for k, v in payload.items()):
+        log(f"  oc-settings: {len(types)} object types already coupled, skipping")
+        return current
     log(f"  coupling {len(types)} object types to register '{register}'")
     client.post(OC_SETTINGS_PATH, payload)
 
-    after = client.get(OC_SETTINGS_PATH)
-    conf = after.get("configuration", after) if isinstance(after, dict) else {}
+    conf = coupling(client.get(OC_SETTINGS_PATH))
     bad = [k for k, v in payload.items() if str(conf.get(k)) != str(v)]
     if bad:
         raise ProvisionError(f"oc-settings did not reflect: {bad}")
@@ -666,6 +697,14 @@ def provision_credentials(client, doc, apikey=None, source_url=None, interface_i
             )
         source_id = source.get("id")
         key = dummy_apikey(slug) if using_dummy else apikey
+        cur_conf = source.get("configuration") if isinstance(source.get("configuration"), dict) else {}
+        already = (cur_conf.get(header) == key
+                   and (interface_id is None or cur_conf.get(INTERFACE_ID_HEADER) == interface_id)
+                   and (not source_url or source.get("location") == source_url))
+        if already:
+            log(f"  source '{slug}' (id={source_id}): connection params already set, skipping")
+            done += 1
+            continue
         new_config = merge_header(source.get("configuration"), header, key)
         if interface_id is not None:
             new_config[INTERFACE_ID_HEADER] = interface_id
@@ -841,6 +880,7 @@ def cmd_all(args):
         settings=_settings_from_args(args),
         oc_settings=not args.skip_oc_settings,
         do_import=not args.skip_import,
+        force_import=args.force_import,
         catalog=not args.skip_catalog,
         job_user=args.job_user or client.user,
         run_syncs=args.run_syncs,
@@ -883,7 +923,7 @@ def cmd_import(args):
     doc = load_config(args.config)
     client = make_client(args)
     log(f"importing config into {args.base}")
-    provision_import(client, doc)
+    provision_import(client, doc, force=args.force)
     log("IMPORT OK")
     return 0
 
@@ -1012,9 +1052,10 @@ def build_parser():
 
     im = sub.add_parser(
         "import",
-        help="upload the config and assert the import reports success",
+        help="upload the config (skips if already present) and assert success",
     )
     _add_connection_args(im)
+    im.add_argument("--force", action="store_true", help="re-upload even if every config slug is already present")
     im.set_defaults(func=cmd_import)
 
     au = sub.add_parser(
@@ -1099,6 +1140,7 @@ def build_parser():
     al.add_argument("--multitenancy", action="store_true", help="enable multitenancy (default: disabled)")
     al.add_argument("--skip-settings", action="store_true", help="do not touch settings")
     al.add_argument("--skip-import", action="store_true", help="skip the config import (assume already imported)")
+    al.add_argument("--force-import", action="store_true", help="re-upload the config even if already present (for content changes)")
     al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
     al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
     al.add_argument("--job-user", default=None,

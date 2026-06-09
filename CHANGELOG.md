@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-09 (idempotent — skip writes when already converged)
+- Every write step now GET-checks first and **skips the write when the tenant is
+  already in the desired state**, so a re-run on a converged tenant is a near
+  no-op (only GETs). Applies to `settings`, `oc-settings`, `catalog`,
+  `credentials`, and `jobs` (compares the *tenant's* current value, not the
+  config slug). Assertions still run after any write.
+- `import` is idempotent too: it runs `verify-import` first and **skips the
+  upload when every config slug is already present**. `--force` (import) /
+  `--force-import` (all) / GUI "Force re-import" re-upload anyway — needed when
+  the config *content* changed (a slug-level check can't see that).
+- Verified on canary: a second `all` run skips all steps (`0 job(s) updated`,
+  "already present, skipping", etc.). 7 new unit tests.
+
 ### Added — 2026-06-09 (job-user workaround for the Anonymous-job bug)
 - The `jobs` step now **always sets each job's `userId`** — defaulting to the
   admin `--user`, overridable with `--job-user <user>` (GUI: "Job user" field,

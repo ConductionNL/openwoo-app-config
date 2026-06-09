@@ -48,6 +48,14 @@ def test_build_command_job_user_optional():
     assert "--job-user" not in argv
 
 
+def test_build_command_force_import():
+    base = {"base": "https://k.accept.commonground.nu", "user": "admin"}
+    argv, _ = provision_gui.build_command({**base, "force_import": True})
+    assert "--force-import" in argv
+    argv, _ = provision_gui.build_command(base)
+    assert "--force-import" not in argv
+
+
 def test_build_command_run_syncs_real_and_dry():
     base = {"base": "https://k.accept.commonground.nu", "user": "admin"}
     argv, _ = provision_gui.build_command({**base, "run_syncs": True})

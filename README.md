@@ -92,8 +92,12 @@ window with the same fields and runs `provision.py all` (secrets passed via env,
 never argv). With no Tkinter/display it prints the equivalent terminal command.
 
 `all` is a **convergence/repair** run: it updates the existing tenant's objects to
-the config's desired state (idempotent upserts) — it does not wipe, and does not
-prune entities that exist on the tenant but not in the config. Run a single step
+the config's desired state — it does not wipe, and does not prune entities that
+exist on the tenant but not in the config. It is **idempotent**: each step
+GET-checks first and skips the write when the tenant is already correct, so a
+re-run on a converged tenant is a near no-op. The config import is skipped when
+every slug is already present; pass `--force-import` (or the GUI "Force
+re-import" checkbox) to re-upload after a config *content* change. Run a single step
 (`verify-import`, `sync-check`, …) to *validate* an existing tenant without
 changing it. Credentials come from the operator's own env/secret, never from this
 repo.

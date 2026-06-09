@@ -64,6 +64,8 @@ def build_command(values):
         argv += ["--api-interface-id", values["api_interface_id"].strip()]
     if values.get("job_user"):
         argv += ["--job-user", values["job_user"].strip()]
+    if values.get("force_import"):
+        argv += ["--force-import"]
     if values.get("run_syncs"):
         argv += ["--run-syncs"]
         if values.get("dry_run"):
@@ -92,15 +94,18 @@ def _run_gui():
         entry.grid(row=row, column=1, padx=6, pady=3)
         entries[key] = entry
 
+    force_import_var = tk.BooleanVar(value=False)
     run_syncs_var = tk.BooleanVar(value=False)
     dry_run_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(root, text="Force re-import (re-upload config even if already present)",
+                   variable=force_import_var).grid(row=len(FIELDS), column=0, columnspan=2, sticky="w", padx=6)
     tk.Checkbutton(root, text="Run synchronizations after provisioning (fetches live data)",
-                   variable=run_syncs_var).grid(row=len(FIELDS), column=0, columnspan=2, sticky="w", padx=6)
+                   variable=run_syncs_var).grid(row=len(FIELDS) + 1, column=0, columnspan=2, sticky="w", padx=6)
     tk.Checkbutton(root, text="    └ dry-run only (/test, no real fetch)",
-                   variable=dry_run_var).grid(row=len(FIELDS) + 1, column=0, columnspan=2, sticky="w", padx=6)
+                   variable=dry_run_var).grid(row=len(FIELDS) + 2, column=0, columnspan=2, sticky="w", padx=6)
 
     out = scrolledtext.ScrolledText(root, width=90, height=20)
-    out.grid(row=len(FIELDS) + 3, column=0, columnspan=2, padx=6, pady=6)
+    out.grid(row=len(FIELDS) + 4, column=0, columnspan=2, padx=6, pady=6)
 
     def append(line):
         out.insert("end", line)
@@ -121,6 +126,7 @@ def _run_gui():
 
     def on_run():
         values = {k: e.get() for k, e in entries.items()}
+        values["force_import"] = force_import_var.get()
         values["run_syncs"] = run_syncs_var.get()
         values["dry_run"] = dry_run_var.get()
         try:
@@ -134,7 +140,7 @@ def _run_gui():
         threading.Thread(target=worker, args=(argv, env), daemon=True).start()
 
     run_btn = tk.Button(root, text="Run provisioning", command=on_run)
-    run_btn.grid(row=len(FIELDS) + 2, column=0, columnspan=2, pady=6)
+    run_btn.grid(row=len(FIELDS) + 3, column=0, columnspan=2, pady=6)
     root.mainloop()
 
 

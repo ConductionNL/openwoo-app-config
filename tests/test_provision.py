@@ -398,6 +398,46 @@ def test_sync_run_raises_when_sync_missing():
         provision.provision_sync_run(client, doc, mode="run")
 
 
+# --- import (idempotent: skip when already present) ---
+
+
+class FakeImportClient:
+    def __init__(self, present):
+        self._present = present          # {bucket: [slugs]}
+        self.uploaded = False
+
+    def get(self, path):
+        for bucket, p in provision.VERIFY_BUCKETS.items():
+            if path == p:
+                return {"results": [{"slug": s} for s in self._present.get(bucket, [])]}
+        return {"results": []}
+
+    def post_file(self, path, filename, content):
+        self.uploaded = True
+        return '{"message": "Import successful"}'
+
+
+def test_import_skips_when_all_present():
+    doc = _doc(schemas=[{"slug": "a"}, {"slug": "b"}], sources=[{"slug": "s"}])
+    client = FakeImportClient({"schemas": ["a", "b"], "sources": ["s"]})
+    provision.provision_import(client, doc)
+    assert client.uploaded is False
+
+
+def test_import_uploads_when_something_missing():
+    doc = _doc(schemas=[{"slug": "a"}, {"slug": "b"}])
+    client = FakeImportClient({"schemas": ["a"]})   # b missing
+    provision.provision_import(client, doc)
+    assert client.uploaded is True
+
+
+def test_import_force_uploads_even_when_present():
+    doc = _doc(schemas=[{"slug": "a"}])
+    client = FakeImportClient({"schemas": ["a"]})
+    provision.provision_import(client, doc, force=True)
+    assert client.uploaded is True
+
+
 # --- jobs (resolve synchronizationId slug -> numeric id) ---
 
 
@@ -437,21 +477,22 @@ def test_jobs_resolves_sync_slug_to_numeric():
     assert body["arguments"]["synchronizationId"] == 65
 
 
-def test_jobs_skips_already_numeric():
-    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": 65}}])
+def test_jobs_skips_when_tenant_already_resolved():
+    # tenant job already has the numeric id and no userId change requested -> no PUT
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": "sync-a"}}])
     client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
-                            jobs=[{"slug": "job-a", "id": 65}])
+                            jobs=[{"slug": "job-a", "id": 65, "arguments": {"synchronizationId": 65}}])
     assert provision.provision_jobs(client, doc) == 0
     assert client.puts == []
 
 
-def test_jobs_sets_user_even_when_sync_id_already_numeric():
-    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": 65}}])
+def test_jobs_sets_user_even_when_sync_id_already_resolved():
+    doc = _doc(jobs=[{"slug": "job-a", "arguments": {"synchronizationId": "sync-a"}}])
     client = FakeJobsClient(syncs=[{"slug": "sync-a", "id": 65}],
-                            jobs=[{"slug": "job-a", "id": 65}])
+                            jobs=[{"slug": "job-a", "id": 65, "arguments": {"synchronizationId": 65}}])
     assert provision.provision_jobs(client, doc, job_user="admin") == 1
     (_jid, body), = client.puts
-    assert body == {"userId": "admin"}          # only userId; sync id already numeric
+    assert body == {"userId": "admin"}          # only userId; sync id already resolved
 
 
 def test_jobs_sets_sync_id_and_user_together():
@@ -578,7 +619,7 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
     monkeypatch.setattr(provision, "provision_oc_settings",
                         lambda c: calls.append("oc-settings"))
     monkeypatch.setattr(provision, "provision_import",
-                        lambda c, d: calls.append("import"))
+                        lambda c, d, **kw: calls.append("import"))
     monkeypatch.setattr(provision, "verify_import",
                         lambda c, d: (calls.append("verify"),
                                       {"schemas": {"expected": 1, "missing": verify_missing or []}})[1])
