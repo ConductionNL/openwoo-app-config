@@ -18,23 +18,39 @@ is supplied by an operator, not the reconciler.
 
 ## How it runs
 
+`provision-job.yaml` / `provision-cronjob.yaml` are **Helm templates** that drop
+straight into `nextcloud-platform`'s `tenant-resources/templates/` — they follow
+that chart's conventions (`.Values.tenant.name/namespace`,
+`tenant-resources.labels`, hardened securityContext, Argo hooks). They read the
+tenant admin from `nextcloud-secrets` (`nextcloud-username` / `nextcloud-password`)
+and target the in-cluster `nextcloud` service.
+
 1. Build + push the image (config baked in, per tag): `make image push`
    (`IMAGE`/`TAG`/`CONTAINER` overridable).
-2. Add the per-tenant Job to the ApplicationSet (`provision-job.yaml`) — an Argo
-   **PostSync hook** so it runs after the Nextcloud app + OpenCatalogi base are
-   healthy. Admin creds come from the tenant's existing admin secret (envFrom
-   `secretKeyRef`); `--base` is the in-cluster service (or the ingress URL).
-3. Optionally add `provision-cronjob.yaml` for continuous drift reconciliation.
+2. Drop `provision-job.yaml` into `tenant-resources/templates/` (Argo PostSync
+   hook → runs after Nextcloud is up). Optionally `provision-cronjob.yaml` for
+   drift reconciliation.
+3. Add the `woo` values block (below) to the tenant values.
 
 Both run `provision.py all --skip-credentials`. Because every step is
-**idempotent** (GET-check, skip when converged) the Job/CronJob is safe to run on
-every sync and on a schedule — converged runs are near no-ops.
+**idempotent** (GET-check, skip when converged) they are safe per sync and on a
+schedule — converged runs are near no-ops.
+
+## Values
+
+```yaml
+woo:
+  enabled: true                # render the WOO provisioning Job for this tenant
+  provisionerImage: conduction2022/openwoo-provisioner:<tag>
+  base: http://nextcloud       # in-cluster service (or the ingress https URL)
+  openCatalogiBase: true       # false -> adds --skip-oc-settings --skip-catalog
+  reconcile: false             # true -> also render the reconcile CronJob
+  reconcileSchedule: "*/30 * * * *"
+```
 
 ## Notes
 
-- `--skip-oc-settings --skip-catalog` if a tenant has no OpenCatalogi base.
-- If the config *content* changes, the import is still skipped on slug-presence;
-  bump behaviour with `--force-import` (rarely needed in the Job — a new image
-  tag carries the new config and the changed slugs trigger an import anyway).
-- The two manifests are **examples**: fill the `<PLACEHOLDERS>` and adapt to the
-  ApplicationSet's templating (namespace, secret names, image tag).
+- Per-tenant **source connection** (URL / API-Interface-ID / API key) is NOT set
+  here — an operator sets it via the CLI/GUI (`provision.py credentials …`).
+- On a config *content* change, ship a new image tag; the changed slugs trigger
+  an import. `--force-import` exists for the rare forced re-upload.

@@ -1,18 +1,19 @@
-# EXAMPLE — optional continuous reconciliation (drift repair) per tenant.
-#
-# Runs the same base-config provisioning on a schedule. Because every step is
-# idempotent (skips when already converged), this is a near no-op when nothing
-# drifted and self-heals when something did. Use this OR the PostSync Job (the
-# Job converges on each deploy; the CronJob also catches between-deploy drift).
-#
-# Placeholders: <NAMESPACE>, <IMAGE>:<TAG>, admin secret name/keys, --base.
+{{- if and .Values.woo.enabled .Values.woo.reconcile }}
+---
+# Optional continuous reconciliation (drift repair) for WOO tenants. Runs the
+# same idempotent base-config provisioning on a schedule — a near no-op when
+# nothing drifted, self-healing when something did. Enable per tenant with
+# .Values.woo.reconcile.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: openwoo-provision-reconcile
-  namespace: <NAMESPACE>
+  name: openwoo-provision-reconcile-{{ .Values.tenant.name }}
+  namespace: {{ .Values.tenant.namespace | default (printf "nc-%s" .Values.tenant.name) }}
+  labels:
+    {{- include "tenant-resources.labels" . | nindent 4 }}
+    app.kubernetes.io/component: woo-provisioning
 spec:
-  schedule: "*/30 * * * *"          # every 30 min
+  schedule: {{ .Values.woo.reconcileSchedule | default "*/30 * * * *" | quote }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
@@ -22,22 +23,40 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: provision
-              image: <IMAGE>:<TAG>
+              image: {{ .Values.woo.provisionerImage | default "conduction2022/openwoo-provisioner:latest" }}
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
               args:
                 - all
-                - --base=http://nextcloud
+                - --base={{ .Values.woo.base | default "http://nextcloud" }}
                 - --user=$(NC_ADMIN_USER)
                 - --password-env=NC_ADMIN_PASSWORD
                 - --skip-credentials
+                {{- if not .Values.woo.openCatalogiBase }}
+                - --skip-oc-settings
+                - --skip-catalog
+                {{- end }}
               env:
                 - name: NC_ADMIN_USER
                   valueFrom:
-                    secretKeyRef: {name: <ADMIN_SECRET>, key: <ADMIN_USER_KEY>}
+                    secretKeyRef: {name: nextcloud-secrets, key: nextcloud-username}
                 - name: NC_ADMIN_PASSWORD
                   valueFrom:
-                    secretKeyRef: {name: <ADMIN_SECRET>, key: <ADMIN_PASSWORD_KEY>}
+                    secretKeyRef: {name: nextcloud-secrets, key: nextcloud-password}
               resources:
                 requests: {cpu: 50m, memory: 64Mi}
                 limits: {cpu: 250m, memory: 128Mi}
+{{- end }}
