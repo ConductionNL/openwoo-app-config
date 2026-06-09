@@ -629,12 +629,23 @@ def resolve_apikey(args):
 
 
 def resolve_password(args):
-    """Password from --password or --password-env (kept out of argv)."""
+    """Password from --password, --password-env, or an interactive prompt.
+
+    When neither flag is given and we have a terminal, prompt with getpass so the
+    secret never lands in argv, shell history or a file.
+    """
     if args.password is not None:
         return args.password
     if args.password_env:
         return _from_env(args.password_env, "--password-env")
-    raise ProvisionError("provide --password or --password-env")
+    import getpass
+    import sys as _sys
+
+    if _sys.stdin.isatty():
+        value = getpass.getpass(f"App password for {args.user} @ {args.base}: ")
+        if value:
+            return value
+    raise ProvisionError("provide --password, --password-env, or run interactively")
 
 
 def cmd_credentials(args):

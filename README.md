@@ -67,9 +67,21 @@ python3 scripts/provision.py all \
     --password-env CANARY_PASS --apikey-env OPENWOO_APIKEY
 ```
 
-Or run a single step (`verify-import`, `sync-check`, …) to *validate* an existing
-tenant without changing it. Credentials come from the operator's own env/secret,
-never from this repo.
+Credentials can also come from an **interactive prompt** — omit `--password` /
+`--password-env` and, on a terminal, the tool asks for the app password
+(`getpass`, never stored or in argv):
+
+```bash
+python3 scripts/provision.py all \
+    --base https://<tenant> --user admin --apikey-env OPENWOO_APIKEY   # prompts for the password
+```
+
+`all` is a **convergence/repair** run: it updates the existing tenant's objects to
+the config's desired state (idempotent upserts) — it does not wipe, and does not
+prune entities that exist on the tenant but not in the config. Run a single step
+(`verify-import`, `sync-check`, …) to *validate* an existing tenant without
+changing it. Credentials come from the operator's own env/secret, never from this
+repo.
 
 ## The rule: every config change goes through this repo
 
