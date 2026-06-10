@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-10 (Phase 3 deploy wiring — real image + namespace hardening)
+- Image pinned to `docker.io/conduction2022/openwoo-provisioner:0.1.0` (built +
+  pushed; keep the Docker Hub repo **private** — the image bundles `config/` +
+  `scripts/`). `deployment.yaml` + `kustomization.yaml` updated.
+- `namespace.yaml`: Pod Security `restricted` labels (matches platform convention;
+  the deployment's securityContext complies).
+- Argo wiring lives in **Nextcloud-base** (`nextcloud-platform/argo/`): an
+  `Application` (`apps/openwoo-provisioner.yaml`) deploying `webgui/deploy` from
+  Codeberg into `openwoo-platform`, plus the `openwoo-platform` destination added
+  to the `nextcloud-platform` AppProject.
+- SSO: the Google identity provider already exists in Keycloak (configured via UI);
+  the realm import omits `identityProviders` so it is reused, not overwritten.
+
 ### Added — 2026-06-09 (web control-plane — Phase 3: Kubernetes deploy)
 - `Dockerfile` (repo root) — control-plane image: `python:3.12-slim` + Flask +
   **gunicorn** (gthread, `--timeout 3600` so the streaming `/provision` log isn't

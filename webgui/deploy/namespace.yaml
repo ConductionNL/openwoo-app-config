@@ -4,3 +4,8 @@ metadata:
   name: openwoo-platform
   labels:
     app.kubernetes.io/part-of: nextcloud-platform
+    # Pod Security: restricted (matches the platform convention). The deployment's
+    # securityContext (non-root, drop ALL, seccomp RuntimeDefault, no privesc) complies.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
