@@ -213,6 +213,8 @@ SYNCS_PATH = "/index.php/apps/openconnector/api/synchronizations"
 JOBS_PATH = "/index.php/apps/openconnector/api/jobs"
 REGISTERS_PATH = "/index.php/apps/openregister/api/registers"
 SCHEMAS_PATH = "/index.php/apps/openregister/api/schemas"
+MAPPINGS_PATH = "/index.php/apps/openconnector/api/mappings"
+RULES_PATH = "/index.php/apps/openconnector/api/rules"
 
 # Config bucket -> the tenant list endpoint that should hold its rows after
 # import. Used by verify_import to compare config slugs against what is actually
@@ -347,6 +349,102 @@ def provision_jobs(client, doc, job_user=None):
     return done
 
 
+def _resolve_target_id(target, registers, schemas):
+    """Resolve a 'registerslug/schemaslug' targetId to 'regid/schemaid'. Returns
+    None if either side does not resolve. Already-numeric sides pass through."""
+    if not isinstance(target, str) or "/" not in target:
+        return None
+    reg, sch = target.split("/", 1)
+    rid = reg if _is_numeric(reg) else registers.get(reg)
+    sid = sch if _is_numeric(sch) else schemas.get(sch)
+    if rid is None or sid is None:
+        return None
+    return f"{rid}/{sid}"
+
+
+def provision_syncs(client, doc):
+    """Resolve each synchronization's slug references to tenant numeric ids.
+
+    The config is portable and carries *slugs* for `sourceId`, `sourceTargetMapping`,
+    `actions` (rule slugs) and `targetId` ('register/schema'). The import only
+    resolves cross-object references against what already exists in the SAME pass,
+    so on a fresh tenant these forward references (sync -> source/mapping/rule/
+    register/schema) are left as slugs and break at run time — e.g.
+    `SQLSTATE[22P02] invalid input syntax for type bigint: "demo-xxllnc"` when the
+    sync's sourceId is still the source slug. (Re-importing only shifts the problem:
+    the second pass resolves the syncs but re-slugs the jobs.) So we resolve them
+    here, post-import, against the final numeric ids — the same approach
+    provision_jobs uses for a job's synchronizationId. Idempotent: a field is only
+    PUT when it differs; a fully-resolved tenant is a no-op. Matched by slug.
+    """
+    sources = slug_to_id(results_list(client.get(SOURCES_PATH)))
+    mappings = slug_to_id(results_list(client.get(MAPPINGS_PATH)))
+    rules = slug_to_id(results_list(client.get(RULES_PATH)))
+    registers = slug_to_id(results_list(client.get(REGISTERS_PATH)))
+    schemas = slug_to_id(results_list(client.get(SCHEMAS_PATH)))
+    tenant = {s.get("slug"): s for s in results_list(client.get(SYNCS_PATH)) if s.get("slug")}
+    done = 0
+    for sync in bucket_items(doc, "synchronizations"):
+        slug = sync.get("slug")
+        if not slug:
+            continue
+        if slug not in tenant:
+            raise ProvisionError(f"syncs: synchronization '{slug}' not on the tenant")
+        ts = tenant[slug]
+        body = {}
+
+        src = sync.get("sourceId")
+        if src is not None and not _is_numeric(src):
+            if src not in sources:
+                raise ProvisionError(f"syncs: '{slug}' sourceId '{src}' is not a tenant source slug")
+            if str(ts.get("sourceId")) != str(sources[src]):
+                body["sourceId"] = sources[src]
+
+        mp = sync.get("sourceTargetMapping")
+        if mp and not _is_numeric(mp):
+            if mp not in mappings:
+                raise ProvisionError(f"syncs: '{slug}' sourceTargetMapping '{mp}' is not a tenant mapping slug")
+            if str(ts.get("sourceTargetMapping")) != str(mappings[mp]):
+                body["sourceTargetMapping"] = mappings[mp]
+
+        acts = sync.get("actions")
+        if isinstance(acts, list) and acts:
+            resolved = []
+            for a in acts:
+                if _is_numeric(a):
+                    resolved.append(int(a) if isinstance(a, str) else a)
+                elif a in rules:
+                    resolved.append(rules[a])
+                else:
+                    raise ProvisionError(f"syncs: '{slug}' action '{a}' is not a tenant rule slug")
+            if [str(x) for x in (ts.get("actions") or [])] != [str(x) for x in resolved]:
+                body["actions"] = resolved
+
+        tgt = sync.get("targetId")
+        if isinstance(tgt, str) and "/" in tgt and not all(p.isdigit() for p in tgt.split("/")):
+            desired = _resolve_target_id(tgt, registers, schemas)
+            if desired is None:
+                raise ProvisionError(f"syncs: '{slug}' targetId '{tgt}' did not resolve to register/schema ids")
+            if str(ts.get("targetId")) != str(desired):
+                body["targetId"] = desired
+
+        if not body:
+            continue
+        client.put(f"{SYNCS_PATH}/{ts['id']}", body)
+        after = client.get(f"{SYNCS_PATH}/{ts['id']}")
+        after = after if isinstance(after, dict) else {}
+        for k, v in body.items():
+            got = after.get(k)
+            if k == "actions":
+                if [str(x) for x in (got or [])] != [str(x) for x in v]:
+                    raise ProvisionError(f"syncs: '{slug}' actions did not reflect (got {got!r})")
+            elif str(got) != str(v):
+                raise ProvisionError(f"syncs: '{slug}' {k} did not reflect (got {got!r}, want {v!r})")
+        log(f"  sync '{slug}': {', '.join(f'{k}={v}' for k, v in body.items())} OK")
+        done += 1
+    return done
+
+
 def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
                   settings=None, oc_settings=True, do_import=True, force_import=False,
                   catalog=True, do_credentials=True, job_user=None, run_syncs=False,
@@ -364,57 +462,64 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
     and job runs stay separate.
     """
     if settings is not None:
-        log("[1/9] settings")
+        log("[1/10] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/9] settings — skipped")
+        log("[1/10] settings — skipped")
 
     if oc_settings:
-        log("[2/9] oc-settings")
+        log("[2/10] oc-settings")
         provision_oc_settings(client)
     else:
-        log("[2/9] oc-settings — skipped")
+        log("[2/10] oc-settings — skipped")
 
     if do_import:
-        log("[3/9] import")
+        log("[3/10] import")
         provision_import(client, doc, force=force_import)
     else:
-        log("[3/9] import — skipped")
+        log("[3/10] import — skipped")
 
-    log("[4/9] verify-import")
+    log("[4/10] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
     if catalog:
-        log("[5/9] catalog")
+        log("[5/10] catalog")
         provision_catalog(client, doc)
     else:
-        log("[5/9] catalog — skipped")
+        log("[5/10] catalog — skipped")
 
     if do_credentials:
-        log("[6/9] credentials")
+        log("[6/10] credentials")
         provision_credentials(client, doc, apikey=apikey, source_url=source_url,
                               interface_id=interface_id)
     else:
-        log("[6/9] credentials — skipped (per-tenant source params set out-of-band)")
+        log("[6/10] credentials — skipped (per-tenant source params set out-of-band)")
 
-    log("[7/9] sync-check")
+    # Resolve the synchronizations' own slug references (sourceId / mapping / rules
+    # / targetId) before the check + run — the import leaves forward references as
+    # slugs on a fresh tenant (see provision_syncs).
+    log("[7/10] sync-refs")
+    n = provision_syncs(client, doc)
+    log(f"  sync-refs: {n} synchronization(s) resolved")
+
+    log("[8/10] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
-    log("[8/9] jobs")
+    log("[9/10] jobs")
     n = provision_jobs(client, doc, job_user=job_user)
     log(f"  jobs: {n} job(s) updated"
         f"{f' (userId={job_user})' if job_user else ''}")
 
     if run_syncs:
-        log(f"[9/9] sync-run ({sync_mode})")
+        log(f"[10/10] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[9/9] sync-run — skipped (pass --run-syncs)")
+        log("[10/10] sync-run — skipped (pass --run-syncs)")
     return True
 
 
@@ -962,6 +1067,15 @@ def cmd_jobs(args):
     return 0
 
 
+def cmd_syncs(args):
+    doc = load_config(args.config)
+    client = make_client(args)
+    log(f"resolving synchronization references on {args.base}")
+    n = provision_syncs(client, doc)
+    log(f"SYNCS OK ({n} synchronization(s) resolved)")
+    return 0
+
+
 def cmd_oc_settings(args):
     client = make_client(args)
     log(f"provisioning OpenCatalogi settings against {args.base}")
@@ -1094,6 +1208,13 @@ def build_parser():
                     help="job userId to set on every job (default: the admin --user; workaround for Anonymous job runs)")
     jb.set_defaults(func=cmd_jobs)
 
+    sy = sub.add_parser(
+        "syncs",
+        help="resolve each synchronization's slug refs (sourceId/mapping/actions/targetId -> tenant ids) and assert",
+    )
+    _add_connection_args(sy)
+    sy.set_defaults(func=cmd_syncs)
+
     ocs = sub.add_parser(
         "oc-settings",
         help="couple OpenCatalogi object types (catalog/listing/…) to their register + schema",
@@ -1149,7 +1270,7 @@ def build_parser():
 
     al = sub.add_parser(
         "all",
-        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> credentials -> sync-check -> jobs [-> sync-run]",
+        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> credentials -> sync-refs -> sync-check -> jobs [-> sync-run]",
     )
     _add_connection_args(al)
     al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")

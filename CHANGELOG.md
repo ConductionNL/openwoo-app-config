@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-10 (resolve synchronization slug references — fresh-tenant fix)
+- New `provision.py syncs` step (and step `[7/10]` in `all`): after import, resolve
+  each synchronization's slug references — `sourceId`, `sourceTargetMapping`,
+  `actions` (rule slugs), `targetId` (`register/schema`) — to the tenant's numeric
+  ids and PUT them, asserting they reflect. Idempotent (no-op once resolved).
+- Why: the OpenRegister/OpenConnector import only resolves cross-object references
+  against what already exists in the *same* pass, so on a **fresh** tenant a sync's
+  forward references stay slugs and break at run time — e.g.
+  `SQLSTATE[22P02] invalid input syntax for type bigint: "demo-xxllnc"` (sourceId
+  still the source slug). Re-importing only shifts the problem (resolves syncs but
+  re-slugs the jobs). This mirrors how `provision_jobs` already resolves a job's
+  `synchronizationId`, so one import + the two resolve steps converge a clean tenant.
+- Tests: 4 new (resolve all refs / idempotent / unknown-source / reflect-assert).
+  73 passed, 1 skipped.
+
 ### Fixed — 2026-06-10 (samenvatting varchar(255) overflow on sync)
 - All 17 WOO schemas defined `samenvatting` as `string` with `maxLength: 255`,
   which OpenRegister's MagicMapper materialises as a `varchar(255)` column. Real

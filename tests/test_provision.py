@@ -529,6 +529,81 @@ def test_jobs_raises_when_not_reflected():
         provision.provision_jobs(client, doc)
 
 
+class FakeSyncsClient:
+    """Serves source/mapping/rule/register/schema + sync lists; PUT merges into the
+    sync and GET-by-id reflects the merge (unless reflect=False)."""
+
+    def __init__(self, syncs, reflect=True):
+        self._syncs = {s["id"]: dict(s) for s in syncs}
+        self._reflect = reflect
+        self.puts = []
+        self._lists = {
+            "/sources": [{"slug": "demo-xxllnc", "id": 1}],
+            "/mappings": [{"slug": "xllnc-openwoo-app", "id": 7}],
+            "/rules": [{"slug": "xxllnc-fetch-files", "id": 3}],
+            "/registers": [{"slug": "woo", "id": 2}],
+            "/schemas": [{"slug": "woo_verzoeken_en_besluiten", "id": 17}],
+        }
+
+    def get(self, path):
+        if path.endswith("/synchronizations"):
+            return {"results": list(self._syncs.values())}
+        if "/synchronizations/" in path:
+            return dict(self._syncs[int(path.rsplit("/", 1)[1])])
+        for suffix, rows in self._lists.items():
+            if path.endswith(suffix):
+                return {"results": rows}
+        raise AssertionError(path)
+
+    def put(self, path, body):
+        sid = int(path.rsplit("/", 1)[1])
+        self.puts.append((sid, body))
+        if self._reflect:
+            self._syncs[sid].update(body)
+        return dict(self._syncs[sid])
+
+
+def _sync_cfg(**over):
+    base = {"slug": "sync-a", "sourceId": "demo-xxllnc",
+            "sourceTargetMapping": "xllnc-openwoo-app", "actions": ["xxllnc-fetch-files"],
+            "targetType": "register/schema", "targetId": "woo/woo_verzoeken_en_besluiten"}
+    base.update(over)
+    return base
+
+
+def test_syncs_resolves_all_slug_refs_to_ids():
+    doc = _doc(synchronizations=[_sync_cfg()])
+    client = FakeSyncsClient(syncs=[dict(_sync_cfg(), id=5)])  # tenant still holds the slugs
+    assert provision.provision_syncs(client, doc) == 1
+    (_sid, body), = client.puts
+    assert body["sourceId"] == 1
+    assert body["sourceTargetMapping"] == 7
+    assert body["actions"] == [3]
+    assert body["targetId"] == "2/17"
+
+
+def test_syncs_idempotent_when_already_numeric():
+    doc = _doc(synchronizations=[_sync_cfg()])
+    client = FakeSyncsClient(syncs=[{"slug": "sync-a", "id": 5, "sourceId": 1,
+                                     "sourceTargetMapping": 7, "actions": [3], "targetId": "2/17"}])
+    assert provision.provision_syncs(client, doc) == 0
+    assert client.puts == []
+
+
+def test_syncs_raises_on_unknown_source_slug():
+    doc = _doc(synchronizations=[_sync_cfg(sourceId="ghost")])
+    client = FakeSyncsClient(syncs=[dict(_sync_cfg(sourceId="ghost"), id=5)])
+    with pytest.raises(provision.ProvisionError, match="not a tenant source slug"):
+        provision.provision_syncs(client, doc)
+
+
+def test_syncs_raises_when_not_reflected():
+    doc = _doc(synchronizations=[_sync_cfg()])
+    client = FakeSyncsClient(syncs=[dict(_sync_cfg(), id=5)], reflect=False)
+    with pytest.raises(provision.ProvisionError, match="did not reflect"):
+        provision.provision_syncs(client, doc)
+
+
 # --- objects ---
 
 
@@ -638,6 +713,8 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
     monkeypatch.setattr(provision, "sync_check",
                         lambda c, d: (calls.append("sync-check"),
                                       {"total": 1, "dangling": dangling or []})[1])
+    monkeypatch.setattr(provision, "provision_syncs",
+                        lambda c, d: calls.append("sync-refs") or 0)
     monkeypatch.setattr(provision, "provision_jobs",
                         lambda c, d, **kw: calls.append("jobs") or 0)
     monkeypatch.setattr(provision, "provision_sync_run",
@@ -649,7 +726,7 @@ def test_provision_all_runs_steps_in_order(monkeypatch):
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
     assert calls == ["settings", "oc-settings", "import", "verify",
-                     "catalog", "credentials", "sync-check", "jobs"]
+                     "catalog", "credentials", "sync-refs", "sync-check", "jobs"]
 
 
 def test_provision_all_skips_optional_steps(monkeypatch):
@@ -657,7 +734,7 @@ def test_provision_all_skips_optional_steps(monkeypatch):
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings=None, oc_settings=False, do_import=False,
                             catalog=False, do_credentials=False, run_syncs=True, sync_mode="test")
-    assert calls == ["verify", "sync-check", "jobs", "sync-run:test"]
+    assert calls == ["verify", "sync-refs", "sync-check", "jobs", "sync-run:test"]
 
 
 def test_provision_all_stops_on_incomplete_import(monkeypatch):
