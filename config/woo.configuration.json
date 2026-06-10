@@ -929,7 +929,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -1173,7 +1173,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -1328,7 +1328,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -1572,7 +1572,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -1727,7 +1727,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -1982,7 +1982,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -2127,7 +2127,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -2382,7 +2382,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -2527,7 +2527,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -2782,7 +2782,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -2927,7 +2927,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -3182,7 +3182,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -3327,7 +3327,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -3582,7 +3582,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -3727,7 +3727,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -3982,7 +3982,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -4128,7 +4128,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -4384,7 +4384,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -4540,7 +4540,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -4795,7 +4795,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -4940,7 +4940,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -5195,7 +5195,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -5348,7 +5348,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -5603,7 +5603,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -5748,7 +5748,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -6003,7 +6003,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -6149,7 +6149,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -6404,7 +6404,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -6549,7 +6549,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -6804,7 +6804,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -6949,7 +6949,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -7204,7 +7204,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {
@@ -7349,7 +7349,7 @@
             "example": "",
             "exclusiveMax": false,
             "exclusiveMin": false,
-            "facetable": true,
+            "facetable": false,
             "fileConfiguration": {
               "allowedMimeTypes": [],
               "handling": "ignore",
@@ -7604,7 +7604,7 @@
           },
           "values": {
             "description": "Binnen KOOP Woo Index kunnen waardes niet uitlijnen op TOOI wel worden meegegeven in key value pair's. Deze zijn vervolgens wel doorzoekbaar maar geen onderdeel van de open.overheid.nl user interface",
-            "facetable": true,
+            "facetable": false,
             "hideOnCollection": true,
             "hideOnForm": true,
             "items": {

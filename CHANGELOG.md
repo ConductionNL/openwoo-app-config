@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Fixed — 2026-06-10 (btree index overflow on array fields)
+- `attachments` and `values` (both `array`) were `facetable: true` in all 17
+  schemas, so OpenRegister/MagicMapper put a **btree index** on the serialised
+  array. A large attachments list overflowed Postgres' index-row limit on sync:
+  `SQLSTATE[54000] index row requires 59520 bytes, maximum size is 8191`
+  (gooisemeren.migrate). Faceting on a serialised array is meaningless anyway.
+- Fix: `facetable: false` on `attachments` + `values` (34 properties, both arrays).
+  `thema`/`titel` stay facetable (short, sensible facets). Lint 0/0.
+- Note: like a column-type change, an existing index is not dropped in place —
+  a tenant whose table already has the index needs a fresh table (re-wipe) for
+  the fix to take effect.
+
 ### Added — 2026-06-10 (resolve synchronization slug references — fresh-tenant fix)
 - New `provision.py syncs` step (and step `[7/10]` in `all`): after import, resolve
   each synchronization's slug references — `sourceId`, `sourceTargetMapping`,
