@@ -22,10 +22,10 @@ spec:
         - protocol: TCP
           port: 4180
   egress:
-    # DNS resolution.
-    - to:
-        - namespaceSelector: {}
-      ports:
+    # DNS resolution. No `to` selector: the resolver is the kube-dns Service
+    # ClusterIP (100.64.0.10), which a namespaceSelector can't match (it selects
+    # pods, not Service VIPs). Open 53 to any destination, like 443 below.
+    - ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
