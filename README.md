@@ -169,8 +169,7 @@ automatically.
 - **bad-authorization** — every schema `authorization` key is a valid action
   (`create`/`read`/`update`/`delete`) or the `inheritFromPublic` flag. Any other
   key is unrecognised and fails the gate. (`inheritFromPublic` imports natively on
-  OpenRegister 1.0.3+; OpenRegister 0.2.3 rejected it — see
-  `docs/BUG-import-inheritFromPublic.md`.)
+  OpenRegister 1.0.3+; OpenRegister 0.2.3 rejected it.)
 - **data-leak** (warn) — stored `objects` in a config export.
 
 ## Layer 2 — functional import test (local)

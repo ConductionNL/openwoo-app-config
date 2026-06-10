@@ -528,7 +528,7 @@ IMPORT_PATH = "/index.php/apps/openregister/api/configurations/import"
 # tenant. inheritFromPublic defaults to true; explicit false isolates
 # publications per department (e.g. Almere). NOTE: OpenRegister 0.2.3's import
 # rejected this key and silently dropped the schema; fixed in 1.0.3, which
-# imports it natively (see docs/BUG-import-inheritFromPublic.md). `import` now
+# imports it natively. `import` now
 # uploads the config as-is; `authorization` remains for explicit repair (e.g.
 # flipping inheritFromPublic to false on an existing tenant).
 AUTH_FLAG_KEYS = {"inheritFromPublic"}
