@@ -22,4 +22,4 @@ configMapGenerator:
 #   kustomize edit set image docker.io/conduction2022/openwoo-provisioner=<registry>/openwoo-provisioner:<tag>
 images:
   - name: docker.io/conduction2022/openwoo-provisioner
-    newTag: "0.1.0"
+    newTag: "0.1.1"
