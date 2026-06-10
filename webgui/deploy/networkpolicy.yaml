@@ -7,9 +7,17 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: openwoo-provisioner
+  # Ingress-only. The security control is the SOLE-INGRESS restriction below
+  # (only ingress-nginx may reach the pod, only on :4180) which — together with
+  # the app's 127.0.0.1 bind — is the trust anchor for X-Forwarded-Email.
+  #
+  # Egress is intentionally NOT restricted: an egress policy here (even allowing
+  # 53 to all destinations) broke DNS resolution under this cluster's Calico CNI
+  # (oauth2-proxy → "lookup iam.commonground.nu: i/o timeout"), and the app
+  # legitimately needs outbound to Keycloak + arbitrary tenant public URLs anyway.
+  # This matches the working tenant-namespace baseline (no egress policy).
   policyTypes:
     - Ingress
-    - Egress
   ingress:
     # Only the ingress-nginx controller may reach the pod, and only on the
     # oauth2-proxy port. Together with the app's 127.0.0.1 bind this enforces
@@ -21,18 +29,3 @@ spec:
       ports:
         - protocol: TCP
           port: 4180
-  egress:
-    # DNS resolution. No `to` selector: the resolver is the kube-dns Service
-    # ClusterIP (100.64.0.10), which a namespaceSelector can't match (it selects
-    # pods, not Service VIPs). Open 53 to any destination, like 443 below.
-    - ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # HTTPS out: Keycloak (oauth2-proxy ↔ iam.commonground.nu) and the tenant
-    # public URLs the operator provisions. Destinations are operator-chosen, so
-    # this is a broad 443 egress — acceptable because the trigger is now behind auth.
-    - ports:
-        - protocol: TCP
-          port: 443
