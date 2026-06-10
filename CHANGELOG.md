@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Fixed — 2026-06-10 (samenvatting varchar(255) overflow on sync)
+- All 17 WOO schemas defined `samenvatting` as `string` with `maxLength: 255`,
+  which OpenRegister's MagicMapper materialises as a `varchar(255)` column. Real
+  xxllnc data (e.g. a Woo-verzoek summary) exceeds 255 chars → the sync-run failed
+  with `SQLSTATE[22001] value too long for type character varying(255)` when saving
+  the object (confirmed in the canary nextcloud.log, table `openregister_table_2_17`).
+- Fix: `samenvatting` → `format: "text"` (drop `maxLength`), matching the existing
+  convention for long free-text fields (`titel`, `categorie`) so MagicMapper creates
+  a TEXT column. Applied to all 17 schemas. Lint 0/0.
+- Note: an existing `varchar(255)` column is not reliably widened in place; a tenant
+  whose table was already created needs a fresh table (reset) for the TEXT column to
+  take effect. Broadening the other free-text fields to `text` is a follow-up
+  ("optimaliseren") once the targeted fix is confirmed on a clean canary.
+
 ### Changed — 2026-06-10 (Phase 3 deploy wiring — real image + namespace hardening)
 - Image pinned to `docker.io/conduction2022/openwoo-provisioner:0.1.0` (built +
   pushed; keep the Docker Hub repo **private** — the image bundles `config/` +

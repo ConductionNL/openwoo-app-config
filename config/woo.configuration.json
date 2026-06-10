@@ -1076,7 +1076,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -1475,7 +1475,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -1885,7 +1885,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -2285,7 +2285,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -2685,7 +2685,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -3085,7 +3085,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -3485,7 +3485,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -3885,7 +3885,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -4287,7 +4287,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -4698,7 +4698,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -5098,7 +5098,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -5506,7 +5506,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -5906,7 +5906,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -6307,7 +6307,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -6707,7 +6707,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -7107,7 +7107,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
@@ -7507,7 +7507,7 @@
           "samenvatting": {
             "extends": "#/components/templates/commonPropertyDefaults",
             "facetable": false,
-            "maxLength": 255,
+            "format": "text",
             "order": 5,
             "title": "Samenvatting",
             "type": "string"
