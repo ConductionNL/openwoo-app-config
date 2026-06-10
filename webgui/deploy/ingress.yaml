@@ -13,6 +13,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    # oauth2-proxy session cookies can be large; give nginx headroom for the
+    # response/header buffers so split-cookie requests don't 502.
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
 spec:
   ingressClassName: nginx
   tls:
