@@ -280,9 +280,11 @@ class FakeSettingsClient:
         return {}
 
     def get(self, path):
-        key = "organisation" if path.endswith("organisation") else "multitenancy"
         value = dict(self._store.get(path, {}))
         value.update(self._extra)  # server may add fields we didn't send
+        if path.endswith("retention") or path.endswith("files"):
+            return value  # retention/files are returned unwrapped (no key wrapper)
+        key = "organisation" if path.endswith("organisation") else "multitenancy"
         return {key: value}
 
 
@@ -604,6 +606,92 @@ def test_syncs_raises_when_not_reflected():
         provision.provision_syncs(client, doc)
 
 
+class FakeRulesClient:
+    """Serves /sources + /rules lists; PUT merges into the rule, GET-by-id reflects."""
+
+    def __init__(self, rules, sources=None, reflect=True):
+        self._rules = {r["id"]: dict(r) for r in rules}
+        self._sources = sources or [{"slug": "demo-xxllnc", "id": 1}]
+        self._reflect = reflect
+        self.puts = []
+
+    def get(self, path):
+        if path.endswith("/sources"):
+            return {"results": self._sources}
+        if path.endswith("/rules"):
+            return {"results": list(self._rules.values())}
+        if "/rules/" in path:
+            return dict(self._rules[int(path.rsplit("/", 1)[1])])
+        raise AssertionError(path)
+
+    def put(self, path, body):
+        rid = int(path.rsplit("/", 1)[1])
+        self.puts.append((rid, body))
+        if self._reflect:
+            self._rules[rid].update(body)
+        return dict(self._rules[rid])
+
+
+def _rule_cfg(source="demo-xxllnc"):
+    return {"slug": "r-fetch",
+            "configuration": {"fetch_file": {"source": source, "filePath": "attachments"}}}
+
+
+def test_rules_resolves_source_slug_to_id():
+    doc = _doc(rules=[_rule_cfg()])
+    client = FakeRulesClient(rules=[dict(_rule_cfg(), id=9)])
+    assert provision.provision_rules(client, doc) == 1
+    (_rid, body), = client.puts
+    assert body["configuration"]["fetch_file"]["source"] == 1
+    assert body["configuration"]["fetch_file"]["filePath"] == "attachments"  # other keys kept
+
+
+def test_rules_idempotent_when_source_numeric():
+    doc = _doc(rules=[_rule_cfg()])
+    client = FakeRulesClient(rules=[{"slug": "r-fetch", "id": 9,
+                                     "configuration": {"fetch_file": {"source": 1}}}])
+    assert provision.provision_rules(client, doc) == 0
+    assert client.puts == []
+
+
+def test_rules_raises_on_unknown_source_slug():
+    doc = _doc(rules=[_rule_cfg(source="ghost")])
+    client = FakeRulesClient(rules=[dict(_rule_cfg(source="ghost"), id=9)])
+    with pytest.raises(provision.ProvisionError, match="not a tenant source slug"):
+        provision.provision_rules(client, doc)
+
+
+class FakeRetentionClient:
+    """Serves one unwrapped settings dict; PUT merges + GET reflects."""
+
+    def __init__(self, current):
+        self._s = dict(current)
+        self.puts = []
+
+    def get(self, path):
+        return dict(self._s)
+
+    def put(self, path, body):
+        self.puts.append(body)
+        self._s.update(body)
+        return dict(self._s)
+
+
+def test_put_settings_unwrapped_reflects_and_skips():
+    c = FakeRetentionClient({"auditTrailsEnabled": True, "searchTrailsEnabled": True})
+    got = provision.put_settings_reflected(
+        c, "/x", "retention",
+        {"auditTrailsEnabled": False, "searchTrailsEnabled": False}, wrapped=False)
+    assert got["auditTrailsEnabled"] is False and got["searchTrailsEnabled"] is False
+    assert c.puts == [{"auditTrailsEnabled": False, "searchTrailsEnabled": False}]
+    # second call is a no-op (already set)
+    c.puts.clear()
+    provision.put_settings_reflected(
+        c, "/x", "retention",
+        {"auditTrailsEnabled": False, "searchTrailsEnabled": False}, wrapped=False)
+    assert c.puts == []
+
+
 # --- objects ---
 
 
@@ -715,6 +803,7 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
                                       {"total": 1, "dangling": dangling or []})[1])
     monkeypatch.setattr(provision, "provision_syncs",
                         lambda c, d: calls.append("sync-refs") or 0)
+    monkeypatch.setattr(provision, "provision_rules", lambda c, d: 0)
     monkeypatch.setattr(provision, "provision_jobs",
                         lambda c, d, **kw: calls.append("jobs") or 0)
     monkeypatch.setattr(provision, "provision_sync_run",

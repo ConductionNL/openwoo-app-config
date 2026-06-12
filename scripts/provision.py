@@ -445,6 +445,47 @@ def provision_syncs(client, doc):
     return done
 
 
+def provision_rules(client, doc):
+    """Resolve each `fetch_file` rule's source slug -> tenant numeric source id.
+
+    Same forward-reference problem as provision_syncs, for the rule object: the
+    config carries `configuration.fetch_file.source` as the source *slug*
+    (`demo-xxllnc`), and the import leaves it a slug (or drops it) on a fresh
+    tenant, so the fetch_file action cannot resolve the source. Resolve it
+    post-import to the numeric id. Idempotent; matched by slug; PUTs the full rule
+    back (the API merges/echoes the object). Only touches fetch_file rules.
+    """
+    sources = slug_to_id(results_list(client.get(SOURCES_PATH)))
+    tenant = {r.get("slug"): r for r in results_list(client.get(RULES_PATH)) if r.get("slug")}
+    done = 0
+    for rule in bucket_items(doc, "rules"):
+        slug = rule.get("slug")
+        cfg = (rule.get("configuration") or {}).get("fetch_file")
+        if not slug or not isinstance(cfg, dict) or "source" not in cfg:
+            continue
+        if slug not in tenant:
+            raise ProvisionError(f"rules: rule '{slug}' not on the tenant")
+        want = cfg["source"]
+        if not _is_numeric(want):
+            if want not in sources:
+                raise ProvisionError(f"rules: '{slug}' source '{want}' is not a tenant source slug")
+            want = sources[want]
+        tr = tenant[slug]
+        tr_ff = (tr.get("configuration") or {}).get("fetch_file") or {}
+        if str(tr_ff.get("source")) == str(want):
+            continue  # already resolved
+        body = dict(tr)
+        body["configuration"] = {**(tr.get("configuration") or {}),
+                                 "fetch_file": {**tr_ff, "source": want}}
+        client.put(f"{RULES_PATH}/{tr['id']}", body)
+        after = (client.get(f"{RULES_PATH}/{tr['id']}").get("configuration") or {}).get("fetch_file") or {}
+        if str(after.get("source")) != str(want):
+            raise ProvisionError(f"rules: '{slug}' source did not reflect (got {after.get('source')!r})")
+        log(f"  rule '{slug}': fetch_file.source={want} OK")
+        done += 1
+    return done
+
+
 def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
                   settings=None, oc_settings=True, do_import=True, force_import=False,
                   catalog=True, do_credentials=True, job_user=None, run_syncs=False,
@@ -504,6 +545,8 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
     log("[7/10] sync-refs")
     n = provision_syncs(client, doc)
     log(f"  sync-refs: {n} synchronization(s) resolved")
+    nr = provision_rules(client, doc)
+    log(f"  sync-refs: {nr} rule(s) resolved")
 
     log("[8/10] sync-check")
     chk = sync_check(client, doc)
@@ -657,22 +700,42 @@ def provision_object(client, register, schema, payload):
 
 SETTINGS_ORG_PATH = "/index.php/apps/openregister/api/settings/organisation"
 SETTINGS_MT_PATH = "/index.php/apps/openregister/api/settings/multitenancy"
+SETTINGS_RETENTION_PATH = "/index.php/apps/openregister/api/settings/retention"
+SETTINGS_FILES_PATH = "/index.php/apps/openregister/api/settings/files"
+
+# Trail policy applied to every tenant. A WOO sync creates many objects; audit +
+# search trails add write/index overhead with little value for these published
+# registers, so disable them. NOTE: governance trade-off — flip to True if a
+# tenant needs the trails.
+RETENTION_SETTINGS = {"auditTrailsEnabled": False, "searchTrailsEnabled": False}
+
+# File text-extraction mode: "manual" (don't auto-extract on every file/object
+# change — extract on demand). Partial PUT merges, so other file settings are kept.
+# The /settings/files endpoint is OpenRegister 1.1.x+; on older tenants it is
+# absent and the step is skipped (best-effort). Object text extraction
+# (objectExtractionMode) lives in the `objectManagement` app value and is NOT
+# settable via this API — set it in the OpenRegister UI (see docs).
+FILE_SETTINGS = {"extractionMode": "manual"}
 
 
-def put_settings_reflected(client, path, key, payload):
-    """PUT a settings payload, GET it back (unwrapping `key`), assert it reflects.
+def put_settings_reflected(client, path, key, payload, wrapped=True):
+    """PUT a settings payload, GET it back, assert it reflects.
 
-    These endpoints return the saved values wrapped under a single key
-    (`{"organisation": {...}}` / `{"multitenancy": {...}}`); we only assert the
-    fields we sent, so extra server-side fields (e.g. an auto-created org id) are
-    fine.
+    `organisation`/`multitenancy` return the saved values wrapped under a single
+    key (`{"organisation": {...}}`); `retention` returns them unwrapped (the dict
+    itself). `wrapped` selects which. We only assert the fields we sent, so extra
+    server-side fields (e.g. an auto-created org id) are fine.
     """
-    current = client.get(path).get(key, {})
+    def unwrap(resp):
+        if not isinstance(resp, dict):
+            return {}
+        return resp.get(key, {}) if wrapped else resp
+    current = unwrap(client.get(path))
     if isinstance(current, dict) and all(current.get(k) == v for k, v in payload.items()):
         log(f"  {key}: already set, skipping")
         return current
     client.put(path, payload)
-    got = client.get(path).get(key, {})
+    got = unwrap(client.get(path))
     mismatched = {k: got.get(k) for k, v in payload.items() if got.get(k) != v}
     if mismatched:
         raise ProvisionError(
@@ -728,12 +791,24 @@ def provision_oc_settings(client, register="publication", object_types=None):
 
 
 def provision_settings(client, organisation, multitenancy):
-    """PUT the organisation and multitenancy settings and assert both reflect."""
+    """PUT the organisation, multitenancy and retention settings and assert each
+    reflects. Retention disables audit + search trails (see RETENTION_SETTINGS)."""
     log("  PUT settings/organisation")
     org = put_settings_reflected(client, SETTINGS_ORG_PATH, "organisation", organisation)
     log("  PUT settings/multitenancy")
     mt = put_settings_reflected(client, SETTINGS_MT_PATH, "multitenancy", multitenancy)
-    return {"organisation": org, "multitenancy": mt}
+    log("  PUT settings/retention (audit/search trails off)")
+    ret = put_settings_reflected(client, SETTINGS_RETENTION_PATH, "retention",
+                                 RETENTION_SETTINGS, wrapped=False)
+    files = None
+    try:
+        log("  PUT settings/files (text extraction = manual)")
+        files = put_settings_reflected(client, SETTINGS_FILES_PATH, "files",
+                                       FILE_SETTINGS, wrapped=False)
+    except ProvisionError as exc:
+        # /settings/files is 1.1.x+; skip gracefully on older tenants.
+        log(f"  settings/files unavailable (pre-1.1.x?), skipping text-extraction: {str(exc)[:80]}")
+    return {"organisation": org, "multitenancy": mt, "retention": ret, "files": files}
 
 
 def target_schema_resolved(target_id):
@@ -1076,6 +1151,15 @@ def cmd_syncs(args):
     return 0
 
 
+def cmd_rules(args):
+    doc = load_config(args.config)
+    client = make_client(args)
+    log(f"resolving rule (fetch_file) source references on {args.base}")
+    n = provision_rules(client, doc)
+    log(f"RULES OK ({n} rule(s) resolved)")
+    return 0
+
+
 def cmd_oc_settings(args):
     client = make_client(args)
     log(f"provisioning OpenCatalogi settings against {args.base}")
@@ -1214,6 +1298,13 @@ def build_parser():
     )
     _add_connection_args(sy)
     sy.set_defaults(func=cmd_syncs)
+
+    ru = sub.add_parser(
+        "rules",
+        help="resolve each fetch_file rule's source slug -> tenant numeric id and assert",
+    )
+    _add_connection_args(ru)
+    ru.set_defaults(func=cmd_rules)
 
     ocs = sub.add_parser(
         "oc-settings",

@@ -4,6 +4,26 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-12 (rule source resolver + OpenRegister settings hardening)
+- **`provision.py rules`** (+ step in `all`'s `sync-refs`): resolve each
+  `fetch_file` rule's `configuration.fetch_file.source` slug → tenant numeric
+  source id. Same forward-reference gap as the syncs (the import leaves it a slug
+  or drops it on a fresh tenant, so the fetch_file action can't resolve the
+  source). Idempotent. Confirmed live on canary 1.1.1 (`fetch_file.source=1 OK`).
+  `BUG-import-forward-refs.md` extended to cover this case.
+- **`provision_settings`** now also applies (idempotent, partial PUT merges):
+  - `PUT /settings/retention` → **audit + search trails OFF**
+    (`auditTrailsEnabled`/`searchTrailsEnabled` = false) — WOO syncs create many
+    objects; the trails add overhead with little value here. Governance trade-off.
+  - `PUT /settings/files` → **text extraction = `manual`** (`extractionMode`).
+    Best-effort: the endpoint is OpenRegister 1.1.x+, skipped with a log on older
+    tenants. Confirmed live on canary 1.1.1.
+- **Not done — object text extraction (`objectExtractionMode` = manual):** lives in
+  the `objectManagement` app value and is NOT settable via the settings API (the
+  `/settings/objects` write endpoints are vectorization-only / return 405). Set it
+  in the OpenRegister UI per tenant, or via `occ config:app:set`.
+- Tests: 77 passed, 1 skipped (rule resolver ×3, unwrapped-settings ×1).
+
 ### Fixed — 2026-06-10 (btree index overflow on array fields)
 - `attachments` and `values` (both `array`) were `facetable: true` in all 17
   schemas, so OpenRegister/MagicMapper put a **btree index** on the serialised

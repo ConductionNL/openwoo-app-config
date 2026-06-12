@@ -25,6 +25,9 @@ resolved to the target's numeric id. On a fresh tenant this breaks at run time.
   `targetId` (`register/schema`).
 - A **job**'s `arguments.synchronizationId` stays the sync *slug*, so the
   SynchronizationAction cannot trigger the numeric sync id.
+- A **rule**'s `configuration.fetch_file.source` stays the source *slug*
+  (`demo-xxllnc`) — or is dropped entirely on some tenants — so the `fetch_file`
+  action cannot resolve the source to fetch attachments from.
 
 ## Why "just import twice" does not work
 
@@ -48,6 +51,8 @@ the final numeric ids — idempotent, slug-matched:
 - `provision.py syncs` — resolves each synchronization's `sourceId`,
   `sourceTargetMapping`, `actions`, `targetId`.
 - `provision.py jobs` — resolves each job's `arguments.synchronizationId`.
+- `provision.py rules` — resolves each `fetch_file` rule's
+  `configuration.fetch_file.source` (run inside the `all` `sync-refs` step).
 
 `provision.py all` runs one import then both resolve steps, which converges a
 clean tenant (verified end-to-end: `FULL PROVISIONING OK`, all 16 syncs run).
