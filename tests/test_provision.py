@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import provision  # noqa: E402
+import provisionlib as provision  # noqa: E402  — the lib; provision.py is now a thin entrypoint
 
 
 def _doc(**comps):
@@ -886,30 +886,30 @@ def test_delete_menu_raises_if_still_present():
 
 
 def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
-    monkeypatch.setattr(provision, "provision_settings",
+    monkeypatch.setattr(provision.steps, "provision_settings",
                         lambda c, o, m: calls.append("settings"))
-    monkeypatch.setattr(provision, "provision_oc_settings",
+    monkeypatch.setattr(provision.steps, "provision_oc_settings",
                         lambda c: calls.append("oc-settings"))
-    monkeypatch.setattr(provision, "provision_import",
+    monkeypatch.setattr(provision.steps, "provision_import",
                         lambda c, d, **kw: calls.append("import"))
-    monkeypatch.setattr(provision, "verify_import",
+    monkeypatch.setattr(provision.steps, "verify_import",
                         lambda c, d: (calls.append("verify"),
                                       {"schemas": {"expected": 1, "missing": verify_missing or []}})[1])
-    monkeypatch.setattr(provision, "provision_catalog",
+    monkeypatch.setattr(provision.steps, "provision_catalog",
                         lambda c, d: calls.append("catalog"))
-    monkeypatch.setattr(provision, "provision_delete_menu",
+    monkeypatch.setattr(provision.steps, "provision_delete_menu",
                         lambda c, name=None: calls.append("delete-menu") or 0)
-    monkeypatch.setattr(provision, "provision_credentials",
+    monkeypatch.setattr(provision.steps, "provision_credentials",
                         lambda c, d, **kw: calls.append("credentials"))
-    monkeypatch.setattr(provision, "sync_check",
+    monkeypatch.setattr(provision.steps, "sync_check",
                         lambda c, d: (calls.append("sync-check"),
                                       {"total": 1, "dangling": dangling or []})[1])
-    monkeypatch.setattr(provision, "provision_syncs",
+    monkeypatch.setattr(provision.steps, "provision_syncs",
                         lambda c, d: calls.append("sync-refs") or 0)
-    monkeypatch.setattr(provision, "provision_rules", lambda c, d: 0)
-    monkeypatch.setattr(provision, "provision_jobs",
+    monkeypatch.setattr(provision.steps, "provision_rules", lambda c, d: 0)
+    monkeypatch.setattr(provision.steps, "provision_jobs",
                         lambda c, d, **kw: calls.append("jobs") or 0)
-    monkeypatch.setattr(provision, "provision_sync_run",
+    monkeypatch.setattr(provision.steps, "provision_sync_run",
                         lambda c, d, mode="run": calls.append(f"sync-run:{mode}"))
 
 
@@ -944,3 +944,56 @@ def test_provision_all_stops_on_dangling_syncs(monkeypatch):
     _patch_steps(monkeypatch, calls, dangling=[{"slug": "x", "targetId": "2/x"}])
     with pytest.raises(provision.ProvisionError, match="dangling"):
         provision.provision_all(None, _doc(), settings=None)
+
+
+# --- CLI wiring (build_parser / dispatch) ---
+#
+# After the split into provisionlib, cli.py is its own module; these guard that
+# every subcommand still resolves to a handler and that cmd_* bodies reference
+# only names cli.py actually imports (a missing import would NameError here).
+
+
+SUBCOMMAND_ARGS = {
+    "credentials": [],
+    "settings": [],
+    "import": [],
+    "authorization": [],
+    "jobs": [],
+    "syncs": [],
+    "rules": [],
+    "oc-settings": [],
+    "verify-import": [],
+    "sync-check": [],
+    "sync-run": [],
+    "objects": ["--register", "r", "--schema", "s", "--payload-file", "f"],
+    "catalog": [],
+    "delete-menu": [],
+    "all": [],
+}
+
+
+def test_build_parser_every_subcommand_dispatches():
+    parser = provision.build_parser()
+    for cmd, extra in SUBCOMMAND_ARGS.items():
+        args = parser.parse_args([cmd, "--base", "https://t"] + extra)
+        assert callable(getattr(args, "func", None)), cmd
+
+
+def test_all_subcommand_delete_menu_defaults():
+    args = provision.build_parser().parse_args(["all", "--base", "https://t"])
+    assert args.skip_delete_menu is False
+    assert args.menu_name == provision.USER_MENU_NAME
+
+
+def test_cmd_delete_menu_invokes_step(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(provision.cli, "make_client", lambda args: "CLIENT")
+    monkeypatch.setattr(provision.cli, "provision_delete_menu",
+                        lambda client, name: seen.update(client=client, name=name) or 2)
+
+    class _Args:
+        base = "https://t"
+        menu_name = "User Menu"
+
+    assert provision.cli.cmd_delete_menu(_Args()) == 0
+    assert seen == {"client": "CLIENT", "name": "User Menu"}

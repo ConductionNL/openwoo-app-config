@@ -27,7 +27,8 @@ That noise causes broken diffs and unpredictable imports.
 |------|------|
 | `config/woo.configuration.json` | The canonical, **sanitized** config (commit this) |
 | `scripts/oac.py` | Linter + sanitizer — pure stdlib Python, **zero dependencies** |
-| `scripts/provision.py` | Target-track provisioner — drives a tenant to the config's state over the API, stdlib only |
+| `scripts/provision.py` | Target-track provisioner **entrypoint** — thin shell over `provisionlib`, stdlib only |
+| `scripts/provisionlib/` | The provisioner lib: `constants` / `helpers` / `client` / `steps` / `cli` (each small + separately tested) |
 | `scripts/provision_gui.py` | Optional Tkinter form front-end for `provision.py all` |
 | `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
@@ -209,7 +210,10 @@ KEEP_UP=1 make functional        # leave the stack at http://localhost:8080 to d
 
 A real tenant bring-up is more than the import. `provision.py` performs the
 post-install steps the config owns, over the API, each asserting it took effect
-("test what you ship"). Every step is one subcommand with its own unit tests:
+("test what you ship"). Every step is one subcommand with its own unit tests.
+The logic lives in the `provisionlib` package (`constants` / `helpers` /
+`client` / `steps` / `cli`); `provision.py` is a thin entrypoint, and callers can
+also `import provisionlib as provision` to reuse the steps as a library:
 
 | Subcommand | Does | Asserts |
 |------------|------|---------|

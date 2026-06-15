@@ -4,6 +4,25 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-15 (modularise the provisioner into a lib)
+- Split the 1479-line `scripts/provision.py` monolith into the **`provisionlib`**
+  package, each module small and separately auditable:
+  - `constants.py` — every API path + provisioning default (pure literals)
+  - `helpers.py` — pure, unit-tested helpers + `log` (no live stack)
+  - `client.py` — the basic-auth JSON `Client` + `ProvisionError`
+  - `steps.py` — the `provision_*` domain logic + `provision_all` orchestrator
+  - `cli.py` — argparse wiring, secret resolution, `cmd_*` dispatch, `main`
+- `scripts/provision.py` is now a **thin entrypoint** (delegates to
+  `provisionlib.cli.main`); it inserts its own dir on `sys.path` so the GUI,
+  webgui and `functional-test.sh` keep shelling out by path unchanged. The CLI
+  surface (14 subcommands) is byte-for-byte the same — function bodies were moved
+  verbatim, not rewritten.
+- Callers can now `import provisionlib as provision` to reuse steps as a library;
+  the package `__init__` re-exports the public surface.
+- Tests: `tests/test_provision.py` now imports `provisionlib`; orchestrator tests
+  patch `provision.steps.*` (the namespace `provision_all` resolves). No
+  behavioural change — 84 passed, 1 skipped, same as before the split.
+
 ### Added — 2026-06-15 (delete-menu: remove OpenCatalogi default User Menu)
 - **`provision.py delete-menu`** (+ step `[6/11]` in `all`): OpenCatalogi
   auto-creates a default **`User Menu`** object on the `publication` register; it
