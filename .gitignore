@@ -20,3 +20,6 @@ config/raw-*.json
 
 # webgui (Flask) dev venv
 webgui/.venv/
+
+# local config backups (git history is the authoritative versioning)
+config/backups/

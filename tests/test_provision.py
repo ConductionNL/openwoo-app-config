@@ -781,6 +781,107 @@ def test_provision_catalog_raises_when_register_missing():
         provision.provision_catalog(client, doc)
 
 
+# --- Client._request empty-body handling ---
+
+
+class _FakeResp:
+    def __init__(self, body):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self._body
+
+
+def test_request_empty_body_returns_empty_dict(monkeypatch):
+    # A 2xx with no body (e.g. DELETE -> 204) must not trip the non-JSON guard.
+    monkeypatch.setattr(provision.urllib.request, "urlopen",
+                        lambda req: _FakeResp(b""))
+    client = provision.Client("https://t", "admin", "pw")
+    assert client.delete("/whatever") == {}
+
+
+def test_request_html_body_still_raises(monkeypatch):
+    # A non-empty non-JSON body (HTML login page) is still an error.
+    monkeypatch.setattr(provision.urllib.request, "urlopen",
+                        lambda req: _FakeResp(b"<html>login</html>"))
+    client = provision.Client("https://t", "admin", "pw")
+    with pytest.raises(provision.ProvisionError, match="non-JSON"):
+        client.get("/whatever")
+
+
+# --- delete-menu ---
+
+
+class FakeMenuClient:
+    """List/delete fake for the publication/menu objects. delete() removes the
+    matching object so a re-GET reflects the deletion."""
+
+    def __init__(self, objects):
+        self.objects = list(objects)
+        self.deleted = []
+
+    def get(self, path):
+        return {"results": list(self.objects)}
+
+    def delete(self, path):
+        ident = path.rsplit("/", 1)[-1]
+        self.deleted.append(ident)
+        self.objects = [
+            o for o in self.objects
+            if str(o.get("uuid")) != ident and str(o.get("id")) != ident
+        ]
+        return {}
+
+
+def test_menu_matches_name_title_slug_case_insensitive():
+    assert provision._menu_matches({"name": "User Menu"}, "user menu")
+    assert provision._menu_matches({"title": "USER MENU"}, "User Menu")
+    assert provision._menu_matches({"slug": "user-menu"}, "user-menu")
+    assert not provision._menu_matches({"name": "Main Menu"}, "User Menu")
+
+
+def test_delete_menu_removes_match_by_uuid():
+    client = FakeMenuClient([
+        {"uuid": "abc-123", "name": "User Menu"},
+        {"uuid": "def-456", "name": "Main Menu"},
+    ])
+    n = provision.provision_delete_menu(client)
+    assert n == 1
+    assert client.deleted == ["abc-123"]
+    # the other menu is untouched
+    assert [o["name"] for o in client.objects] == ["Main Menu"]
+
+
+def test_delete_menu_falls_back_to_id():
+    client = FakeMenuClient([{"id": 7, "title": "User Menu"}])
+    n = provision.provision_delete_menu(client)
+    assert n == 1
+    assert client.deleted == ["7"]
+
+
+def test_delete_menu_idempotent_when_absent():
+    client = FakeMenuClient([{"uuid": "x", "name": "Main Menu"}])
+    assert provision.provision_delete_menu(client) == 0
+    assert client.deleted == []
+
+
+def test_delete_menu_raises_if_still_present():
+    class StubbornClient(FakeMenuClient):
+        def delete(self, path):  # records but does not remove
+            self.deleted.append(path.rsplit("/", 1)[-1])
+            return {}
+
+    client = StubbornClient([{"uuid": "abc-123", "name": "User Menu"}])
+    with pytest.raises(provision.ProvisionError, match="still present"):
+        provision.provision_delete_menu(client)
+
+
 # --- all (orchestrator) ---
 
 
@@ -796,6 +897,8 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
                                       {"schemas": {"expected": 1, "missing": verify_missing or []}})[1])
     monkeypatch.setattr(provision, "provision_catalog",
                         lambda c, d: calls.append("catalog"))
+    monkeypatch.setattr(provision, "provision_delete_menu",
+                        lambda c, name=None: calls.append("delete-menu") or 0)
     monkeypatch.setattr(provision, "provision_credentials",
                         lambda c, d, **kw: calls.append("credentials"))
     monkeypatch.setattr(provision, "sync_check",
@@ -815,14 +918,16 @@ def test_provision_all_runs_steps_in_order(monkeypatch):
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
     assert calls == ["settings", "oc-settings", "import", "verify",
-                     "catalog", "credentials", "sync-refs", "sync-check", "jobs"]
+                     "catalog", "delete-menu", "credentials", "sync-refs",
+                     "sync-check", "jobs"]
 
 
 def test_provision_all_skips_optional_steps(monkeypatch):
     calls = []
     _patch_steps(monkeypatch, calls)
     provision.provision_all(None, _doc(), settings=None, oc_settings=False, do_import=False,
-                            catalog=False, do_credentials=False, run_syncs=True, sync_mode="test")
+                            catalog=False, delete_menu=False, do_credentials=False,
+                            run_syncs=True, sync_mode="test")
     assert calls == ["verify", "sync-refs", "sync-check", "jobs", "sync-run:test"]
 
 

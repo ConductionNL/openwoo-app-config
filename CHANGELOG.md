@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-15 (delete-menu: remove OpenCatalogi default User Menu)
+- **`provision.py delete-menu`** (+ step `[6/11]` in `all`): OpenCatalogi
+  auto-creates a default **`User Menu`** object on the `publication` register; it
+  does not belong in the WOO config (no per-tenant menu is shipped), so the
+  provisioner removes it. GETs `publication/menu`, matches `User Menu`
+  case-insensitively against each object's `name`/`title`/`slug`, DELETEs every
+  match by `uuid` (falls back to `id`), then re-GETs the list and asserts the
+  match is gone. **Idempotent**: skips with a log when absent. Override the match
+  with `--menu-name`; skip the step in `all` with `--skip-delete-menu`.
+- `Client.delete()` added (thin DELETE wrapper, mirrors `get`/`post`/`put`).
+- Step numbering in `all` renumbered `/10` → `/11` (delete-menu inserted after
+  `catalog`, before `credentials`).
+- Tests: `_menu_matches` (name/title/slug, case-insensitive) + `provision_delete_menu`
+  (delete by uuid, fallback to id, idempotent-when-absent, raises-if-still-present);
+  orchestrator order test updated. 64 passed.
+
 ### Added — 2026-06-12 (rule source resolver + OpenRegister settings hardening)
 - **`provision.py rules`** (+ step in `all`'s `sync-refs`): resolve each
   `fetch_file` rule's `configuration.fetch_file.source` slug → tenant numeric

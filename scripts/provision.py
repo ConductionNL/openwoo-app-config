@@ -161,6 +161,11 @@ class Client:
             ) from exc
         except urllib.error.URLError as exc:
             raise ProvisionError(f"{method} {path} -> {exc.reason}") from exc
+        if not raw.strip():
+            # A 2xx with an empty body (e.g. DELETE -> 204 No Content) is a
+            # success with nothing to parse. Return {} so callers don't trip the
+            # "non-JSON response" guard below (which is meant for HTML login pages).
+            return {}
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
@@ -177,6 +182,9 @@ class Client:
 
     def post(self, path, body=None):
         return self._request("POST", path, body)
+
+    def delete(self, path):
+        return self._request("DELETE", path)
 
     def post_file(self, path, filename, content):
         """Multipart file upload (for the @NoCSRFRequired config import). Returns text."""
@@ -257,6 +265,14 @@ def verify_import(client, doc):
 
 
 OBJECTS_PATH = "/index.php/apps/openregister/api/objects"
+
+MENU_REGISTER = "publication"
+MENU_SCHEMA = "menu"
+# OpenCatalogi auto-creates a default "User Menu" object on the publication
+# register. It does not belong in the WOO config (no per-tenant menu is shipped),
+# so the provisioner removes it. Match is case-insensitive against the object's
+# name/title/slug; override with --menu-name if a tenant labels it differently.
+USER_MENU_NAME = "User Menu"
 
 
 def provision_sync_run(client, doc, mode="run"):
@@ -488,7 +504,8 @@ def provision_rules(client, doc):
 
 def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
                   settings=None, oc_settings=True, do_import=True, force_import=False,
-                  catalog=True, do_credentials=True, job_user=None, run_syncs=False,
+                  catalog=True, delete_menu=True, menu_name=USER_MENU_NAME,
+                  do_credentials=True, job_user=None, run_syncs=False,
                   sync_mode="test"):
     """Run the full post-install bring-up in order, asserting each step.
 
@@ -503,66 +520,72 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
     and job runs stay separate.
     """
     if settings is not None:
-        log("[1/10] settings")
+        log("[1/11] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/10] settings — skipped")
+        log("[1/11] settings — skipped")
 
     if oc_settings:
-        log("[2/10] oc-settings")
+        log("[2/11] oc-settings")
         provision_oc_settings(client)
     else:
-        log("[2/10] oc-settings — skipped")
+        log("[2/11] oc-settings — skipped")
 
     if do_import:
-        log("[3/10] import")
+        log("[3/11] import")
         provision_import(client, doc, force=force_import)
     else:
-        log("[3/10] import — skipped")
+        log("[3/11] import — skipped")
 
-    log("[4/10] verify-import")
+    log("[4/11] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
     if catalog:
-        log("[5/10] catalog")
+        log("[5/11] catalog")
         provision_catalog(client, doc)
     else:
-        log("[5/10] catalog — skipped")
+        log("[5/11] catalog — skipped")
+
+    if delete_menu:
+        log("[6/11] delete-menu")
+        provision_delete_menu(client, name=menu_name)
+    else:
+        log("[6/11] delete-menu — skipped")
 
     if do_credentials:
-        log("[6/10] credentials")
+        log("[7/11] credentials")
         provision_credentials(client, doc, apikey=apikey, source_url=source_url,
                               interface_id=interface_id)
     else:
-        log("[6/10] credentials — skipped (per-tenant source params set out-of-band)")
+        log("[7/11] credentials — skipped (per-tenant source params set out-of-band)")
 
     # Resolve the synchronizations' own slug references (sourceId / mapping / rules
     # / targetId) before the check + run — the import leaves forward references as
     # slugs on a fresh tenant (see provision_syncs).
-    log("[7/10] sync-refs")
+    log("[8/11] sync-refs")
     n = provision_syncs(client, doc)
     log(f"  sync-refs: {n} synchronization(s) resolved")
     nr = provision_rules(client, doc)
     log(f"  sync-refs: {nr} rule(s) resolved")
 
-    log("[8/10] sync-check")
+    log("[9/11] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
-    log("[9/10] jobs")
+    log("[10/11] jobs")
     n = provision_jobs(client, doc, job_user=job_user)
     log(f"  jobs: {n} job(s) updated"
         f"{f' (userId={job_user})' if job_user else ''}")
 
     if run_syncs:
-        log(f"[10/10] sync-run ({sync_mode})")
+        log(f"[11/11] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[10/10] sync-run — skipped (pass --run-syncs)")
+        log("[11/11] sync-run — skipped (pass --run-syncs)")
     return True
 
 
@@ -682,6 +705,48 @@ def provision_catalog(client, doc, catalog_slug="publications", target_register=
         )
     log(f"  catalog '{catalog_slug}': {len(schema_ids)} schemas reflected OK")
     return after
+
+
+def _menu_matches(obj, name):
+    """True if a menu object's name/title/slug equals `name` (case-insensitive)."""
+    target = name.strip().lower()
+    for key in ("name", "title", "slug"):
+        value = obj.get(key)
+        if isinstance(value, str) and value.strip().lower() == target:
+            return True
+    return False
+
+
+def provision_delete_menu(client, name=USER_MENU_NAME):
+    """Delete the OpenCatalogi default '{name}' menu object if present.
+
+    GETs the publication/menu objects, matches `name` against each object's
+    name/title/slug (case-insensitive), DELETEs every match by uuid (falling back
+    to id), then re-GETs the list to assert each is gone. Idempotent: returns 0
+    and skips when no match is found. Returns the number of objects deleted.
+    """
+    list_path = f"{OBJECTS_PATH}/{MENU_REGISTER}/{MENU_SCHEMA}"
+    objects = results_list(client.get(list_path))
+    matches = [o for o in objects if _menu_matches(o, name)]
+    if not matches:
+        log(f"  no '{name}' menu object found — skipping")
+        return 0
+    deleted = []
+    for obj in matches:
+        ident = obj.get("uuid") or obj.get("id")
+        if not ident:
+            raise ProvisionError(f"menu object matched '{name}' but has no uuid/id: {str(obj)[:120]}")
+        log(f"  deleting '{name}' menu object (id={ident})")
+        client.delete(f"{list_path}/{ident}")
+        deleted.append(str(ident))
+
+    remaining = results_list(client.get(list_path))
+    still = [str(o.get("uuid") or o.get("id")) for o in remaining if _menu_matches(o, name)]
+    leftover = [d for d in deleted if d in still]
+    if leftover:
+        raise ProvisionError(f"'{name}' menu object(s) still present after delete: {leftover}")
+    log(f"  deleted {len(deleted)} '{name}' menu object(s) OK")
+    return len(deleted)
 
 
 def provision_object(client, register, schema, payload):
@@ -1076,6 +1141,8 @@ def cmd_all(args):
         do_import=not args.skip_import,
         force_import=args.force_import,
         catalog=not args.skip_catalog,
+        delete_menu=not args.skip_delete_menu,
+        menu_name=args.menu_name,
         do_credentials=not args.skip_credentials,
         job_user=args.job_user or client.user,
         run_syncs=args.run_syncs,
@@ -1101,6 +1168,14 @@ def cmd_catalog(args):
     log(f"provisioning catalog '{args.catalog_slug}' against {args.base}")
     provision_catalog(client, doc, catalog_slug=args.catalog_slug, target_register=args.register)
     log("CATALOG PROVISIONED OK")
+    return 0
+
+
+def cmd_delete_menu(args):
+    client = make_client(args)
+    log(f"deleting '{args.menu_name}' menu object on {args.base} (if present)")
+    n = provision_delete_menu(client, name=args.menu_name)
+    log(f"DELETE-MENU OK ({n} object(s) deleted)")
     return 0
 
 
@@ -1359,9 +1434,18 @@ def build_parser():
     cat.add_argument("--register", default="woo", help="register slug to link (default: %(default)s)")
     cat.set_defaults(func=cmd_catalog)
 
+    dm = sub.add_parser(
+        "delete-menu",
+        help="delete the OpenCatalogi default 'User Menu' object (it does not belong in the WOO config)",
+    )
+    _add_connection_args(dm, with_config=False)
+    dm.add_argument("--menu-name", default=USER_MENU_NAME,
+                    help="menu object name/title/slug to match and delete (default: %(default)s)")
+    dm.set_defaults(func=cmd_delete_menu)
+
     al = sub.add_parser(
         "all",
-        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> credentials -> sync-refs -> sync-check -> jobs [-> sync-run]",
+        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> delete-menu -> credentials -> sync-refs -> sync-check -> jobs [-> sync-run]",
     )
     _add_connection_args(al)
     al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")
@@ -1375,6 +1459,8 @@ def build_parser():
     al.add_argument("--force-import", action="store_true", help="re-upload the config even if already present (for content changes)")
     al.add_argument("--skip-oc-settings", action="store_true", help="skip the OpenCatalogi register/schema coupling")
     al.add_argument("--skip-catalog", action="store_true", help="skip pointing the catalog at the WOO schemas")
+    al.add_argument("--skip-delete-menu", action="store_true", help="do not delete the OpenCatalogi default 'User Menu' object")
+    al.add_argument("--menu-name", default=USER_MENU_NAME, help="menu object name/title/slug to delete (default: %(default)s)")
     al.add_argument("--skip-credentials", action="store_true", help="skip source credentials (per-tenant source params set out-of-band, e.g. base-config-only Argo runs)")
     al.add_argument("--job-user", default=None,
                     help="job userId to set on every job (default: the admin --user; workaround for Anonymous job runs)")

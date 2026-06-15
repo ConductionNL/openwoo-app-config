@@ -51,7 +51,8 @@ The **source track** is the CI gate: pollution, dangling refs and bad
 authorization keys are caught on the JSON before it can reach a tenant. The
 **target track** drives a real tenant over the API and asserts each step — some
 steps *validate* (`verify-import`, `sync-check`), others *configure or repair*
-(`settings`, `oc-settings`, `import`, `authorization`, `catalog`, `credentials`).
+(`settings`, `oc-settings`, `import`, `authorization`, `catalog`, `delete-menu`,
+`credentials`).
 
 ### Pointing the target track at a tenant (handover)
 
@@ -223,6 +224,7 @@ post-install steps the config owns, over the API, each asserting it took effect
 | `jobs` | resolve each job's `synchronizationId` (sync slug → tenant numeric id) | the job reflects the numeric id |
 | `objects` | create one object in a register/schema | response carries an id/uuid |
 | `catalog` | point the OpenCatalogi catalog at the WOO register + all its schemas | registers/schemas reflect (slugs resolved to tenant ids) |
+| `delete-menu` | delete the OpenCatalogi default `User Menu` object (not part of the WOO config) | GET no longer lists it (idempotent — skips when absent) |
 | `all` | run the bring-up in order, gating each step | settings → verify-import → credentials → sync-check → (`--run-syncs`) |
 
 `verify-import` and `sync-check` exist because the import API returns HTTP 200
