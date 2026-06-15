@@ -1,0 +1,14 @@
+# Keep the control-plane image small + reproducible: the venv is rebuilt from
+# webgui/requirements.txt inside the image (see Dockerfile), so the host dev
+# venv, caches and VCS metadata must never be COPYed in.
+.git
+.gitignore
+**/.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+config/backups
+tests
+docs
+*.md
+docker-compose.test.yml

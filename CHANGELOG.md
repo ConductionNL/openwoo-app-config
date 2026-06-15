@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-15 (control-plane image 0.1.4)
+- Built + tagged control-plane image **`docker.io/conduction2022/openwoo-provisioner:0.1.4`**
+  (carries the `provisionlib` refactor + the `delete-menu` step). Bumped
+  `webgui/deploy/kustomization.yaml` and `deployment.yaml` from `0.1.3` → `0.1.4`.
+  The previous `0.1.3` image is untouched in the registry (rollback target).
+- Added **`.dockerignore`**: the image build had no ignore file, so `COPY webgui/`
+  would bake the 34 MB host dev venv (`webgui/.venv`) and `__pycache__` into the
+  image. The venv is rebuilt from `webgui/requirements.txt` inside the image, so
+  the host copy is excluded — smaller, reproducible, no stray host artefacts.
+
 ### Changed — 2026-06-15 (modularise the provisioner into a lib)
 - Split the 1479-line `scripts/provision.py` monolith into the **`provisionlib`**
   package, each module small and separately auditable:

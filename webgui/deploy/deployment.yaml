@@ -27,7 +27,7 @@ spec:
         # network — only the oauth2-proxy sidecar (same netns) can reach it. This
         # localhost bind is what makes X-Forwarded-Email trustworthy.
         - name: app
-          image: docker.io/conduction2022/openwoo-provisioner:0.1.3  # override per env (kustomize images:)
+          image: docker.io/conduction2022/openwoo-provisioner:0.1.4  # override per env (kustomize images:)
           env:
             - name: REQUIRE_AUTH
               value: "true"
