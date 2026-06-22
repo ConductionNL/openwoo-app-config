@@ -1,7 +1,7 @@
 ## 1. Prerequisites — confirm before building
 
 - [ ] 1.1 Enable branch protection on Nextcloud-base `main` requiring PR review **for the bot** (no bot self-merge / no bot direct push), with **mwest2020/admins exempt** (Forgejo push-allowlist + review-bypass — the maintainer keeps direct push). Confirm the protection does not block existing maintainer/CI flows.
-- [ ] 1.2 Decide the bot account (reuse vs new `openwoo-bot`) and mint a token scoped to repository write + PR on Nextcloud-base only. Document the k8s Secret shape in `webgui/deploy/secret.example.yaml` (no real value in git).
+- [x] 1.2 **MVP decided (2026-06-22): use a `write:repository`-scoped PAT on the maintainer's account (MWest2020)** — no separate bot for now (Forgejo has no email-invite; a dedicated bot needs its own registered account, deferred). Token stored only as a k8s Secret (never git/logged); shape documented in `webgui/deploy/secret.example.yaml`. Caveat: Forgejo PATs are capability-scoped, not repo-scoped → blast radius is all of MWest2020's repos. Hardening follow-up: migrate to `openwoo-bot` as collaborator-on-Nextcloud-base only.
 - [ ] 1.3 Wire the ESO secret path (mechanism decided — External Secrets Operator): ClusterSecretStore + per-tenant ExternalSecret producing `nextcloud-secrets`, ideally auto-provisioned on namespace creation. Separate Nextcloud-base/platform change; gates end-to-end usefulness, not the PR code.
 
 ## 2. Stdlib Forgejo client — unit-tested, no network in tests

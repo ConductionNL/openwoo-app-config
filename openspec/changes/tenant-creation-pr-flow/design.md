@@ -55,7 +55,13 @@ Render the tenant YAML from a template and run the same checks Nextcloud-base CI
 
 ### Decision 5: Provenance via commit trailer + PR body
 
-The bot authors the commit; the human requester is recorded as `requested-by: <email>` (commit trailer + PR body), and the PR is labelled machine-authored. This keeps "who asked" auditable even though the git identity is the bot.
+The git-write identity authors the commit; the human requester is recorded as `requested-by: <email>` (commit trailer + PR body), and the PR is labelled machine-authored. This keeps "who asked" auditable even though the git identity is the token-holder, not the clicking operator.
+
+### Decision 6: MVP uses the maintainer's scoped token; dedicated bot is the hardening follow-up
+
+For the MVP the git-write identity is a `write:repository`-scoped personal access token on the maintainer's account (MWest2020), not a separate bot. Rationale: Codeberg/Forgejo has no email-invite — a collaborator must be an existing account — so a dedicated bot needs its own registered account first; that is deferred.
+
+**Caveat (recorded deliberately):** Forgejo PATs are scoped by *capability*, not by repository. A `write:repository` token on a human account can write to **every repo that account can reach**, so the MVP's blast radius is all of MWest2020's repos, not just Nextcloud-base. Mitigations: least capability (`write:repository` only, no admin/org scopes), token stored only as a k8s Secret (never git, never logged), and the planned migration to a dedicated `openwoo-bot` collaborator-on-one-repo as hardening. Until then, PRs are authored as MWest2020 with the operator stamped via `requested-by:`.
 
 ## Risks / Trade-offs
 
