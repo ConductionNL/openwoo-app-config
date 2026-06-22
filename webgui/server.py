@@ -47,6 +47,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import provision_gui  # noqa: E402  — reuse the tested build_command()
 
+# Tenant creation (Phase 3): render + validate a Nextcloud-base tenant file and
+# open it as a PR. gitlib/tenants live alongside this module (webgui/).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gitlib    # noqa: E402
+import tenants   # noqa: E402
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 app = Flask(__name__)
@@ -120,6 +126,63 @@ def provision():
                         user, values["base"], proc.returncode)
 
     return Response(stream(), mimetype="text/plain")
+
+
+@app.get("/tenant")
+def tenant_form():
+    return render_template("tenant.html")
+
+
+@app.post("/tenant")
+def tenant_create():
+    """Validate the form, render tenant-<name>.yaml, and open a PR on the tenants
+    repo as the token's identity. The operator (oauth2-proxy) is stamped as
+    requested-by; the merge stays a human gate. Returns JSON {pr_url, pr_number}.
+
+    The portal NEVER creates secrets or touches the cluster — tenant secrets are
+    generated in-cluster (ESO). Its only privileged action is opening this PR."""
+    form = request.form
+    fields = {
+        "name": form.get("name", ""),
+        "environment": form.get("environment", ""),
+        "dbType": form.get("dbType", ""),
+        "wave": form.get("wave", "1"),
+        "apps": form.getlist("apps"),
+        "frontend_host": form.get("frontend_host", ""),
+        "frontend_org": form.get("frontend_org", ""),
+    }
+
+    errors = tenants.validate(fields)
+    if errors:
+        return {"errors": errors}, 400
+
+    user = current_user()
+    name = fields["name"].strip()
+    path = f"nextcloud-platform/values/tenants/{tenants.filename(name)}"
+    content = tenants.render(fields)
+    branch = f"add-tenant/{name}"
+    commit_msg = (f"add tenant: {name}\n\n"
+                  f"Opened from the OpenWoo provisioning portal.\n"
+                  f"requested-by: {user}\n")
+    pr_body = (f"Adds tenant `{name}` via the OpenWoo provisioning portal.\n\n"
+               f"- requested-by: `{user}`\n"
+               f"- machine-authored: review before merge.\n")
+
+    app.logger.info("tenant PR requested: user=%s name=%s env=%s db=%s",
+                    user, name, fields["environment"], fields["dbType"])
+    try:
+        result = gitlib.propose_file(
+            branch=branch, path=path, content=content,
+            commit_message=commit_msg, pr_title=f"add tenant: {name}", pr_body=pr_body)
+    except gitlib.GitlibError as exc:
+        # 409 = branch/file already exists (tenant in flight); 0 = misconfig/unreachable.
+        status = 409 if exc.status == 409 else (502 if exc.status in (0, 500, 502, 503) else 400)
+        app.logger.warning("tenant PR failed: user=%s name=%s status=%s detail=%s",
+                            user, name, exc.status, exc.detail)
+        return {"errors": [exc.detail]}, status
+
+    app.logger.info("tenant PR opened: user=%s name=%s pr=%s", user, name, result.get("number"))
+    return {"pr_url": result.get("html_url"), "pr_number": result.get("number")}, 201
 
 
 if __name__ == "__main__":

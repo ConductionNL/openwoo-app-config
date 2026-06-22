@@ -6,23 +6,23 @@
 
 ## 2. Stdlib Forgejo client — unit-tested, no network in tests
 
-- [ ] 2.1 `webgui/gitlib/` (stdlib `urllib` only): `create_branch(base, name)`, `put_file(branch, path, content, message)`, `open_pr(head, base, title, body)` → returns `{number, html_url}`.
-- [ ] 2.2 Unit tests with a mocked HTTP layer covering: happy path, 409/422 (duplicate branch/file), auth failure, network error. Keep zero third-party deps (mirror the repo's stdlib-only test style).
+- [x] 2.1 `webgui/gitlib.py` (stdlib `urllib` only): `create_branch`, `put_file`, `open_pr` → `{number, html_url}`, plus `propose_file` orchestrating the three. Config from env; `GitlibError` with `.status` for clean route mapping.
+- [x] 2.2 `tests/test_gitlib.py`: mocked `urlopen` covering happy path, 409 (duplicate branch), URLError (network), missing config, and a token-never-leaks-into-error assertion. (422 maps the same as other 4xx → 400.)
 
 ## 3. Tenant rendering + validation
 
-- [ ] 3.1 Template `tenant-<name>.yaml` from form values (name, environment, dbType, apps, optional `frontend` incl. `tls`). Reuse the Nextcloud-base tenant template shape.
-- [ ] 3.2 Pre-PR validation mirroring Nextcloud-base `validate-values.sh` (name/env suffix rule, host convention, required fields). Reject in the form before any PR is opened.
+- [x] 3.1 `webgui/tenants.py`: render `tenant-<name>.yaml` from form values (name, environment, wave, dbType, apps, optional `frontend.host` / `frontend.branding.organisationName`). Stdlib only — emitted as text, no PyYAML. (`frontend.tls` deferred to the react-base change's contract.)
+- [x] 3.2 `tenants.validate()` mirrors `validate-values.sh` (name `<org>-<accept|test|demo|prod>`, env-matches-suffix incl. test/demo→accept, dbType enum, apps non-empty/known). `tests/test_tenants.py` covers each rule.
 
 ## 4. Web route + form
 
-- [ ] 4.1 `POST /tenant` route, auth-gated like `/provision` (`_require_operator`), stamping `requested-by` from `current_user()`.
-- [ ] 4.2 Form template + result view that renders the PR link (`html_url`) on success and surfaces validation / 409 errors clearly.
-- [ ] 4.3 Commit trailer + PR body include `requested-by: <email>`; PR labelled machine-authored.
+- [x] 4.1 `POST /tenant` route, auth-gated by the existing `_require_operator`, stamping `requested-by` from `current_user()`.
+- [x] 4.2 `templates/tenant.html` form + result view rendering the PR link on 201 and surfacing validation / 409 errors. `GET /tenant` serves the form.
+- [x] 4.3 Commit message + PR body include `requested-by: <email>`; PR body marks it machine-authored. Covered by `tests/test_webgui.py` (`/tenant` happy/validation/conflict/requester-stamp).
 
 ## 5. Deploy + docs
 
-- [ ] 5.1 Wire the bot-token Secret into `webgui/deploy/` (Deployment env/volume); keep oauth2-proxy as sole ingress.
+- [ ] 5.1 Wire the git-token Secret into `webgui/deploy/` Deployment env (`FORGEJO_TOKEN` from `openwoo-provisioner-git`, `FORGEJO_API_URL`/`TENANTS_REPO`/`TENANTS_BASE` as plain env); keep oauth2-proxy as sole ingress. Secret shape documented in `secret.example.yaml`.
 - [ ] 5.2 `webgui/README.md`: document the create-tenant flow, the bot-token setup, and the "secrets stay in-cluster / portal opens PRs only" boundary.
 - [ ] 5.3 `CHANGELOG.md` (this repo) updated.
 

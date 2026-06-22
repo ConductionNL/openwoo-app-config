@@ -110,3 +110,67 @@ def test_auth_required_allows_with_proxy_header(authed_client):
 def test_healthz_open_even_with_auth(authed_client):
     # The k8s probe must work without an identity header.
     assert authed_client.get("/healthz").status_code == 200
+
+
+# --- Phase 3: tenant creation via PR (/tenant) ---
+
+def test_tenant_form_renders(client):
+    resp = client.get("/tenant")
+    assert resp.status_code == 200
+    assert b"Create a WOO tenant" in resp.data
+    assert b'name="name"' in resp.data
+
+
+def test_tenant_validation_error_is_400_no_pr(client, monkeypatch):
+    # A bad name must fail validation BEFORE any git call.
+    called = {"n": 0}
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: called.__setitem__("n", called["n"] + 1))
+    resp = client.post("/tenant", data={"name": "almere", "environment": "accept",
+                                        "dbType": "postgres", "apps": "opencatalogi"})
+    assert resp.status_code == 400
+    assert resp.get_json()["errors"]
+    assert called["n"] == 0  # no PR attempted
+
+
+def test_tenant_happy_returns_pr_link(client, monkeypatch):
+    captured = {}
+
+    def fake_propose(**kw):
+        captured.update(kw)
+        return {"number": 7, "html_url": "https://codeberg.org/x/pulls/7"}
+
+    monkeypatch.setattr(server.gitlib, "propose_file", fake_propose)
+    resp = client.post("/tenant", data={
+        "name": "almere-accept", "environment": "accept", "dbType": "postgres",
+        "apps": ["opencatalogi", "openregister"], "frontend_org": "Gemeente Almere",
+    })
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["pr_url"].endswith("/pulls/7") and body["pr_number"] == 7
+    # rendered content + correct path reached gitlib
+    assert captured["path"] == "nextcloud-platform/values/tenants/tenant-almere-accept.yaml"
+    assert captured["branch"] == "add-tenant/almere-accept"
+    assert "name: almere-accept" in captured["content"]
+
+
+def test_tenant_requester_stamped_from_proxy(authed_client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: captured.update(kw) or {"number": 1, "html_url": "u"})
+    resp = authed_client.post("/tenant", headers={"X-Forwarded-Email": "op@conduction.nl"},
+                              data={"name": "almere-accept", "environment": "accept",
+                                    "dbType": "postgres", "apps": "opencatalogi"})
+    assert resp.status_code == 201
+    assert "requested-by: op@conduction.nl" in captured["commit_message"]
+    assert "op@conduction.nl" in captured["pr_body"]
+
+
+def test_tenant_conflict_maps_to_409(client, monkeypatch):
+    def boom(**kw):
+        raise server.gitlib.GitlibError(409, "branch already exists")
+    monkeypatch.setattr(server.gitlib, "propose_file", boom)
+    resp = client.post("/tenant", data={"name": "almere-accept", "environment": "accept",
+                                        "dbType": "postgres", "apps": "opencatalogi"})
+    assert resp.status_code == 409
+    assert "already exists" in resp.get_json()["errors"][0]

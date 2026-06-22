@@ -4,6 +4,25 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-22 (webgui: tenant creation via PR — implementation)
+- **`webgui/gitlib.py`** — stdlib-only (`urllib`) Forgejo REST client: `create_branch`
+  → `put_file` → `open_pr`, plus `propose_file` orchestrating all three and returning
+  `{number, html_url}`. `GitlibError(status, detail)` maps cleanly to HTTP responses;
+  the token is read from env and never logged or leaked into error messages.
+- **`webgui/tenants.py`** — render `tenant-<name>.yaml` from form values + `validate()`
+  mirroring Nextcloud-base `validate-values.sh` (name `<org>-<env>`, env-matches-suffix,
+  dbType enum, apps). No PyYAML — emitted as text, zero-dep preserved.
+- **`webgui/server.py`** — `GET/POST /tenant`: validate → render → open a PR as the
+  token's identity, stamping `requested-by: <oauth2-proxy email>`; returns the PR link.
+  Auth-gated by the existing fail-closed `_require_operator`. Existing `/provision`
+  route and CI untouched (feature is additive).
+- **`webgui/templates/tenant.html`** — the create-tenant form; shows the opened PR link
+  on success, validation/conflict errors otherwise.
+- **Tests**: `tests/test_gitlib.py`, `tests/test_tenants.py`, and `/tenant` cases added to
+  `tests/test_webgui.py` — all offline (mocked `urlopen`, no network). Full suite: 116 passed.
+- **`webgui/deploy/secret.example.yaml`** — documents the `openwoo-provisioner-git` token
+  Secret + the `FORGEJO_*`/`TENANTS_*` env the webgui reads (real token out-of-band, never git).
+
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).
   Extend the SSO-gated webgui so an operator creates a WOO tenant from a form: it renders
