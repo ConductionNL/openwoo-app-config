@@ -4,6 +4,17 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-22 (webgui: visible logout/login)
+- **`webgui/deploy/oauth2-proxy.cfg`**: `skip_provider_button` `true` → **`false`**. oauth2-proxy
+  now shows its own sign-in page instead of silently auto-redirecting to Keycloak, so a
+  logout is *visible* (user sees they are signed out and re-authenticates explicitly) —
+  the boring/auditable behaviour. Config is a hashed `configMapGenerator`, so this rolls
+  the oauth2-proxy pod on next sync; **no image bump**.
+- **Cross-repo dependency** (KeyCloak repo, `feature/openwoo-provisioner-sso`): the
+  `openwoo-provisioner` client gains `post.logout.redirect.uris` =
+  `https://platform.commonground.nu/` (and no-slash variant). Without it Keycloak rejects
+  the RP-initiated `post_logout_redirect_uri` and the user is not returned to the platform.
+
 ### Changed — 2026-06-22 (webgui: Dutch + PO-jargon UI)
 - All webgui pages are now **Dutch** and use **PO-jargon** (no `provision.py`/`Argo`/`tenant`
   jargon): "omgevingen", "aanvragen", friendly status (Live / Bezig… / Aandacht nodig),
