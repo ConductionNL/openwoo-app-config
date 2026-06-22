@@ -22,7 +22,7 @@
 
 ## 5. Deploy + docs
 
-- [ ] 5.1 Wire the git-token Secret into `webgui/deploy/` Deployment env (`FORGEJO_TOKEN` from `openwoo-provisioner-git`, `FORGEJO_API_URL`/`TENANTS_REPO`/`TENANTS_BASE` as plain env); keep oauth2-proxy as sole ingress. Secret shape documented in `secret.example.yaml`.
+- [x] 5.1 Wired the git-token Secret into `webgui/deploy/deployment.yaml` env (`FORGEJO_TOKEN` from `openwoo-provisioner-git`; `FORGEJO_API_URL`/`TENANTS_REPO`/`TENANTS_BASE` plain env); oauth2-proxy stays sole ingress. Image bumped `0.1.4`→`0.2.0` (kustomization), built locally OK. Real token Secret + image push are out-of-band ops.
 - [ ] 5.2 `webgui/README.md`: document the create-tenant flow, the bot-token setup, and the "secrets stay in-cluster / portal opens PRs only" boundary.
 - [ ] 5.3 `CHANGELOG.md` (this repo) updated.
 

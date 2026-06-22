@@ -22,4 +22,5 @@ configMapGenerator:
 #   kustomize edit set image docker.io/conduction2022/openwoo-provisioner=<registry>/openwoo-provisioner:<tag>
 images:
   - name: docker.io/conduction2022/openwoo-provisioner
-    newTag: "0.1.4"
+    # 0.2.0: adds the tenant-creation flow (gitlib + /tenant route + FORGEJO_* env).
+    newTag: "0.2.0"

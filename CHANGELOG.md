@@ -24,6 +24,10 @@ All notable changes to this repository are documented here.
   `tests/test_webgui.py` — all offline (mocked `urlopen`, no network). Full suite: 116 passed.
 - **`webgui/deploy/secret.example.yaml`** — documents the `openwoo-provisioner-git` token
   Secret + the `FORGEJO_*`/`TENANTS_*` env the webgui reads (real token out-of-band, never git).
+- **`webgui/deploy/deployment.yaml`** — wires `FORGEJO_TOKEN` (from `openwoo-provisioner-git`)
+  + `FORGEJO_API_URL`/`TENANTS_REPO`/`TENANTS_BASE` into the app container; oauth2-proxy stays
+  the sole ingress. **Image `0.1.4`→`0.2.0`** (kustomization), built OK. Push image + create the
+  token Secret out-of-band to go live.
 
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).

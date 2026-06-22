@@ -31,6 +31,20 @@ spec:
           env:
             - name: REQUIRE_AUTH
               value: "true"
+            # Tenant creation via PR (POST /tenant -> gitlib). Token is a
+            # write:repository PAT (MVP: maintainer; hardening: a bot) — out-of-band
+            # Secret `openwoo-provisioner-git` (see deploy/secret.example.yaml).
+            - name: FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openwoo-provisioner-git
+                  key: token
+            - name: FORGEJO_API_URL
+              value: "https://codeberg.org/api/v1"
+            - name: TENANTS_REPO
+              value: "conduction/Nextcloud-base"
+            - name: TENANTS_BASE
+              value: "main"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
