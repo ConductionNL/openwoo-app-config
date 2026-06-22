@@ -186,6 +186,67 @@ def test_tenant_conflict_maps_to_409(client, monkeypatch):
     assert "already exists" in resp.get_json()["errors"][0]
 
 
+def test_batch_form_renders(client):
+    resp = client.get("/tenant/batch")
+    assert resp.status_code == 200
+    assert b"Batch create tenants" in resp.data and b'name="orgs"' in resp.data
+
+
+def test_batch_happy_one_pr_many_files(client, monkeypatch):
+    captured = {}
+
+    def fake(**kw):
+        captured.update(kw)
+        return {"number": 11, "html_url": "https://x/pulls/11"}
+
+    monkeypatch.setattr(server.gitlib, "propose_files", fake)
+    resp = client.post("/tenant/batch", data={"orgs": "almere\nbaarn\nsoest", "environment": "accept"})
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["count"] == 3 and body["pr_number"] == 11
+    assert {p for p, _ in captured["files"]} == {
+        "nextcloud-platform/values/tenants/tenant-almere-accept.yaml",
+        "nextcloud-platform/values/tenants/tenant-baarn-accept.yaml",
+        "nextcloud-platform/values/tenants/tenant-soest-accept.yaml",
+    }
+
+
+def test_batch_rejects_bad_org_and_dupes(client, monkeypatch):
+    monkeypatch.setattr(server.gitlib, "propose_files", lambda **kw: 1 / 0)  # must not be called
+    bad = client.post("/tenant/batch", data={"orgs": "almere-accept\nbaarn", "environment": "accept"})
+    assert bad.status_code == 400
+    dup = client.post("/tenant/batch", data={"orgs": "almere\nalmere", "environment": "accept"})
+    assert dup.status_code == 400
+
+
+def test_delete_form_prefills_tenant(client):
+    resp = client.get("/tenant/delete?tenant=almere-accept")
+    assert resp.status_code == 200
+    assert b'value="almere-accept"' in resp.data and b"PV/PVC" in resp.data
+
+
+def test_delete_happy_opens_pr(client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(server.gitlib, "propose_deletion",
+                        lambda **kw: captured.update(kw) or {"number": 12, "html_url": "u"})
+    resp = client.post("/tenant/delete", data={"tenant": "almere-accept"})
+    assert resp.status_code == 201
+    assert resp.get_json()["tenant"] == "almere-accept"
+    assert captured["path"] == "nextcloud-platform/values/tenants/tenant-almere-accept.yaml"
+
+
+def test_delete_missing_file_is_404(client, monkeypatch):
+    def boom(**kw):
+        raise server.gitlib.GitlibError(404, "file not found")
+    monkeypatch.setattr(server.gitlib, "propose_deletion", boom)
+    resp = client.post("/tenant/delete", data={"tenant": "ghost-accept"})
+    assert resp.status_code == 404
+
+
+def test_delete_rejects_bad_name(client):
+    assert client.post("/tenant/delete", data={"tenant": "Bad!"}).status_code == 400
+
+
 def test_pr_status_proxies_gitlib(client, monkeypatch):
     monkeypatch.setattr(server.gitlib, "get_pr",
                         lambda n: {"state": "open", "merged": False, "html_url": "u"})

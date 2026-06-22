@@ -55,7 +55,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitlib    # noqa: E402
 import tenants   # noqa: E402
 import argolib   # noqa: E402  — read-only Argo Application status (post-merge rollout check)
+import hashlib   # noqa: E402
 import re        # noqa: E402
+
+TENANTS_DIR = "nextcloud-platform/values/tenants"
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
@@ -218,6 +221,84 @@ def tenant_create():
     app.logger.info("tenant PR opened: user=%s name=%s pr=%s", user, name, result.get("number"))
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
             "tenant": name}, 201
+
+
+@app.get("/tenant/batch")
+def tenant_batch_form():
+    return render_template("batch.html")
+
+
+@app.post("/tenant/batch")
+def tenant_batch_create():
+    """Batch: one org per line + environment -> ONE PR adding all tenant files."""
+    form = request.form
+    environment = form.get("environment", "")
+    orgs = [o.strip() for o in form.get("orgs", "").splitlines() if o.strip()]
+    if not orgs:
+        return {"errors": ["enter at least one organisation (one per line)"]}, 400
+
+    errors = []
+    for o in orgs:
+        errors += [f"{o}: {e}" for e in tenants.validate_org(o, environment)]
+    if len(set(orgs)) != len(orgs):
+        errors.append("duplicate organisation in the list")
+    if errors:
+        return {"errors": errors}, 400
+
+    user = current_user()
+    files, names = [], []
+    for o in orgs:
+        fields = tenants.from_org(o, environment)
+        names.append(fields["name"])
+        files.append((f"{TENANTS_DIR}/{tenants.filename(fields['name'])}", tenants.render(fields)))
+
+    branch = "add-tenants/" + hashlib.sha1(",".join(sorted(names)).encode()).hexdigest()[:10]
+    commit_msg = f"add {len(names)} tenants ({environment})\n\nrequested-by: {user}\n"
+    pr_body = ("Adds tenants via the OpenWoo portal (batch):\n"
+               + "\n".join(f"- `{n}`" for n in names)
+               + f"\n\nrequested-by: `{user}` — machine-authored, review before merge.\n")
+    app.logger.info("batch PR requested: user=%s n=%d env=%s", user, len(names), environment)
+    try:
+        result = gitlib.propose_files(branch=branch, files=files, commit_message=commit_msg,
+                                      pr_title=f"add {len(names)} tenants ({environment})", pr_body=pr_body)
+    except gitlib.GitlibError as exc:
+        status = 409 if exc.status == 409 else (502 if exc.status in (0, 500, 502, 503) else 400)
+        return {"errors": [exc.detail]}, status
+    return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
+            "count": len(names), "tenants": names}, 201
+
+
+@app.get("/tenant/delete")
+def tenant_delete_form():
+    return render_template("delete.html", tenant=request.args.get("tenant", ""))
+
+
+@app.post("/tenant/delete")
+def tenant_delete():
+    """Open a PR that REMOVES a tenant file. NB: Argo prunes the Nextcloud app on
+    merge, but PV/PVCs and the <tenant>-reactfront app are NOT auto-removed —
+    flagged in the PR body for manual cleanup (destructive, human-reviewed)."""
+    tenant = request.form.get("tenant", "").strip()
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", tenant):
+        return {"errors": ["invalid tenant name"]}, 400
+    user = current_user()
+    path = f"{TENANTS_DIR}/{tenants.filename(tenant)}"
+    branch = f"delete-tenant/{tenant}"
+    commit_msg = f"remove tenant: {tenant}\n\nrequested-by: {user}\n"
+    pr_body = (f"Removes tenant `{tenant}` via the OpenWoo portal.\n\n"
+               f"- requested-by: `{user}`\n"
+               f"- ⚠️ After merge Argo prunes the Nextcloud app, but **PV/PVCs and the "
+               f"`{tenant}-reactfront` frontend app (preserveResourcesOnDeletion) are NOT "
+               f"auto-removed** — clean those up manually.\n")
+    app.logger.info("delete PR requested: user=%s tenant=%s", user, tenant)
+    try:
+        result = gitlib.propose_deletion(branch=branch, path=path, commit_message=commit_msg,
+                                         pr_title=f"remove tenant: {tenant}", pr_body=pr_body)
+    except gitlib.GitlibError as exc:
+        status = (404 if exc.status == 404 else 409 if exc.status == 409
+                  else 502 if exc.status in (0, 500, 502, 503) else 400)
+        return {"errors": [exc.detail]}, status
+    return {"pr_url": result.get("html_url"), "pr_number": result.get("number"), "tenant": tenant}, 201
 
 
 @app.get("/tenant/pr-status")

@@ -53,13 +53,23 @@
       <p>Load the OpenRegister WOO base config into an existing tenant via its public URL (runs <code>provision.py all</code>).</p>
       <div class="go">Provision →</div>
     </a>
+    <a class="card" href="/tenant/batch">
+      <h2>Batch create</h2>
+      <p>Create several tenants at once — one organisation per line — in a single pull request.</p>
+      <div class="go">Batch →</div>
+    </a>
+    <a class="card" href="/tenant/delete">
+      <h2>Delete tenant</h2>
+      <p>Open a PR removing a tenant. Data/PVCs and the frontend app stay until cleaned up manually.</p>
+      <div class="go">Delete →</div>
+    </a>
   </div>
 
   <section class="dash">
     <h2>Tenants <span class="muted" id="t-meta"></span></h2>
     <table>
-      <thead><tr><th>Tenant</th><th>Argo sync</th><th>Health</th></tr></thead>
-      <tbody id="t-body"><tr><td colspan="3" class="muted">loading…</td></tr></tbody>
+      <thead><tr><th>Tenant</th><th>Argo sync</th><th>Health</th><th></th></tr></thead>
+      <tbody id="t-body"><tr><td colspan="4" class="muted">loading…</td></tr></tbody>
     </table>
 
     <h2 style="margin-top:1.6rem">Recent tenant PRs</h2>
@@ -87,8 +97,9 @@
       try { d = await (await fetch('/dashboard.json')).json(); } catch(e){ return; }
       const tb = document.getElementById('t-body');
       tb.innerHTML = (d.tenants && d.tenants.length)
-        ? d.tenants.map(t => `<tr><td>${esc(t.tenant)}</td><td>${badge(t.sync)}</td><td>${badge(t.health)}</td></tr>`).join('')
-        : '<tr><td colspan="3" class="muted">no tenant apps found</td></tr>';
+        ? d.tenants.map(t => `<tr><td>${esc(t.tenant)}</td><td>${badge(t.sync)}</td><td>${badge(t.health)}</td>`+
+                             `<td><a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">delete</a></td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">no tenant apps found</td></tr>';
       document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';
       const pb = document.getElementById('pr-body');
       pb.innerHTML = (d.prs && d.prs.length)

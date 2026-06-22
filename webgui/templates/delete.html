@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenWoo — delete tenant</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.3rem; }
+    label { display: block; margin: .6rem 0 .15rem; font-size: .9rem; }
+    input[type=text] { width: 100%; padding: .45rem; box-sizing: border-box; }
+    .hint { color: #666; font-size: .8rem; }
+    button { margin-top: 1rem; padding: .6rem 1.2rem; font-size: 1rem; background: #fbeaea; border: 1px solid #d99; }
+    fieldset { border: 1px solid #ccc; margin: 1rem 0; }
+    .warn { background: #fff7e6; border: 1px solid #e3c266; border-radius: 6px; padding: .7rem .9rem; font-size: .85rem; margin: 1rem 0; }
+    #result { margin-top: 1rem; padding: 1rem; border-radius: 6px; display: none; }
+    #result.ok { background: #e7f6e7; border: 1px solid #8c8; }
+    #result.err { background: #fbeaea; border: 1px solid #d99; }
+    #result.pending { background: #fff7e6; border: 1px solid #e3c266; }
+  </style>
+</head>
+<body>
+  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Log out</a></p>
+  <h1>Delete a WOO tenant</h1>
+  <p class="hint">Opens a <strong>pull request</strong> that removes the tenant file. A reviewer
+     merges it; Argo then prunes the Nextcloud app.</p>
+
+  <div class="warn">
+    ⚠️ <strong>Not fully automatic.</strong> After merge, Argo removes the Nextcloud app, but
+    <strong>PV/PVCs (your data) and the <code>&lt;tenant&gt;-reactfront</code> frontend app are
+    NOT auto-deleted</strong> — clean those up manually after verifying. This PR only removes the
+    tenant definition from Git.
+  </div>
+
+  <form id="f">
+    <fieldset>
+      <legend>Tenant</legend>
+      <label>Tenant name <span class="hint">(full name, e.g. almere-accept)</span></label>
+      <input type="text" name="tenant" id="tenant" value="{{ tenant }}" placeholder="almere-accept" required>
+    </fieldset>
+    <button type="submit">Open delete pull request</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    const f = document.getElementById('f'), result = document.getElementById('result');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const t = document.getElementById('tenant').value.trim();
+      if (!confirm(`Open a PR to delete tenant "${t}"? (data/PVCs stay until you clean them up)`)) return;
+      result.style.display = 'block'; result.className = 'pending'; result.textContent = 'pull request openen…';
+      let resp, data;
+      try { resp = await fetch('/tenant/delete', { method: 'POST', body: new FormData(f) }); data = await resp.json(); }
+      catch (err) { result.className = 'err'; result.textContent = 'network error: ' + err; return; }
+      if (resp.status === 201 && data.pr_url) {
+        result.className = 'ok';
+        result.innerHTML = `🗑️ Verwijder-PR voor <code>${data.tenant}</code> — PR #${data.pr_number} → ` +
+          `<a href="${data.pr_url}" target="_blank" rel="noopener">review &amp; merge</a>. ` +
+          `Vergeet PV/PVC + reactfront-cleanup niet.`;
+      } else {
+        result.className = 'err';
+        const errs = (data && data.errors) ? data.errors : ['unexpected error (HTTP ' + resp.status + ')'];
+        result.innerHTML = '⚠️ ' + errs.map(x => x.replace(/</g, '&lt;')).join('<br>');
+      }
+    });
+  </script>
+</body>
+</html>

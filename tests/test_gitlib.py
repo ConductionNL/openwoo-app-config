@@ -82,6 +82,32 @@ def test_propose_file_happy_path(monkeypatch):
     assert calls[0].get_header("Authorization") == "token tok-secret"
 
 
+def test_propose_files_one_branch_many_files_one_pr(monkeypatch):
+    calls = []
+    responses = [{}, {}, {}, {"number": 3, "html_url": "u3"}]  # branch, 2x put, pr
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen(responses, calls))
+    out = gitlib.propose_files("add-tenants/x",
+                               [("a.yaml", "A"), ("b.yaml", "B")],
+                               "msg", "title", "body")
+    assert out["number"] == 3
+    # 4 calls: 1 branch + 2 contents + 1 pulls
+    assert len(calls) == 4
+    assert calls[0].full_url.endswith("/branches")
+    assert calls[3].full_url.endswith("/pulls")
+
+
+def test_propose_deletion_gets_sha_then_deletes(monkeypatch):
+    calls = []
+    responses = [{"sha": "abc123"}, {}, {}, {"number": 4, "html_url": "u4"}]  # get sha, branch, delete, pr
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen(responses, calls))
+    out = gitlib.propose_deletion("delete-tenant/x",
+                                  "nextcloud-platform/values/tenants/tenant-x-accept.yaml",
+                                  "msg", "title", "body")
+    assert out["number"] == 4
+    assert calls[0].get_method() == "GET"      # get_file_sha
+    assert calls[2].get_method() == "DELETE"   # delete_file
+
+
 def test_list_prs_filters_to_tenant_branches(monkeypatch):
     rows = [
         {"number": 9, "title": "add tenant: almere-accept", "state": "open", "merged": False,

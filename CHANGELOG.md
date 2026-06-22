@@ -54,6 +54,12 @@ All notable changes to this repository are documented here.
   `oauth2-proxy.cfg` gains `whitelist_domains=["iam.commonground.nu"]`; all Log-out links point to
   `/logout`. **Keycloak `openwoo-provisioner` client must list `https://platform.commonground.nu/` as a
   valid post-logout redirect URI.** **Image `0.2.3`→`0.2.4`.** 135 tests pass.
+- **batch create + delete tenant** (`gitlib.propose_files` / `get_file_sha` / `propose_deletion` +
+  `GET/POST /tenant/batch` + `GET/POST /tenant/delete` + templates + landing cards + per-row delete
+  links). Batch: one org per line → **one PR** adding all tenant files. Delete: a PR that **removes**
+  the tenant file (Forgejo contents-delete by sha) — the PR body flags that **PV/PVCs and the
+  `<tenant>-reactfront` app are NOT auto-removed** (manual cleanup, human-reviewed). **Image
+  `0.2.4`→`0.2.5`.** 144 tests pass.
 
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).

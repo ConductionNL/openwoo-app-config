@@ -28,4 +28,5 @@ images:
     # 0.2.2: tenant form minimised to org+env (rest derived); live preview + PR-status polling.
     # 0.2.3: post-merge Argo Synced/Healthy check before the Provision hand-off (needs rbac-argo + SA token).
     # 0.2.4: landing dashboard (tenants + recent PRs) + real logout (RP-initiated to Keycloak).
-    newTag: "0.2.4"
+    # 0.2.5: batch create (one PR, many tenants) + delete tenant (PR removing the file).
+    newTag: "0.2.5"

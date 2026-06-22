@@ -163,3 +163,41 @@ def propose_file(branch, path, content, commit_message, pr_title, pr_body,
     put_file(branch, path, content, commit_message, author_name, author_email)
     pr = open_pr(branch, pr_title, pr_body)
     return {"number": pr.get("number"), "html_url": pr.get("html_url")}
+
+
+def propose_files(branch, files, commit_message, pr_title, pr_body,
+                  author_name=None, author_email=None):
+    """Batch: one branch, multiple files (one commit each), one PR. `files` is a
+    list of (path, content). Returns {number, html_url}."""
+    create_branch(branch)
+    for path, content in files:
+        put_file(branch, path, content, commit_message, author_name, author_email)
+    pr = open_pr(branch, pr_title, pr_body)
+    return {"number": pr.get("number"), "html_url": pr.get("html_url")}
+
+
+def get_file_sha(path, ref=None):
+    """Blob sha of a file on `ref` (default base). Raises GitlibError(404) if absent."""
+    _api, _token, repo, base = _cfg()
+    data = _request("GET", f"/repos/{repo}/contents/{path}?ref={ref or base}", None)
+    sha = data.get("sha") if isinstance(data, dict) else None
+    if not sha:
+        raise GitlibError(404, f"file not found: {path}")
+    return sha
+
+
+def propose_deletion(branch, path, commit_message, pr_title, pr_body,
+                     author_name=None, author_email=None):
+    """Open a PR that DELETES `path`. Returns {number, html_url}. Raises
+    GitlibError(404) if the file doesn't exist (nothing to delete)."""
+    _api, _token, repo, base = _cfg()
+    sha = get_file_sha(path)                       # from base; branch == base at creation
+    create_branch(branch)
+    payload = {"branch": branch, "sha": sha, "message": commit_message}
+    if author_name and author_email:
+        ident = {"name": author_name, "email": author_email}
+        payload["author"] = ident
+        payload["committer"] = ident
+    _request("DELETE", f"/repos/{repo}/contents/{path}", payload)
+    pr = open_pr(branch, pr_title, pr_body)
+    return {"number": pr.get("number"), "html_url": pr.get("html_url")}
