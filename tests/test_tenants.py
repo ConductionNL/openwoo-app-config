@@ -79,3 +79,36 @@ def test_render_quotes_escape():
 
 def test_filename():
     assert tenants.filename("almere-accept") == "tenant-almere-accept.yaml"
+
+
+# --- minimal-input derivation (org + environment) ---
+
+def test_org_display_defaults_to_gemeente():
+    assert tenants.org_display("almere") == "Gemeente Almere"
+    assert tenants.org_display("oude-ijsselstreek") == "Gemeente Oude Ijsselstreek"
+
+
+def test_validate_org_rejects_full_name_and_bad_chars():
+    assert tenants.validate_org("almere-accept", "accept")  # has env suffix
+    assert tenants.validate_org("Almere", "accept")          # uppercase
+    assert tenants.validate_org("", "accept")                # empty
+    assert tenants.validate_org("almere", "staging")         # bad env
+    assert tenants.validate_org("almere", "accept") == []    # ok
+
+
+def test_from_org_derives_full_fields():
+    f = tenants.from_org("almere", "accept")
+    assert f["name"] == "almere-accept"
+    assert f["dbType"] == "postgres"
+    assert f["apps"] == list(tenants.KNOWN_APPS)
+    assert f["frontend_org"] == "Gemeente Almere"
+    assert f["frontend_host"] == ""
+    # derived fields pass the full validator
+    assert tenants.validate(f) == []
+
+
+def test_from_org_honours_overrides():
+    f = tenants.from_org("almere", "prod", dbType="mariadb",
+                         display="Provincie X", host="open.almere.nl")
+    assert f["name"] == "almere-prod" and f["dbType"] == "mariadb"
+    assert f["frontend_org"] == "Provincie X" and f["frontend_host"] == "open.almere.nl"

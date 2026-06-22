@@ -32,6 +32,52 @@ def filename(name):
     return f"tenant-{name}.yaml"
 
 
+_ORG_RE = re.compile(r"^([a-z][a-z0-9-]*[a-z0-9]|[a-z])$")
+_RESERVED_SUFFIX = re.compile(r"-(accept|test|demo|prod)$")
+
+
+def org_display(org):
+    """Default WOO branding name (PO convention): 'Gemeente <Org>'."""
+    parts = [p for p in (org or "").replace("_", "-").split("-") if p]
+    return "Gemeente " + " ".join(p.capitalize() for p in parts)
+
+
+def validate_org(org, environment):
+    """Validate the minimal operator input (bare org + environment). The full
+    tenant name is DERIVED (`<org>-<env>`), so the operator never types it."""
+    org = (org or "").strip()
+    errs = []
+    if not org:
+        errs.append("organisation is required")
+    elif _RESERVED_SUFFIX.search(org):
+        errs.append("give the bare organisation (e.g. 'almere'), not '<org>-<env>' "
+                    "— the environment is the dropdown")
+    elif not _ORG_RE.match(org):
+        errs.append("organisation must be lowercase letters/digits/hyphens "
+                    "(e.g. 'almere', 'oude-ijsselstreek')")
+    if environment not in ENVS:
+        errs.append(f"environment must be one of {ENVS}")
+    return errs
+
+
+def from_org(org, environment, dbType=None, display=None, host=None):
+    """Build the full fields dict from the minimal input. Everything not given is
+    derived: name=`<org>-<env>`, all three apps, branding 'Gemeente <Org>',
+    db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu)."""
+    org = (org or "").strip().lower()
+    env = (environment or "").strip()
+    disp = (display or "").strip() or (org_display(org) if org else "")
+    return {
+        "name": f"{org}-{env}" if (org and env) else "",
+        "environment": env,
+        "dbType": (dbType or "").strip() or "postgres",
+        "wave": "1",
+        "apps": list(KNOWN_APPS),
+        "frontend_org": disp,
+        "frontend_host": (host or "").strip(),
+    }
+
+
 def validate(fields):
     """Return a list of human-readable error strings ([] == valid).
 

@@ -149,16 +149,21 @@ def tenant_create():
     The portal NEVER creates secrets or touches the cluster — tenant secrets are
     generated in-cluster (ESO). Its only privileged action is opening this PR."""
     form = request.form
-    fields = {
-        "name": form.get("name", ""),
-        "environment": form.get("environment", ""),
-        "dbType": form.get("dbType", ""),
-        "wave": form.get("wave", "1"),
-        "apps": form.getlist("apps"),
-        "frontend_host": form.get("frontend_host", ""),
-        "frontend_org": form.get("frontend_org", ""),
-    }
-
+    # Minimal operator input: bare org + environment. Everything else is derived
+    # (name=<org>-<env>, all 3 apps, branding 'Gemeente <Org>', db=postgres,
+    # host blank => platform derives the hostname). Advanced overrides optional.
+    org = form.get("org", "")
+    environment = form.get("environment", "")
+    errors = tenants.validate_org(org, environment)
+    if errors:
+        return {"errors": errors}, 400
+    fields = tenants.from_org(
+        org, environment,
+        dbType=form.get("dbType", ""),
+        display=form.get("frontend_org", ""),
+        host=form.get("frontend_host", ""),
+    )
+    # defense-in-depth: the derived fields must still pass the full validator
     errors = tenants.validate(fields)
     if errors:
         return {"errors": errors}, 400
@@ -189,7 +194,21 @@ def tenant_create():
         return {"errors": [exc.detail]}, status
 
     app.logger.info("tenant PR opened: user=%s name=%s pr=%s", user, name, result.get("number"))
-    return {"pr_url": result.get("html_url"), "pr_number": result.get("number")}, 201
+    return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
+            "tenant": name}, 201
+
+
+@app.get("/tenant/pr-status")
+def tenant_pr_status():
+    """Poll a PR's state so the form can show open -> merged and then hand off to
+    the provisioning use case once it's merged."""
+    number = request.args.get("number", "")
+    if not number.isdigit():
+        return {"errors": ["invalid PR number"]}, 400
+    try:
+        return gitlib.get_pr(number), 200
+    except gitlib.GitlibError as exc:
+        return {"errors": [exc.detail]}, 502
 
 
 if __name__ == "__main__":

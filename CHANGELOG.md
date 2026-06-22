@@ -33,6 +33,12 @@ All notable changes to this repository are documented here.
   signed-in operator, and a **Log out** link (`/oauth2/sign_out`). The original provisioning
   form moved from `/` to `/provision-config`; both sub-pages get a Home/Log-out nav. **Image
   `0.2.0`→`0.2.1`.** Tests updated (117 pass).
+- **tenant form minimised to org + environment** (everything else derived) + **PR-status polling**.
+  `tenants.from_org`/`validate_org`/`org_display`: operator types only the bare org + env; name
+  (`<org>-<env>`), all 3 apps, db=postgres, branding `Gemeente <Org>`, and ESO-managed secrets are
+  derived (advanced overrides optional). Live preview shows the derived name/host/branding as you
+  type. `gitlib.get_pr` + `GET /tenant/pr-status` + result polling: the form shows the opened PR,
+  then **open → merged**, then hands off to **Provision config**. **Image `0.2.1`→`0.2.2`.** 124 tests pass.
 
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).

@@ -10,55 +10,55 @@
     h1 { font-size: 1.3rem; }
     label { display: block; margin: .6rem 0 .15rem; font-size: .9rem; }
     input[type=text], select { width: 100%; padding: .45rem; box-sizing: border-box; }
-    .row { margin: .4rem 0; }
     .hint { color: #666; font-size: .8rem; }
     button { margin-top: 1rem; padding: .6rem 1.2rem; font-size: 1rem; }
     fieldset { border: 1px solid #ccc; margin: 1rem 0; }
+    details { margin: 1rem 0; }
+    summary { cursor: pointer; color: #555; font-size: .9rem; }
+    .preview { background: #f4f6f8; border: 1px solid #e0e4e8; border-radius: 6px;
+               padding: .6rem .8rem; margin-top: .6rem; font-size: .85rem; color: #333; }
+    .preview code { color: #06c; }
     #result { margin-top: 1rem; padding: 1rem; border-radius: 6px; display: none; }
     #result.ok { background: #e7f6e7; border: 1px solid #8c8; }
     #result.err { background: #fbeaea; border: 1px solid #d99; }
+    #result.pending { background: #fff7e6; border: 1px solid #e3c266; }
     #result a { font-weight: 600; }
   </style>
 </head>
 <body>
   <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/oauth2/sign_out">Log out</a></p>
   <h1>Create a WOO tenant</h1>
-  <p class="hint">Writes <code>tenant-&lt;name&gt;.yaml</code> and opens a
-     <strong>pull request</strong> on Nextcloud-base. A reviewer merges it; Argo
-     then rolls out the tenant. Secrets are generated in-cluster — never here.</p>
+  <p class="hint">Type the organisation, pick the environment — the rest is derived.
+     Opens a <strong>pull request</strong> on Nextcloud-base; a reviewer merges it,
+     then Argo rolls out the tenant. Secrets are generated in-cluster.</p>
 
   <form id="f">
     <fieldset>
       <legend>Tenant</legend>
-      <label>Name <span class="hint">(&lt;org&gt;-&lt;accept|test|demo|prod&gt;, e.g. almere-accept)</span></label>
-      <input type="text" name="name" placeholder="almere-accept" required>
+      <label>Organisation <span class="hint">(bare name, e.g. almere)</span></label>
+      <input type="text" name="org" id="org" placeholder="almere" required autofocus>
       <label>Environment</label>
-      <select name="environment">
+      <select name="environment" id="env">
         <option value="accept">accept</option>
         <option value="prod">prod</option>
       </select>
-      <label>Database</label>
+      <div class="preview" id="preview">…</div>
+    </fieldset>
+
+    <details>
+      <summary>Advanced (optional — sensible defaults applied)</summary>
+      <label>Database <span class="hint">(default postgres)</span></label>
       <select name="dbType">
-        <option value="postgres">postgres</option>
+        <option value="">postgres (default)</option>
         <option value="mariadb">mariadb</option>
         <option value="external">external</option>
       </select>
-      <label>Wave <span class="hint">(0 = canary, 1+ = standard)</span></label>
-      <input type="text" name="wave" value="1">
-    </fieldset>
-    <fieldset>
-      <legend>Apps</legend>
-      <div class="row"><label><input type="checkbox" name="apps" value="opencatalogi" checked> opencatalogi</label></div>
-      <div class="row"><label><input type="checkbox" name="apps" value="openconnector" checked> openconnector</label></div>
-      <div class="row"><label><input type="checkbox" name="apps" value="openregister" checked> openregister</label></div>
-    </fieldset>
-    <fieldset>
-      <legend>Frontend (optional)</legend>
-      <label>Custom host <span class="hint">(blank = derived &lt;org&gt;.&lt;env&gt;.openwoo.app)</span></label>
+      <label>Organisation display name <span class="hint">(default: Gemeente &lt;org&gt;)</span></label>
+      <input type="text" name="frontend_org" id="dispOverride" placeholder="Gemeente Almere">
+      <label>Custom frontend host <span class="hint">(default: derived &lt;org&gt;.&lt;env&gt;.openwoo.app)</span></label>
       <input type="text" name="frontend_host" placeholder="open.almere.nl">
-      <label>Organisation name <span class="hint">(branding — GATSBY_ORGANISATION_NAME)</span></label>
-      <input type="text" name="frontend_org" placeholder="Gemeente Almere">
-    </fieldset>
+    </details>
+
     <button type="submit">Open pull request</button>
   </form>
 
@@ -66,24 +66,55 @@
 
   <script>
     const f = document.getElementById('f'), result = document.getElementById('result');
+    const org = document.getElementById('org'), env = document.getElementById('env');
+    const preview = document.getElementById('preview'), dispOverride = document.getElementById('dispOverride');
+
+    function cap(s){ return s.split('-').filter(Boolean).map(p => p.charAt(0).toUpperCase()+p.slice(1)).join(' '); }
+    function refresh() {
+      const o = org.value.trim().toLowerCase(), e = env.value;
+      if (!o) { preview.textContent = '…'; return; }
+      const host = e === 'prod' ? `${o}.commonground.nu` : `${o}.${e}.commonground.nu`;
+      const fe   = e === 'prod' ? `${o}.openwoo.app`     : `${o}.${e}.openwoo.app`;
+      const disp = dispOverride.value.trim() || `Gemeente ${cap(o)}`;
+      preview.innerHTML =
+        `Tenant <code>${o}-${e}</code> &middot; backend <code>${host}</code><br>` +
+        `frontend <code>${fe}</code> &middot; org <code>${disp}</code> &middot; apps: opencatalogi, openconnector, openregister`;
+    }
+    org.addEventListener('input', refresh); env.addEventListener('change', refresh);
+    dispOverride.addEventListener('input', refresh); refresh();
+
+    let pollTimer = null;
+    function pollStatus(num) {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        let r, d;
+        try { r = await fetch('/tenant/pr-status?number=' + num); d = await r.json(); } catch (e) { return; }
+        if (d.merged) {
+          clearInterval(pollTimer);
+          result.className = 'ok';
+          result.innerHTML = `✅ PR #${num} <strong>merged</strong> — Argo rolt de tenant uit. ` +
+            `Volgende stap: <a href="/provision-config">Provision config →</a>`;
+        } else if (d.state === 'closed') {
+          clearInterval(pollTimer);
+          result.className = 'err';
+          result.innerHTML = `PR #${num} gesloten zonder merge.`;
+        }
+      }, 8000);
+    }
+
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
-      result.style.display = 'block';
-      result.className = '';
-      result.textContent = 'opening pull request…';
+      result.style.display = 'block'; result.className = 'pending';
+      result.textContent = 'pull request openen…';
       let resp, data;
-      try {
-        resp = await fetch('/tenant', { method: 'POST', body: new FormData(f) });
-        data = await resp.json();
-      } catch (err) {
-        result.className = 'err';
-        result.textContent = 'network error: ' + err;
-        return;
-      }
+      try { resp = await fetch('/tenant', { method: 'POST', body: new FormData(f) }); data = await resp.json(); }
+      catch (err) { result.className = 'err'; result.textContent = 'network error: ' + err; return; }
       if (resp.status === 201 && data.pr_url) {
-        result.className = 'ok';
-        result.innerHTML = '✅ Tenant requested — PR #' + (data.pr_number ?? '') +
-          ' opened → <a href="' + data.pr_url + '" target="_blank" rel="noopener">review &amp; merge</a>';
+        result.className = 'pending';
+        result.innerHTML = `📬 Tenant <code>${data.tenant}</code> — PR #${data.pr_number} geopend ` +
+          `(<a href="${data.pr_url}" target="_blank" rel="noopener">review &amp; merge</a>). ` +
+          `Wacht op merge…`;
+        pollStatus(data.pr_number);
       } else {
         result.className = 'err';
         const errs = (data && data.errors) ? data.errors : ['unexpected error (HTTP ' + resp.status + ')'];

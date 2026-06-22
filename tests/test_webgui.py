@@ -128,22 +128,21 @@ def test_tenant_form_renders(client):
     resp = client.get("/tenant")
     assert resp.status_code == 200
     assert b"Create a WOO tenant" in resp.data
-    assert b'name="name"' in resp.data
+    assert b'name="org"' in resp.data and b'name="environment"' in resp.data
 
 
 def test_tenant_validation_error_is_400_no_pr(client, monkeypatch):
-    # A bad name must fail validation BEFORE any git call.
+    # A full <org>-<env> in the org field must fail BEFORE any git call.
     called = {"n": 0}
     monkeypatch.setattr(server.gitlib, "propose_file",
                         lambda **kw: called.__setitem__("n", called["n"] + 1))
-    resp = client.post("/tenant", data={"name": "almere", "environment": "accept",
-                                        "dbType": "postgres", "apps": "opencatalogi"})
+    resp = client.post("/tenant", data={"org": "almere-accept", "environment": "accept"})
     assert resp.status_code == 400
     assert resp.get_json()["errors"]
     assert called["n"] == 0  # no PR attempted
 
 
-def test_tenant_happy_returns_pr_link(client, monkeypatch):
+def test_tenant_happy_derives_everything(client, monkeypatch):
     captured = {}
 
     def fake_propose(**kw):
@@ -151,17 +150,20 @@ def test_tenant_happy_returns_pr_link(client, monkeypatch):
         return {"number": 7, "html_url": "https://codeberg.org/x/pulls/7"}
 
     monkeypatch.setattr(server.gitlib, "propose_file", fake_propose)
-    resp = client.post("/tenant", data={
-        "name": "almere-accept", "environment": "accept", "dbType": "postgres",
-        "apps": ["opencatalogi", "openregister"], "frontend_org": "Gemeente Almere",
-    })
+    # operator types ONLY org + environment
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
     assert resp.status_code == 201
     body = resp.get_json()
     assert body["pr_url"].endswith("/pulls/7") and body["pr_number"] == 7
-    # rendered content + correct path reached gitlib
+    assert body["tenant"] == "almere-accept"
+    # derived: name, path, branch, all 3 apps, branding, ESO-managed
     assert captured["path"] == "nextcloud-platform/values/tenants/tenant-almere-accept.yaml"
     assert captured["branch"] == "add-tenant/almere-accept"
-    assert "name: almere-accept" in captured["content"]
+    c = captured["content"]
+    assert "name: almere-accept" in c and "dbType: postgres" in c
+    assert "- opencatalogi" in c and "- openconnector" in c and "- openregister" in c
+    assert 'organisationName: "Gemeente Almere"' in c
+    assert "managed: true" in c
 
 
 def test_tenant_requester_stamped_from_proxy(authed_client, monkeypatch):
@@ -169,8 +171,7 @@ def test_tenant_requester_stamped_from_proxy(authed_client, monkeypatch):
     monkeypatch.setattr(server.gitlib, "propose_file",
                         lambda **kw: captured.update(kw) or {"number": 1, "html_url": "u"})
     resp = authed_client.post("/tenant", headers={"X-Forwarded-Email": "op@conduction.nl"},
-                              data={"name": "almere-accept", "environment": "accept",
-                                    "dbType": "postgres", "apps": "opencatalogi"})
+                              data={"org": "almere", "environment": "accept"})
     assert resp.status_code == 201
     assert "requested-by: op@conduction.nl" in captured["commit_message"]
     assert "op@conduction.nl" in captured["pr_body"]
@@ -180,7 +181,19 @@ def test_tenant_conflict_maps_to_409(client, monkeypatch):
     def boom(**kw):
         raise server.gitlib.GitlibError(409, "branch already exists")
     monkeypatch.setattr(server.gitlib, "propose_file", boom)
-    resp = client.post("/tenant", data={"name": "almere-accept", "environment": "accept",
-                                        "dbType": "postgres", "apps": "opencatalogi"})
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
     assert resp.status_code == 409
     assert "already exists" in resp.get_json()["errors"][0]
+
+
+def test_pr_status_proxies_gitlib(client, monkeypatch):
+    monkeypatch.setattr(server.gitlib, "get_pr",
+                        lambda n: {"state": "open", "merged": False, "html_url": "u"})
+    resp = client.get("/tenant/pr-status?number=7")
+    assert resp.status_code == 200
+    assert resp.get_json()["merged"] is False
+
+
+def test_pr_status_rejects_non_numeric(client):
+    resp = client.get("/tenant/pr-status?number=abc")
+    assert resp.status_code == 400

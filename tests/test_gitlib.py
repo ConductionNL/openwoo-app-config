@@ -82,6 +82,14 @@ def test_propose_file_happy_path(monkeypatch):
     assert calls[0].get_header("Authorization") == "token tok-secret"
 
 
+def test_get_pr_returns_state(monkeypatch):
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen",
+                        _fake_urlopen([{"state": "open", "merged": False,
+                                        "html_url": "https://x/pulls/9"}], []))
+    pr = gitlib.get_pr("9")
+    assert pr == {"state": "open", "merged": False, "html_url": "https://x/pulls/9"}
+
+
 def test_409_branch_exists_maps_to_status(monkeypatch):
     err = urllib.error.HTTPError(
         url="x", code=409, msg="conflict", hdrs=None,

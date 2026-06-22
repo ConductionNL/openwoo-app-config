@@ -122,6 +122,15 @@ def open_pr(head, title, body, base=None):
     return _request("POST", f"/repos/{repo}/pulls", payload)
 
 
+def get_pr(number):
+    """Fetch one PR's state for the status poll. Returns {state, merged, html_url}
+    (state is 'open'/'closed'; merged distinguishes merged from just-closed)."""
+    _api, _token, repo, _base = _cfg()
+    pr = _request("GET", f"/repos/{repo}/pulls/{number}", None)
+    return {"state": pr.get("state"), "merged": bool(pr.get("merged")),
+            "html_url": pr.get("html_url")}
+
+
 def propose_file(branch, path, content, commit_message, pr_title, pr_body,
                  author_name=None, author_email=None):
     """Orchestrate branch -> put file -> PR. Returns {number, html_url}.
