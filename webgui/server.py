@@ -88,6 +88,13 @@ def _require_operator():
 
 @app.get("/")
 def index():
+    # Landing page: use-case cards (create tenant / provision config) + logout.
+    return render_template("home.html", user=current_user())
+
+
+@app.get("/provision-config")
+def provision_config_form():
+    # The original config-provisioning form (POSTs to /provision, unchanged).
     return render_template("index.html")
 
 

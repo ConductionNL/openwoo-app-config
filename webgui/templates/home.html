@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenWoo platform</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 0 1rem 3rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center;
+              padding: 1rem 0; border-bottom: 1px solid #eee; margin-bottom: 2rem; }
+    .topbar .who { color: #666; font-size: .85rem; }
+    .topbar a.logout { font-size: .85rem; }
+    h1 { font-size: 1.4rem; }
+    p.lead { color: #555; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+    .card { display: block; border: 1px solid #ccc; border-radius: 10px; padding: 1.25rem 1.4rem;
+            text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
+    .card:hover { border-color: #4a7; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    .card h2 { font-size: 1.1rem; margin: 0 0 .35rem; }
+    .card p { margin: 0; color: #666; font-size: .9rem; }
+    .card .go { margin-top: .8rem; color: #2a7; font-weight: 600; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="who">{% if user and user != '-' %}Signed in as <strong>{{ user }}</strong>{% else %}OpenWoo platform{% endif %}</span>
+    <a class="logout" href="/oauth2/sign_out">Log out</a>
+  </div>
+
+  <h1>OpenWoo platform</h1>
+  <p class="lead">Manage WOO environments. Pick a task:</p>
+
+  <div class="cards">
+    <a class="card" href="/tenant">
+      <h2>Create a tenant</h2>
+      <p>Fill in a form and open a pull request on Nextcloud-base. A reviewer merges it; Argo rolls out the Nextcloud + WOO frontend.</p>
+      <div class="go">New tenant →</div>
+    </a>
+    <a class="card" href="/provision-config">
+      <h2>Provision config</h2>
+      <p>Load the OpenRegister WOO base config into an existing tenant via its public URL (runs <code>provision.py all</code>).</p>
+      <div class="go">Provision →</div>
+    </a>
+  </div>
+</body>
+</html>

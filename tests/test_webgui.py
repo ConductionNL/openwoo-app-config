@@ -33,8 +33,18 @@ def test_healthz(client):
     assert resp.data == b"ok\n"
 
 
-def test_index_renders_form(client):
+def test_index_is_landing_with_usecase_links(client):
     resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"OpenWoo platform" in resp.data
+    # links to both use cases + logout
+    assert b'href="/tenant"' in resp.data
+    assert b'href="/provision-config"' in resp.data
+    assert b'href="/oauth2/sign_out"' in resp.data
+
+
+def test_provision_config_form_renders(client):
+    resp = client.get("/provision-config")
     assert resp.status_code == 200
     assert b"OpenWoo tenant provisioning" in resp.data
     assert b'name="base"' in resp.data
@@ -104,7 +114,7 @@ def test_auth_required_blocks_unauthenticated(authed_client):
 def test_auth_required_allows_with_proxy_header(authed_client):
     resp = authed_client.get("/", headers={"X-Forwarded-Email": "op@conduction.nl"})
     assert resp.status_code == 200
-    assert b"OpenWoo tenant provisioning" in resp.data
+    assert b"OpenWoo platform" in resp.data
 
 
 def test_healthz_open_even_with_auth(authed_client):

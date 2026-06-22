@@ -28,6 +28,11 @@ All notable changes to this repository are documented here.
   + `FORGEJO_API_URL`/`TENANTS_REPO`/`TENANTS_BASE` into the app container; oauth2-proxy stays
   the sole ingress. **Image `0.1.4`→`0.2.0`** (kustomization), built OK. Push image + create the
   token Secret out-of-band to go live.
+- **`webgui/templates/home.html` + landing page** — `/` is now a landing page with use-case
+  cards (**Create a tenant** → `/tenant`, **Provision config** → `/provision-config`), the
+  signed-in operator, and a **Log out** link (`/oauth2/sign_out`). The original provisioning
+  form moved from `/` to `/provision-config`; both sub-pages get a Home/Log-out nav. **Image
+  `0.2.0`→`0.2.1`.** Tests updated (117 pass).
 
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).
