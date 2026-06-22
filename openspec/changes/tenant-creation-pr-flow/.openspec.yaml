@@ -1,0 +1,5 @@
+---
+schema: spec-driven
+created: 2026-06-22
+updated: 2026-06-22
+pivot: Extend the SSO-gated webgui so an operator can create a WOO tenant from a form — the portal writes tenant-<name>.yaml and opens a PR on Nextcloud-base as a dedicated bot (PR link returned to the form). No devops, no cluster write, no secrets in the portal; merge stays a human gate.

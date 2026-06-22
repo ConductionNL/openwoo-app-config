@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-06-22 (openspec: tenant creation via PR)
+- **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).
+  Extend the SSO-gated webgui so an operator creates a WOO tenant from a form: it renders
+  `tenant-<name>.yaml`, validates it, and opens a PR on Nextcloud-base via the Forgejo REST
+  API using **stdlib `urllib`** (zero-dep posture preserved), returning the PR link to the
+  form. Boring/auditable boundary: **portal = PR-author only** — no cluster write, no secrets
+  (tenant secrets generated in-cluster via **ESO**), merge stays a human review gate, and the
+  git-write identity (a scoped Codeberg bot) is decoupled from the operator's SSO login.
+  Proposal/design/tasks only; no webgui code yet. See `openspec/changes/tenant-creation-pr-flow/`.
+
 ### Changed — 2026-06-15 (control-plane image 0.1.4)
 - Built + tagged control-plane image **`docker.io/conduction2022/openwoo-provisioner:0.1.4`**
   (carries the `provisionlib` refactor + the `delete-menu` step). Bumped
