@@ -58,6 +58,8 @@ def test_render_minimal():
     assert '  wave: "1"' in out
     assert "  dbType: postgres" in out
     assert "      - opencatalogi" in out and "      - openregister" in out
+    # new-world tenants are ESO-managed
+    assert "  secrets:" in out and "    managed: true" in out
     # no frontend block when host/org absent
     assert "frontend:" not in out
 

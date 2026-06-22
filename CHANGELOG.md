@@ -11,7 +11,9 @@ All notable changes to this repository are documented here.
   the token is read from env and never logged or leaked into error messages.
 - **`webgui/tenants.py`** — render `tenant-<name>.yaml` from form values + `validate()`
   mirroring Nextcloud-base `validate-values.sh` (name `<org>-<env>`, env-matches-suffix,
-  dbType enum, apps). No PyYAML — emitted as text, zero-dep preserved.
+  dbType enum, apps). No PyYAML — emitted as text, zero-dep preserved. Emits
+  `tenant.secrets.managed: true` so new (web-created) tenants get ESO-generated
+  in-cluster secrets (gates `charts/tenant-secret` in Nextcloud-base).
 - **`webgui/server.py`** — `GET/POST /tenant`: validate → render → open a PR as the
   token's identity, stamping `requested-by: <oauth2-proxy email>`; returns the PR link.
   Auth-gated by the existing fail-closed `_require_operator`. Existing `/provision`

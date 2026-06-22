@@ -90,7 +90,11 @@ def render(fields):
     org = (fields.get("frontend_org") or "").strip()
 
     lines = ["---", "tenant:", f"  name: {name}", f"  environment: {env}",
-             f"  wave: {_q(wave)}", f"  dbType: {db}", "  apps:", "    enabled:"]
+             f"  wave: {_q(wave)}", f"  dbType: {db}",
+             # New-world tenants get ESO-managed secrets (generated in-cluster). The
+             # flag gates charts/tenant-secret in the appset; existing tenants omit it.
+             "  secrets:", "    managed: true",
+             "  apps:", "    enabled:"]
     lines += [f"      - {a}" for a in apps]
 
     if host or org:
