@@ -18,41 +18,42 @@
   </style>
 </head>
 <body>
-  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Log out</a></p>
-  <h1>OpenWoo tenant provisioning</h1>
-  <p class="hint">Runs <code>provision.py all</code> against a tenant's <strong>public URL</strong>.
-     Credentials are used for this run only and are never stored.</p>
+  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Uitloggen</a></p>
+  <h1>Omgeving inrichten</h1>
+  <p class="hint">Laadt de WOO-basisconfiguratie (register, schema's, bronnen) in een bestaande
+     omgeving via de <strong>publieke URL</strong>. Inloggegevens worden alleen voor deze run
+     gebruikt en nooit bewaard.</p>
 
   <form id="f">
     <fieldset>
-      <legend>Tenant</legend>
-      <label>Tenant base URL</label>
-      <input type="text" name="base" placeholder="https://&lt;org&gt;.accept.commonground.nu" required>
-      <label>Admin user</label>
+      <legend>Omgeving</legend>
+      <label>Basis-URL van de omgeving</label>
+      <input type="text" name="base" placeholder="https://&lt;organisatie&gt;.accept.commonground.nu" required>
+      <label>Beheerder</label>
       <input type="text" name="user" value="admin">
-      <label>App password</label>
+      <label>App-wachtwoord</label>
       <input type="password" name="password" autocomplete="off">
     </fieldset>
     <fieldset>
-      <legend>Source connection (per tenant)</legend>
-      <label>Source URL <span class="hint">(blank = keep config default)</span></label>
+      <legend>Bronkoppeling (per omgeving)</legend>
+      <label>Bron-URL <span class="hint">(leeg = configuratie-standaard behouden)</span></label>
       <input type="text" name="source_url">
-      <label>API-Interface-ID <span class="hint">(blank = keep config default)</span></label>
+      <label>API-Interface-ID <span class="hint">(leeg = configuratie-standaard behouden)</span></label>
       <input type="text" name="api_interface_id">
-      <label>Source API key <span class="hint">(blank = dummy test key)</span></label>
+      <label>Bron-API-sleutel <span class="hint">(leeg = test-sleutel)</span></label>
       <input type="password" name="apikey" autocomplete="off">
     </fieldset>
     <fieldset>
-      <legend>Options</legend>
-      <div class="row"><label><input type="checkbox" name="force_import"> Force re-import (config content changed)</label></div>
-      <div class="row"><label><input type="checkbox" name="run_syncs"> Run synchronizations after provisioning (live fetch)</label></div>
-      <div class="row"><label><input type="checkbox" name="dry_run"> &nbsp;&nbsp;└ dry-run only (/test)</label></div>
+      <legend>Opties</legend>
+      <div class="row"><label><input type="checkbox" name="force_import"> Forceer her-import (configuratie gewijzigd)</label></div>
+      <div class="row"><label><input type="checkbox" name="run_syncs"> Synchronisaties draaien na inrichten (live ophalen)</label></div>
+      <div class="row"><label><input type="checkbox" name="dry_run"> &nbsp;&nbsp;└ alleen test (dry-run)</label></div>
     </fieldset>
-    <button type="submit">Run provisioning</button>
+    <button type="submit">Inrichten starten</button>
   </form>
 
-  <h2 style="font-size:1rem">Output</h2>
-  <pre id="out">(idle)</pre>
+  <h2 style="font-size:1rem">Uitvoer</h2>
+  <pre id="out">(nog niets)</pre>
 
   <script>
     const f = document.getElementById('f'), out = document.getElementById('out');

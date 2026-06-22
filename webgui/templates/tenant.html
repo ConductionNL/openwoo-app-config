@@ -26,40 +26,40 @@
   </style>
 </head>
 <body>
-  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Log out</a></p>
-  <h1>Create a WOO tenant</h1>
-  <p class="hint">Type the organisation, pick the environment — the rest is derived.
-     Opens a <strong>pull request</strong> on Nextcloud-base; a reviewer merges it,
-     then Argo rolls out the tenant. Secrets are generated in-cluster.</p>
+  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Uitloggen</a></p>
+  <h1>Nieuwe WOO-omgeving</h1>
+  <p class="hint">Vul de organisatie in en kies acceptatie of productie — de rest gaat automatisch.
+     Er wordt een <strong>aanvraag</strong> ingediend; na goedkeuring rolt het platform de
+     Nextcloud-omgeving + WOO-frontend uit. Wachtwoorden worden veilig in het cluster gegenereerd.</p>
 
   <form id="f">
     <fieldset>
-      <legend>Tenant</legend>
-      <label>Organisation <span class="hint">(bare name, e.g. almere)</span></label>
+      <legend>Omgeving</legend>
+      <label>Organisatie <span class="hint">(korte naam, bv. almere)</span></label>
       <input type="text" name="org" id="org" placeholder="almere" required autofocus>
-      <label>Environment</label>
+      <label>Acceptatie of productie</label>
       <select name="environment" id="env">
-        <option value="accept">accept</option>
-        <option value="prod">prod</option>
+        <option value="accept">acceptatie</option>
+        <option value="prod">productie</option>
       </select>
       <div class="preview" id="preview">…</div>
     </fieldset>
 
     <details>
-      <summary>Advanced (optional — sensible defaults applied)</summary>
-      <label>Database <span class="hint">(default postgres)</span></label>
+      <summary>Geavanceerd (optioneel — standaardwaarden zijn al ingevuld)</summary>
+      <label>Database <span class="hint">(standaard postgres)</span></label>
       <select name="dbType">
-        <option value="">postgres (default)</option>
+        <option value="">postgres (standaard)</option>
         <option value="mariadb">mariadb</option>
-        <option value="external">external</option>
+        <option value="external">extern</option>
       </select>
-      <label>Organisation display name <span class="hint">(default: Gemeente &lt;org&gt;)</span></label>
+      <label>Weergavenaam organisatie <span class="hint">(standaard: Gemeente &lt;organisatie&gt;)</span></label>
       <input type="text" name="frontend_org" id="dispOverride" placeholder="Gemeente Almere">
-      <label>Custom frontend host <span class="hint">(default: derived &lt;org&gt;.&lt;env&gt;.openwoo.app)</span></label>
+      <label>Eigen frontend-host <span class="hint">(standaard: afgeleid &lt;org&gt;.&lt;omg&gt;.openwoo.app)</span></label>
       <input type="text" name="frontend_host" placeholder="open.almere.nl">
     </details>
 
-    <button type="submit">Open pull request</button>
+    <button type="submit">Aanvraag indienen</button>
   </form>
 
   <div id="result"></div>
@@ -77,8 +77,8 @@
       const fe   = e === 'prod' ? `${o}.openwoo.app`     : `${o}.${e}.openwoo.app`;
       const disp = dispOverride.value.trim() || `Gemeente ${cap(o)}`;
       preview.innerHTML =
-        `Tenant <code>${o}-${e}</code> &middot; backend <code>${host}</code><br>` +
-        `frontend <code>${fe}</code> &middot; org <code>${disp}</code> &middot; apps: opencatalogi, openconnector, openregister`;
+        `Omgeving <code>${o}-${e}</code> &middot; achterkant <code>${host}</code><br>` +
+        `website <code>${fe}</code> &middot; organisatie <code>${disp}</code> &middot; apps: opencatalogi, openconnector, openregister`;
     }
     org.addEventListener('input', refresh); env.addEventListener('change', refresh);
     dispOverride.addEventListener('input', refresh); refresh();

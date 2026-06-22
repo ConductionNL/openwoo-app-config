@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: EUPL-1.2 -->
-<html lang="en">
+<html lang="nl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenWoo platform</title>
+  <title>OpenWoo-platform</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 0 1rem 3rem; }
     .topbar { display: flex; justify-content: space-between; align-items: center;
@@ -35,77 +35,88 @@
 </head>
 <body>
   <div class="topbar">
-    <span class="who">{% if user and user != '-' %}Signed in as <strong>{{ user }}</strong>{% else %}OpenWoo platform{% endif %}</span>
-    <a class="logout" href="/logout">Log out</a>
+    <span class="who">{% if user and user != '-' %}Ingelogd als <strong>{{ user }}</strong>{% else %}OpenWoo-platform{% endif %}</span>
+    <a class="logout" href="/logout">Uitloggen</a>
   </div>
 
-  <h1>OpenWoo platform</h1>
-  <p class="lead">Manage WOO environments. Pick a task:</p>
+  <h1>OpenWoo-platform</h1>
+  <p class="lead">Beheer je WOO-omgevingen. Kies een taak:</p>
 
   <div class="cards">
     <a class="card" href="/tenant">
-      <h2>Create a tenant</h2>
-      <p>Fill in a form and open a pull request on Nextcloud-base. A reviewer merges it; Argo rolls out the Nextcloud + WOO frontend.</p>
-      <div class="go">New tenant →</div>
+      <h2>Nieuwe omgeving</h2>
+      <p>Maak één WOO-omgeving aan. Je vult alleen de organisatie in — de rest gaat automatisch.</p>
+      <div class="go">Aanmaken →</div>
     </a>
     <a class="card" href="/provision-config">
-      <h2>Provision config</h2>
-      <p>Load the OpenRegister WOO base config into an existing tenant via its public URL (runs <code>provision.py all</code>).</p>
-      <div class="go">Provision →</div>
+      <h2>Omgeving inrichten</h2>
+      <p>Laad de WOO-basisconfiguratie (register, schema's, bronnen) in een bestaande omgeving.</p>
+      <div class="go">Inrichten →</div>
     </a>
     <a class="card" href="/tenant/batch">
-      <h2>Batch create</h2>
-      <p>Create several tenants at once — one organisation per line — in a single pull request.</p>
-      <div class="go">Batch →</div>
+      <h2>Meerdere tegelijk</h2>
+      <p>Maak in één keer meerdere omgevingen aan — één organisatie per regel.</p>
+      <div class="go">Meerdere →</div>
     </a>
     <a class="card" href="/tenant/delete">
-      <h2>Delete tenant</h2>
-      <p>Open a PR removing a tenant. Data/PVCs and the frontend app stay until cleaned up manually.</p>
-      <div class="go">Delete →</div>
+      <h2>Omgeving verwijderen</h2>
+      <p>Voer een omgeving af. De data blijft bewaard tot je die zelf opruimt.</p>
+      <div class="go">Verwijderen →</div>
     </a>
   </div>
 
   <section class="dash">
-    <h2>Tenants <span class="muted" id="t-meta"></span></h2>
+    <h2>Openstaande aanvragen <span class="muted" id="pr-meta"></span></h2>
     <table>
-      <thead><tr><th>Tenant</th><th>Argo sync</th><th>Health</th><th></th></tr></thead>
-      <tbody id="t-body"><tr><td colspan="4" class="muted">loading…</td></tr></tbody>
+      <thead><tr><th>Aanvraag</th><th>Omgeving</th><th>Status</th></tr></thead>
+      <tbody id="pr-body"><tr><td colspan="3" class="muted">laden…</td></tr></tbody>
     </table>
 
-    <h2 style="margin-top:1.6rem">Recent tenant PRs</h2>
+    <h2 style="margin-top:1.8rem">Omgevingen <span class="muted" id="t-meta"></span></h2>
     <table>
-      <thead><tr><th>PR</th><th>Tenant</th><th>Status</th></tr></thead>
-      <tbody id="pr-body"><tr><td colspan="3" class="muted">loading…</td></tr></tbody>
+      <thead><tr><th>Omgeving</th><th>Status</th><th></th></tr></thead>
+      <tbody id="t-body"><tr><td colspan="3" class="muted">laden…</td></tr></tbody>
     </table>
     <p class="muted" id="dash-err"></p>
   </section>
 
   <script>
     function esc(s){ return String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-    function badge(v){
-      const ok = ['Synced','Healthy'], warn = ['Progressing','OutOfSync','Missing','Unknown'];
-      const cls = v == null ? 'b-muted' : ok.includes(v) ? 'b-ok' : warn.includes(v) ? 'b-warn' : 'b-bad';
-      return `<span class="badge ${cls}">${esc(v || '—')}</span>`;
+    // Operator-friendly status, no Argo jargon.
+    function omgevingStatus(t){
+      if (t.sync === 'Synced' && t.health === 'Healthy') return ['b-ok', 'Live'];
+      if (t.health === 'Progressing' || t.sync === 'OutOfSync') return ['b-warn', 'Bezig…'];
+      if (!t.sync && !t.health) return ['b-muted', 'Onbekend'];
+      return ['b-bad', 'Aandacht nodig'];
     }
-    function prBadge(p){
-      if (p.merged) return '<span class="badge b-ok">merged</span>';
-      if (p.state === 'open') return '<span class="badge b-warn">open</span>';
-      return '<span class="badge b-bad">closed</span>';
+    function aanvraagStatus(p){
+      if (p.merged) return ['b-ok', 'Doorgevoerd'];
+      if (p.state === 'open') return ['b-warn', 'In review'];
+      return ['b-bad', 'Afgewezen'];
     }
+    function badge(cls, txt){ return `<span class="badge ${cls}">${esc(txt)}</span>`; }
+
     async function loadDash(){
       let d;
       try { d = await (await fetch('/dashboard.json')).json(); } catch(e){ return; }
+
+      const pb = document.getElementById('pr-body');
+      const open = (d.prs || []).filter(p => p.state === 'open');
+      pb.innerHTML = (d.prs && d.prs.length)
+        ? d.prs.map(p => { const [c,t] = aanvraagStatus(p);
+            return `<tr><td><a href="${esc(p.html_url)}" target="_blank" rel="noopener">#${esc(p.number)}</a></td>`+
+                   `<td>${esc(p.tenant)}</td><td>${badge(c,t)}</td></tr>`; }).join('')
+        : '<tr><td colspan="3" class="muted">geen recente aanvragen</td></tr>';
+      document.getElementById('pr-meta').textContent = open.length ? `(${open.length} in review)` : '';
+
       const tb = document.getElementById('t-body');
       tb.innerHTML = (d.tenants && d.tenants.length)
-        ? d.tenants.map(t => `<tr><td>${esc(t.tenant)}</td><td>${badge(t.sync)}</td><td>${badge(t.health)}</td>`+
-                             `<td><a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">delete</a></td></tr>`).join('')
-        : '<tr><td colspan="4" class="muted">no tenant apps found</td></tr>';
+        ? d.tenants.map(t => { const [c,l] = omgevingStatus(t);
+            return `<tr><td>${esc(t.tenant)}</td><td>${badge(c,l)}</td>`+
+                   `<td><a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
+        : '<tr><td colspan="3" class="muted">nog geen omgevingen</td></tr>';
       document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';
-      const pb = document.getElementById('pr-body');
-      pb.innerHTML = (d.prs && d.prs.length)
-        ? d.prs.map(p => `<tr><td><a href="${esc(p.html_url)}" target="_blank" rel="noopener">#${esc(p.number)}</a></td>`+
-                         `<td>${esc(p.tenant)}</td><td>${prBadge(p)}</td></tr>`).join('')
-        : '<tr><td colspan="3" class="muted">no recent tenant PRs</td></tr>';
+
       document.getElementById('dash-err').textContent = (d.errors && d.errors.length) ? ('⚠ ' + d.errors.join(' · ')) : '';
     }
     loadDash(); setInterval(loadDash, 15000);

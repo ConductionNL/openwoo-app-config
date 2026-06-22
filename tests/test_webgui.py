@@ -36,7 +36,7 @@ def test_healthz(client):
 def test_index_is_landing_with_usecase_links(client):
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"OpenWoo platform" in resp.data
+    assert b"OpenWoo-platform" in resp.data
     # links to both use cases + logout
     assert b'href="/tenant"' in resp.data
     assert b'href="/provision-config"' in resp.data
@@ -46,7 +46,7 @@ def test_index_is_landing_with_usecase_links(client):
 def test_provision_config_form_renders(client):
     resp = client.get("/provision-config")
     assert resp.status_code == 200
-    assert b"OpenWoo tenant provisioning" in resp.data
+    assert b"Omgeving inrichten" in resp.data
     assert b'name="base"' in resp.data
 
 
@@ -114,7 +114,7 @@ def test_auth_required_blocks_unauthenticated(authed_client):
 def test_auth_required_allows_with_proxy_header(authed_client):
     resp = authed_client.get("/", headers={"X-Forwarded-Email": "op@conduction.nl"})
     assert resp.status_code == 200
-    assert b"OpenWoo platform" in resp.data
+    assert b"OpenWoo-platform" in resp.data
 
 
 def test_healthz_open_even_with_auth(authed_client):
@@ -127,7 +127,7 @@ def test_healthz_open_even_with_auth(authed_client):
 def test_tenant_form_renders(client):
     resp = client.get("/tenant")
     assert resp.status_code == 200
-    assert b"Create a WOO tenant" in resp.data
+    assert b"Nieuwe WOO-omgeving" in resp.data
     assert b'name="org"' in resp.data and b'name="environment"' in resp.data
 
 
@@ -189,7 +189,7 @@ def test_tenant_conflict_maps_to_409(client, monkeypatch):
 def test_batch_form_renders(client):
     resp = client.get("/tenant/batch")
     assert resp.status_code == 200
-    assert b"Batch create tenants" in resp.data and b'name="orgs"' in resp.data
+    assert "Meerdere omgevingen aanmaken".encode() in resp.data and b'name="orgs"' in resp.data
 
 
 def test_batch_happy_one_pr_many_files(client, monkeypatch):
@@ -222,7 +222,7 @@ def test_batch_rejects_bad_org_and_dupes(client, monkeypatch):
 def test_delete_form_prefills_tenant(client):
     resp = client.get("/tenant/delete?tenant=almere-accept")
     assert resp.status_code == 200
-    assert b'value="almere-accept"' in resp.data and b"PV/PVC" in resp.data
+    assert b'value="almere-accept"' in resp.data and "volumes".encode() in resp.data
 
 
 def test_delete_happy_opens_pr(client, monkeypatch):

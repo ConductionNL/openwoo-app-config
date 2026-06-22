@@ -4,6 +4,13 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Changed — 2026-06-22 (webgui: Dutch + PO-jargon UI)
+- All webgui pages are now **Dutch** and use **PO-jargon** (no `provision.py`/`Argo`/`tenant`
+  jargon): "omgevingen", "aanvragen", friendly status (Live / Bezig… / Aandacht nodig),
+  acceptatie/productie. The landing **dashboard shows open requests (aanvragen) ABOVE the
+  environments** table. Card labels, forms, previews and result messages all translated.
+  **Image `0.2.5`→`0.2.6`.** 144 tests pass.
+
 ### Added — 2026-06-22 (webgui: tenant creation via PR — implementation)
 - **`webgui/gitlib.py`** — stdlib-only (`urllib`) Forgejo REST client: `create_branch`
   → `put_file` → `open_pr`, plus `propose_file` orchestrating all three and returning

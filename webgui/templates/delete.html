@@ -21,25 +21,24 @@
   </style>
 </head>
 <body>
-  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Log out</a></p>
-  <h1>Delete a WOO tenant</h1>
-  <p class="hint">Opens a <strong>pull request</strong> that removes the tenant file. A reviewer
-     merges it; Argo then prunes the Nextcloud app.</p>
+  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Uitloggen</a></p>
+  <h1>WOO-omgeving verwijderen</h1>
+  <p class="hint">Dient een <strong>aanvraag</strong> in die de omgeving afvoert. Na goedkeuring
+     ruimt het platform de Nextcloud-omgeving op.</p>
 
   <div class="warn">
-    ⚠️ <strong>Not fully automatic.</strong> After merge, Argo removes the Nextcloud app, but
-    <strong>PV/PVCs (your data) and the <code>&lt;tenant&gt;-reactfront</code> frontend app are
-    NOT auto-deleted</strong> — clean those up manually after verifying. This PR only removes the
-    tenant definition from Git.
+    ⚠️ <strong>Niet volledig automatisch.</strong> Na goedkeuring verwijdert het platform de
+    Nextcloud-omgeving, maar <strong>je data (volumes) en de website-app blijven staan</strong> —
+    die ruim je daarna zelf op, na controle. Deze aanvraag haalt alleen de omgeving uit de configuratie.
   </div>
 
   <form id="f">
     <fieldset>
-      <legend>Tenant</legend>
-      <label>Tenant name <span class="hint">(full name, e.g. almere-accept)</span></label>
+      <legend>Omgeving</legend>
+      <label>Naam van de omgeving <span class="hint">(volledige naam, bv. almere-accept)</span></label>
       <input type="text" name="tenant" id="tenant" value="{{ tenant }}" placeholder="almere-accept" required>
     </fieldset>
-    <button type="submit">Open delete pull request</button>
+    <button type="submit">Verwijder-aanvraag indienen</button>
   </form>
 
   <div id="result"></div>
@@ -49,16 +48,16 @@
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       const t = document.getElementById('tenant').value.trim();
-      if (!confirm(`Open a PR to delete tenant "${t}"? (data/PVCs stay until you clean them up)`)) return;
-      result.style.display = 'block'; result.className = 'pending'; result.textContent = 'pull request openen…';
+      if (!confirm(`Aanvraag indienen om omgeving "${t}" te verwijderen? (data blijft staan tot je die zelf opruimt)`)) return;
+      result.style.display = 'block'; result.className = 'pending'; result.textContent = 'aanvraag indienen…';
       let resp, data;
       try { resp = await fetch('/tenant/delete', { method: 'POST', body: new FormData(f) }); data = await resp.json(); }
-      catch (err) { result.className = 'err'; result.textContent = 'network error: ' + err; return; }
+      catch (err) { result.className = 'err'; result.textContent = 'netwerkfout: ' + err; return; }
       if (resp.status === 201 && data.pr_url) {
         result.className = 'ok';
-        result.innerHTML = `🗑️ Verwijder-PR voor <code>${data.tenant}</code> — PR #${data.pr_number} → ` +
-          `<a href="${data.pr_url}" target="_blank" rel="noopener">review &amp; merge</a>. ` +
-          `Vergeet PV/PVC + reactfront-cleanup niet.`;
+        result.innerHTML = `🗑️ Verwijder-aanvraag voor <code>${data.tenant}</code> — #${data.pr_number} → ` +
+          `<a href="${data.pr_url}" target="_blank" rel="noopener">bekijken &amp; goedkeuren</a>. ` +
+          `Vergeet de data/website-opruiming niet.`;
       } else {
         result.className = 'err';
         const errs = (data && data.errors) ? data.errors : ['unexpected error (HTTP ' + resp.status + ')'];
