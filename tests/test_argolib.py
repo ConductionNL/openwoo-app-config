@@ -70,3 +70,17 @@ def test_app_status_urlerror_raises(monkeypatch):
     with pytest.raises(argolib.ArgoError) as ei:
         argolib.app_status("nc-x")
     assert ei.value.status == 0
+
+
+def test_list_apps_filters_prefix_and_summarises(monkeypatch):
+    items = {"items": [
+        {"metadata": {"name": "nc-almere-accept"},
+         "status": {"sync": {"status": "Synced"}, "health": {"status": "Healthy"}}},
+        {"metadata": {"name": "nc-baarn-prod"},
+         "status": {"sync": {"status": "OutOfSync"}, "health": {"status": "Progressing"}}},
+        {"metadata": {"name": "some-other-app"}, "status": {}},  # filtered out
+    ]}
+    monkeypatch.setattr(argolib.urllib.request, "urlopen", _urlopen(items))
+    apps = argolib.list_apps()
+    assert [a["tenant"] for a in apps] == ["almere-accept", "baarn-prod"]  # sorted, prefix-stripped
+    assert apps[0]["health"] == "Healthy"

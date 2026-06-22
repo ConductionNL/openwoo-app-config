@@ -45,6 +45,15 @@ All notable changes to this repository are documented here.
   Stdlib-only reader via the in-cluster API; new **cluster-scoped read-only RBAC** on argoproj.io
   Applications (`deploy/rbac-argo.yaml`) bound to the portal SA, with `automountServiceAccountToken: true`
   (least privilege — get/list/watch Applications only, no write). **Image `0.2.2`→`0.2.3`.** 130 tests pass.
+- **landing dashboard** (`GET /dashboard.json` + `argolib.list_apps` + `gitlib.list_prs`). The home page
+  now shows a live overview: **Tenants** (every `nc-*` Argo app with sync/health badges) and **Recent
+  tenant PRs** (open/merged, linked). Stateless — derived from Argo + Forgejo, each source failing
+  independently so the page always loads. So the overview persists when you navigate back Home.
+- **real logout** — `GET /logout` does RP-initiated logout: clears the oauth2-proxy session **and**
+  redirects to Keycloak's end-session endpoint, so `skip_provider_button` no longer silently re-logs-in.
+  `oauth2-proxy.cfg` gains `whitelist_domains=["iam.commonground.nu"]`; all Log-out links point to
+  `/logout`. **Keycloak `openwoo-provisioner` client must list `https://platform.commonground.nu/` as a
+  valid post-logout redirect URI.** **Image `0.2.3`→`0.2.4`.** 135 tests pass.
 
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).

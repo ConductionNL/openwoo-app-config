@@ -20,12 +20,23 @@
     .card h2 { font-size: 1.1rem; margin: 0 0 .35rem; }
     .card p { margin: 0; color: #666; font-size: .9rem; }
     .card .go { margin-top: .8rem; color: #2a7; font-weight: 600; font-size: .9rem; }
+    section.dash { margin-top: 2.5rem; }
+    section.dash h2 { font-size: 1.05rem; margin-bottom: .4rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid #eee; }
+    th { color: #666; font-weight: 600; }
+    .badge { display: inline-block; padding: .05rem .45rem; border-radius: 10px; font-size: .78rem; }
+    .b-ok { background: #e7f6e7; color: #176317; }
+    .b-warn { background: #fff7e6; color: #8a6d1a; }
+    .b-bad { background: #fbeaea; color: #962; }
+    .b-muted { background: #eee; color: #777; }
+    .muted { color: #999; font-size: .82rem; }
   </style>
 </head>
 <body>
   <div class="topbar">
     <span class="who">{% if user and user != '-' %}Signed in as <strong>{{ user }}</strong>{% else %}OpenWoo platform{% endif %}</span>
-    <a class="logout" href="/oauth2/sign_out">Log out</a>
+    <a class="logout" href="/logout">Log out</a>
   </div>
 
   <h1>OpenWoo platform</h1>
@@ -43,5 +54,50 @@
       <div class="go">Provision →</div>
     </a>
   </div>
+
+  <section class="dash">
+    <h2>Tenants <span class="muted" id="t-meta"></span></h2>
+    <table>
+      <thead><tr><th>Tenant</th><th>Argo sync</th><th>Health</th></tr></thead>
+      <tbody id="t-body"><tr><td colspan="3" class="muted">loading…</td></tr></tbody>
+    </table>
+
+    <h2 style="margin-top:1.6rem">Recent tenant PRs</h2>
+    <table>
+      <thead><tr><th>PR</th><th>Tenant</th><th>Status</th></tr></thead>
+      <tbody id="pr-body"><tr><td colspan="3" class="muted">loading…</td></tr></tbody>
+    </table>
+    <p class="muted" id="dash-err"></p>
+  </section>
+
+  <script>
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+    function badge(v){
+      const ok = ['Synced','Healthy'], warn = ['Progressing','OutOfSync','Missing','Unknown'];
+      const cls = v == null ? 'b-muted' : ok.includes(v) ? 'b-ok' : warn.includes(v) ? 'b-warn' : 'b-bad';
+      return `<span class="badge ${cls}">${esc(v || '—')}</span>`;
+    }
+    function prBadge(p){
+      if (p.merged) return '<span class="badge b-ok">merged</span>';
+      if (p.state === 'open') return '<span class="badge b-warn">open</span>';
+      return '<span class="badge b-bad">closed</span>';
+    }
+    async function loadDash(){
+      let d;
+      try { d = await (await fetch('/dashboard.json')).json(); } catch(e){ return; }
+      const tb = document.getElementById('t-body');
+      tb.innerHTML = (d.tenants && d.tenants.length)
+        ? d.tenants.map(t => `<tr><td>${esc(t.tenant)}</td><td>${badge(t.sync)}</td><td>${badge(t.health)}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="muted">no tenant apps found</td></tr>';
+      document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';
+      const pb = document.getElementById('pr-body');
+      pb.innerHTML = (d.prs && d.prs.length)
+        ? d.prs.map(p => `<tr><td><a href="${esc(p.html_url)}" target="_blank" rel="noopener">#${esc(p.number)}</a></td>`+
+                         `<td>${esc(p.tenant)}</td><td>${prBadge(p)}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="muted">no recent tenant PRs</td></tr>';
+      document.getElementById('dash-err').textContent = (d.errors && d.errors.length) ? ('⚠ ' + d.errors.join(' · ')) : '';
+    }
+    loadDash(); setInterval(loadDash, 15000);
+  </script>
 </body>
 </html>

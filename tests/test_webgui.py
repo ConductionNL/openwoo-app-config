@@ -40,7 +40,7 @@ def test_index_is_landing_with_usecase_links(client):
     # links to both use cases + logout
     assert b'href="/tenant"' in resp.data
     assert b'href="/provision-config"' in resp.data
-    assert b'href="/oauth2/sign_out"' in resp.data
+    assert b'href="/logout"' in resp.data
 
 
 def test_provision_config_form_renders(client):
@@ -210,3 +210,35 @@ def test_argo_status_proxies_argolib(client, monkeypatch):
 def test_argo_status_rejects_bad_tenant(client):
     resp = client.get("/tenant/argo-status?tenant=Bad_Name!")
     assert resp.status_code == 400
+
+
+def test_logout_redirects_via_signout_to_keycloak(client):
+    resp = client.get("/logout")
+    assert resp.status_code == 302
+    loc = resp.headers["Location"]
+    assert loc.startswith("/oauth2/sign_out?")
+    # the rd target is Keycloak's end-session endpoint (url-encoded inside rd)
+    assert "iam.commonground.nu" in loc and "openid-connect%2Flogout" in loc
+
+
+def test_dashboard_combines_sources(client, monkeypatch):
+    monkeypatch.setattr(server.argolib, "list_apps",
+                        lambda: [{"name": "nc-almere-accept", "tenant": "almere-accept",
+                                  "sync": "Synced", "health": "Healthy"}])
+    monkeypatch.setattr(server.gitlib, "list_prs",
+                        lambda: [{"number": 5, "tenant": "almere-accept", "state": "open",
+                                  "merged": False, "html_url": "u", "title": "add"}])
+    d = client.get("/dashboard.json").get_json()
+    assert d["tenants"][0]["tenant"] == "almere-accept"
+    assert d["prs"][0]["number"] == 5
+    assert d["errors"] == []
+
+
+def test_dashboard_is_resilient_to_partial_failure(client, monkeypatch):
+    def boom():
+        raise server.argolib.ArgoError(0, "kube unreachable")
+    monkeypatch.setattr(server.argolib, "list_apps", boom)
+    monkeypatch.setattr(server.gitlib, "list_prs", lambda: [])
+    resp = client.get("/dashboard.json")
+    assert resp.status_code == 200  # page still loads
+    assert any("argo" in e for e in resp.get_json()["errors"])

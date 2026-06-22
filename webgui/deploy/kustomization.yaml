@@ -27,4 +27,5 @@ images:
     # 0.2.1: landing page (/) with use-case cards + logout; provision form moved to /provision-config.
     # 0.2.2: tenant form minimised to org+env (rest derived); live preview + PR-status polling.
     # 0.2.3: post-merge Argo Synced/Healthy check before the Provision hand-off (needs rbac-argo + SA token).
-    newTag: "0.2.3"
+    # 0.2.4: landing dashboard (tenants + recent PRs) + real logout (RP-initiated to Keycloak).
+    newTag: "0.2.4"

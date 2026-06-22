@@ -122,6 +122,29 @@ def open_pr(head, title, body, base=None):
     return _request("POST", f"/repos/{repo}/pulls", payload)
 
 
+def list_prs(branch_prefix="add-tenant/", limit=20):
+    """Recent tenant PRs (those opened by this portal use the `add-tenant/<tenant>`
+    head branch). Returns [{number, title, state, merged, html_url, tenant}], newest
+    first. Used by the dashboard."""
+    _api, _token, repo, _base = _cfg()
+    data = _request("GET", f"/repos/{repo}/pulls?state=all&sort=recentupdate&limit={int(limit)}", None)
+    rows = data if isinstance(data, list) else []
+    out = []
+    for p in rows:
+        head = (p.get("head") or {}).get("ref", "")
+        if branch_prefix and not head.startswith(branch_prefix):
+            continue
+        out.append({
+            "number": p.get("number"),
+            "title": p.get("title"),
+            "state": p.get("state"),
+            "merged": bool(p.get("merged")),
+            "html_url": p.get("html_url"),
+            "tenant": head[len(branch_prefix):] if head.startswith(branch_prefix) else None,
+        })
+    return out
+
+
 def get_pr(number):
     """Fetch one PR's state for the status poll. Returns {state, merged, html_url}
     (state is 'open'/'closed'; merged distinguishes merged from just-closed)."""

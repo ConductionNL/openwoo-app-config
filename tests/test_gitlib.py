@@ -82,6 +82,18 @@ def test_propose_file_happy_path(monkeypatch):
     assert calls[0].get_header("Authorization") == "token tok-secret"
 
 
+def test_list_prs_filters_to_tenant_branches(monkeypatch):
+    rows = [
+        {"number": 9, "title": "add tenant: almere-accept", "state": "open", "merged": False,
+         "html_url": "u9", "head": {"ref": "add-tenant/almere-accept"}},
+        {"number": 8, "title": "unrelated", "state": "open", "merged": False,
+         "html_url": "u8", "head": {"ref": "feature/x"}},
+    ]
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([rows], []))
+    out = gitlib.list_prs()
+    assert len(out) == 1 and out[0]["number"] == 9 and out[0]["tenant"] == "almere-accept"
+
+
 def test_get_pr_returns_state(monkeypatch):
     monkeypatch.setattr(gitlib.urllib.request, "urlopen",
                         _fake_urlopen([{"state": "open", "merged": False,

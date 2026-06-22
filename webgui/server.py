@@ -41,7 +41,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from flask import Flask, Response, render_template, request
+from urllib.parse import urlencode
+
+from flask import Flask, Response, redirect, render_template, request
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -103,6 +105,24 @@ def provision_config_form():
 @app.get("/healthz")
 def healthz():
     return "ok\n", 200, {"Content-Type": "text/plain"}
+
+
+# Full logout: clear the oauth2-proxy session AND end the Keycloak SSO session
+# (RP-initiated logout). Without the Keycloak hop, skip_provider_button silently
+# re-logs-in on the next request. The Keycloak end-session URL + post-logout
+# redirect are configurable; defaults match this deployment.
+KEYCLOAK_LOGOUT_URL = os.environ.get(
+    "KEYCLOAK_LOGOUT_URL",
+    "https://iam.commonground.nu/realms/commonground/protocol/openid-connect/logout")
+POST_LOGOUT_REDIRECT = os.environ.get("POST_LOGOUT_REDIRECT", "https://platform.commonground.nu/")
+OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "openwoo-provisioner")
+
+
+@app.get("/logout")
+def logout():
+    kc = KEYCLOAK_LOGOUT_URL + "?" + urlencode(
+        {"post_logout_redirect_uri": POST_LOGOUT_REDIRECT, "client_id": OIDC_CLIENT_ID})
+    return redirect("/oauth2/sign_out?" + urlencode({"rd": kc}))
 
 
 @app.post("/provision")
@@ -224,6 +244,22 @@ def tenant_argo_status():
         return argolib.app_status(f"nc-{tenant}"), 200
     except argolib.ArgoError as exc:
         return {"errors": [exc.detail]}, 502
+
+
+@app.get("/dashboard.json")
+def dashboard_data():
+    """Landing-page overview: tenant Argo apps (nc-*) + recent tenant PRs. Each
+    source fails independently (partial errors reported) so the page still loads."""
+    out = {"tenants": [], "prs": [], "errors": []}
+    try:
+        out["tenants"] = argolib.list_apps()
+    except argolib.ArgoError as exc:
+        out["errors"].append(f"argo: {exc.detail}")
+    try:
+        out["prs"] = gitlib.list_prs()
+    except gitlib.GitlibError as exc:
+        out["errors"].append(f"git: {exc.detail}")
+    return out, 200
 
 
 if __name__ == "__main__":
