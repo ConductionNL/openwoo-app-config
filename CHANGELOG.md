@@ -39,6 +39,12 @@ All notable changes to this repository are documented here.
   derived (advanced overrides optional). Live preview shows the derived name/host/branding as you
   type. `gitlib.get_pr` + `GET /tenant/pr-status` + result polling: the form shows the opened PR,
   then **open → merged**, then hands off to **Provision config**. **Image `0.2.1`→`0.2.2`.** 124 tests pass.
+- **post-merge Argo rollout check** (`webgui/argolib.py` + `GET /tenant/argo-status`). After the PR
+  merges, the form polls the Argo Application `nc-<tenant>` and shows **Synced / Healthy** before
+  surfacing the **Provision config →** hand-off (so the button means "the tenant is actually up").
+  Stdlib-only reader via the in-cluster API; new **cluster-scoped read-only RBAC** on argoproj.io
+  Applications (`deploy/rbac-argo.yaml`) bound to the portal SA, with `automountServiceAccountToken: true`
+  (least privilege — get/list/watch Applications only, no write). **Image `0.2.2`→`0.2.3`.** 130 tests pass.
 
 ### Added — 2026-06-22 (openspec: tenant creation via PR)
 - **`tenant-creation-pr-flow` OpenSpec change proposal** (first openspec in this repo).

@@ -17,7 +17,10 @@ spec:
         app.kubernetes.io/name: openwoo-provisioner
     spec:
       serviceAccountName: openwoo-provisioner
-      automountServiceAccountToken: false
+      # Token mounted so the app can READ Argo Application status (sync/health)
+      # via the in-cluster API. The SA's only RBAC is read-only on Applications
+      # (rbac-argo.yaml) — least privilege.
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         seccompProfile:

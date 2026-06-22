@@ -9,6 +9,7 @@ resources:
   - service.yaml
   - ingress.yaml
   - networkpolicy.yaml
+  - rbac-argo.yaml   # cluster-scoped read-only on Argo Applications (status poll)
   # secret.example.yaml is a TEMPLATE — create the real Secret out-of-band.
 
 # The oauth2-proxy config becomes a hashed ConfigMap, so editing it rolls the pod.
@@ -25,4 +26,5 @@ images:
     # 0.2.0: tenant-creation flow (gitlib + /tenant route + FORGEJO_* env).
     # 0.2.1: landing page (/) with use-case cards + logout; provision form moved to /provision-config.
     # 0.2.2: tenant form minimised to org+env (rest derived); live preview + PR-status polling.
-    newTag: "0.2.2"
+    # 0.2.3: post-merge Argo Synced/Healthy check before the Provision hand-off (needs rbac-argo + SA token).
+    newTag: "0.2.3"

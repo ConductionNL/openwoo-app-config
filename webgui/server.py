@@ -52,6 +52,8 @@ import provision_gui  # noqa: E402  — reuse the tested build_command()
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitlib    # noqa: E402
 import tenants   # noqa: E402
+import argolib   # noqa: E402  — read-only Argo Application status (post-merge rollout check)
+import re        # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
@@ -208,6 +210,19 @@ def tenant_pr_status():
     try:
         return gitlib.get_pr(number), 200
     except gitlib.GitlibError as exc:
+        return {"errors": [exc.detail]}, 502
+
+
+@app.get("/tenant/argo-status")
+def tenant_argo_status():
+    """After merge: poll the Argo Application nc-<tenant> sync/health so the form
+    can show a green check before handing off to provisioning."""
+    tenant = request.args.get("tenant", "")
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", tenant):
+        return {"errors": ["invalid tenant name"]}, 400
+    try:
+        return argolib.app_status(f"nc-{tenant}"), 200
+    except argolib.ArgoError as exc:
         return {"errors": [exc.detail]}, 502
 
 

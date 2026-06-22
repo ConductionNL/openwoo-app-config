@@ -197,3 +197,16 @@ def test_pr_status_proxies_gitlib(client, monkeypatch):
 def test_pr_status_rejects_non_numeric(client):
     resp = client.get("/tenant/pr-status?number=abc")
     assert resp.status_code == 400
+
+
+def test_argo_status_proxies_argolib(client, monkeypatch):
+    monkeypatch.setattr(server.argolib, "app_status",
+                        lambda name: {"exists": True, "sync": "Synced", "health": "Healthy"})
+    resp = client.get("/tenant/argo-status?tenant=almere-accept")
+    assert resp.status_code == 200
+    assert resp.get_json()["health"] == "Healthy"
+
+
+def test_argo_status_rejects_bad_tenant(client):
+    resp = client.get("/tenant/argo-status?tenant=Bad_Name!")
+    assert resp.status_code == 400

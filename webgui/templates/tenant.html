@@ -83,23 +83,42 @@
     org.addEventListener('input', refresh); env.addEventListener('change', refresh);
     dispOverride.addEventListener('input', refresh); refresh();
 
-    let pollTimer = null;
-    function pollStatus(num) {
+    let pollTimer = null, argoTimer = null;
+    function pollStatus(num, tenant) {
       clearInterval(pollTimer);
       pollTimer = setInterval(async () => {
         let r, d;
         try { r = await fetch('/tenant/pr-status?number=' + num); d = await r.json(); } catch (e) { return; }
         if (d.merged) {
           clearInterval(pollTimer);
-          result.className = 'ok';
-          result.innerHTML = `✅ PR #${num} <strong>merged</strong> — Argo rolt de tenant uit. ` +
-            `Volgende stap: <a href="/provision-config">Provision config →</a>`;
+          result.className = 'pending';
+          result.innerHTML = `✅ PR #${num} <strong>merged</strong> — wacht op Argo rollout…`;
+          pollArgo(tenant, num);
         } else if (d.state === 'closed') {
           clearInterval(pollTimer);
           result.className = 'err';
           result.innerHTML = `PR #${num} gesloten zonder merge.`;
         }
       }, 8000);
+    }
+
+    function pollArgo(tenant, num) {
+      clearInterval(argoTimer);
+      const tick = async () => {
+        let r, d;
+        try { r = await fetch('/tenant/argo-status?tenant=' + encodeURIComponent(tenant)); d = await r.json(); } catch (e) { return; }
+        const sync = d.sync || '—', health = d.health || (d.exists ? '—' : 'pending');
+        if (d.health === 'Healthy' && d.sync === 'Synced') {
+          clearInterval(argoTimer);
+          result.className = 'ok';
+          result.innerHTML = `✅ PR #${num} merged &middot; ✅ Argo <strong>Synced / Healthy</strong> — tenant <code>${tenant}</code> draait. ` +
+            `Volgende stap: <a href="/provision-config">Provision config →</a>`;
+        } else {
+          result.innerHTML = `✅ PR #${num} merged &middot; ⏳ Argo: <code>${sync}</code> / <code>${health}</code> — rollout bezig…`;
+        }
+      };
+      tick();
+      argoTimer = setInterval(tick, 8000);
     }
 
     f.addEventListener('submit', async (e) => {
@@ -114,7 +133,7 @@
         result.innerHTML = `📬 Tenant <code>${data.tenant}</code> — PR #${data.pr_number} geopend ` +
           `(<a href="${data.pr_url}" target="_blank" rel="noopener">review &amp; merge</a>). ` +
           `Wacht op merge…`;
-        pollStatus(data.pr_number);
+        pollStatus(data.pr_number, data.tenant);
       } else {
         result.className = 'err';
         const errs = (data && data.errors) ? data.errors : ['unexpected error (HTTP ' + resp.status + ')'];
