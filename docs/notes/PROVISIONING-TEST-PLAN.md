@@ -1,3 +1,8 @@
+---
+last_reviewed: 2026-07-06
+owner: mark
+---
+
 # Provisioning test plan (full-flow Layer 2)
 
 Status: **in progress.** `make functional` now does install → import → verify

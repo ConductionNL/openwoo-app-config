@@ -85,7 +85,7 @@ def provision_jobs(client, doc, job_user=None):
     sync id to trigger. `job_user`, when given, sets each job's `userId` (the CLI
     defaults it to the admin --user) — a workaround for scheduled jobs running as
     Anonymous and being denied object writes (see
-    docs/BUG-sync-job-anonymous-permission.md); only effective if the runner
+    docs/notes/BUG-sync-job-anonymous-permission.md); only effective if the runner
     honours userId. Driven by config jobs, matched to tenant jobs by slug. Skips a
     job only when there is nothing to change. Raises on a missing job or an
     unresolvable sync slug.
