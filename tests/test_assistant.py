@@ -182,5 +182,20 @@ def test_audit_appends_jsonl(tmp_path, monkeypatch):
     assert json.loads(lines[0])["user"] == "a@x"
 
 
+# --- benchmark-vragenset (webgui/bench_questions.json) ------------------------
+
+def test_bench_questions_structure():
+    data = json.loads((REPO_ROOT / "webgui" /
+                       "bench_questions.json").read_text())
+    ids = [q["id"] for q in data["vragen"]]
+    assert len(ids) == len(set(ids)), "dubbele vraag-id"
+    for q in data["vragen"]:
+        assert q["vraag"].strip()
+        assert q["verwacht"] in ("gegrond", "buiten-handboek", "weigering")
+    # de drie spec-scenario's (4.1) zitten in de set
+    assert {"buiten-handboek", "weigering"} <= {q["verwacht"]
+                                                for q in data["vragen"]}
+
+
 # Route-tests staan in tests/test_assistant_routes.py (skippen als geheel
 # zonder Flask; dit bestand moet ook onder systeem-python blijven draaien).
