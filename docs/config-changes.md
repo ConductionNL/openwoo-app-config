@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-10
 owner: mark
 ---
 
@@ -24,6 +24,13 @@ follows this flow — no exceptions:
 
 This is the whole point of the repo: errors are caught here, in review
 and CI, before the config can reach a tenant.
+
+De gate uit stap 4 werkt — dit blok draait hem als geteste bewering
+bij elke push (uitvoerbare documentatie):
+
+```bash verify
+make lint >/dev/null
+```
 
 ## Make targets
 
