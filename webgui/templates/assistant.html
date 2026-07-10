@@ -15,7 +15,15 @@
     #log { display: flex; flex-direction: column; gap: .8rem; margin: 1.2rem 0; }
     .msg { border-radius: 10px; padding: .7rem 1rem; font-size: .92rem; white-space: pre-wrap; }
     .msg.q { background: #eef4fb; align-self: flex-end; max-width: 85%; }
-    .msg.a { background: #f6f6f4; border: 1px solid #eee; }
+    .msg.a { background: #f6f6f4; border: 1px solid #eee; white-space: normal; }
+    .msg.a p { margin: .5rem 0; }
+    .msg.a ul, .msg.a ol { margin: .4rem 0; padding-left: 1.4rem; }
+    .msg.a li { margin: .2rem 0; }
+    .msg.a h3, .msg.a h4 { font-size: .95rem; margin: .8rem 0 .3rem; }
+    .msg.a code { background: #ececea; border-radius: 4px; padding: .05rem .3rem; font-size: .85em; }
+    .msg.a pre { background: #ececea; border-radius: 6px; padding: .6rem .8rem;
+                 overflow-x: auto; font-size: .82rem; }
+    .msg.a pre code { background: none; padding: 0; }
     .msg.err { background: #fbeaea; color: #962; }
     .sources { font-size: .8rem; color: #666; margin: -.4rem 0 0; padding-left: 1rem; }
     .sources li { margin: .15rem 0; }
@@ -63,6 +71,49 @@
       return div;
     }
 
+    // Conservatieve markdown-renderer: eerst HTML-escapen, dan alleen een
+    // vaste set transformaties (bold, code, koppen, lijsten, http(s)-links).
+    // Bewust geen library en geen raw-HTML-doorvoer.
+    function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+    function inlineMd(s){
+      return s
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+                 '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    }
+    function renderMd(md){
+      const out = [];
+      // codefences apart houden: inhoud alleen escapen, niets transformeren
+      const parts = md.split(/```/);
+      for (let i = 0; i < parts.length; i++){
+        if (i % 2 === 1){  // binnen een fence
+          out.push('<pre><code>' + esc(parts[i].replace(/^[a-z]*\n/, '')) + '</code></pre>');
+          continue;
+        }
+        let list = null;  // 'ul' | 'ol' | null
+        const closeList = () => { if (list){ out.push('</' + list + '>'); list = null; } };
+        for (const raw of parts[i].split('\n')){
+          const line = esc(raw);
+          let m;
+          if ((m = line.match(/^#{1,3} (.*)$/)))       { closeList(); out.push('<h3>' + inlineMd(m[1]) + '</h3>'); }
+          else if ((m = line.match(/^#{4,6} (.*)$/)))  { closeList(); out.push('<h4>' + inlineMd(m[1]) + '</h4>'); }
+          else if ((m = line.match(/^\s*[-*] (.*)$/))) {
+            if (list !== 'ul'){ closeList(); out.push('<ul>'); list = 'ul'; }
+            out.push('<li>' + inlineMd(m[1]) + '</li>');
+          }
+          else if ((m = line.match(/^\s*\d+[.)] (.*)$/))) {
+            if (list !== 'ol'){ closeList(); out.push('<ol>'); list = 'ol'; }
+            out.push('<li>' + inlineMd(m[1]) + '</li>');
+          }
+          else if (line.trim() === '') { closeList(); }
+          else { closeList(); out.push('<p>' + inlineMd(line) + '</p>'); }
+        }
+        closeList();
+      }
+      return out.join('\n');
+    }
+
     function showSources(sources){
       if (!sources || !sources.length) return;
       const ul = document.createElement('ul');
@@ -88,6 +139,7 @@
       q.value = ''; send.disabled = true;
       status.textContent = 'De assistent leest het handboek…';
       const answer = bubble('a', '');
+      let raw = '';
       try {
         const resp = await fetch('/api/assistant/ask', {
           method: 'POST',
@@ -114,15 +166,16 @@
             buf = buf.slice(nl + 1);
             if (!line) continue;
             const ev = JSON.parse(line);
-            if (ev.type === 'delta') answer.textContent += ev.text;
-            else if (ev.type === 'sources') showSources(ev.sources);
-            else if (ev.type === 'error'){
-              answer.classList.add('err');
-              answer.textContent += (answer.textContent ? '\n\n' : '') + '⚠ ' + ev.message;
+            if (ev.type === 'delta'){
+              raw += ev.text;
+              answer.innerHTML = renderMd(raw);
+              answer.scrollIntoView({block: 'end'});
             }
+            else if (ev.type === 'sources') showSources(ev.sources);
+            else if (ev.type === 'error') bubble('err', '⚠ ' + ev.message);
           }
         }
-        if (!answer.textContent) answer.textContent = '(geen antwoord ontvangen)';
+        if (!raw) answer.textContent = '(geen antwoord ontvangen)';
       } catch (err){
         answer.classList.add('err');
         answer.textContent = 'verbinding onderbroken: ' + err;
