@@ -3,3 +3,7 @@ Flask>=3.0,<4.0
 # Production WSGI server (Phase 3 deploy). gthread workers + a long timeout so the
 # streaming /provision response (a live subprocess log) is not cut short.
 gunicorn>=22.0,<24.0
+# Platform-assistent (change add-platform-assistant): server-side agent-sessies
+# + de hub-contentlaag (docs_mcp, leest de handboek-importlijst via PyYAML).
+claude-agent-sdk>=0.1,<1.0
+PyYAML>=6.0,<7.0

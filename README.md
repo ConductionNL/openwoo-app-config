@@ -28,7 +28,7 @@ sanitize → lint/test → functional → PR → tag) is spelled out in
 | `scripts/functional-test.sh` | Layer-2 functional test (ephemeral Nextcloud import + provision) |
 | `schema/openregister-config.schema.json` | Structural envelope contract |
 | `tests/` | Unit tests for linter/sanitizer and provisioner |
-| `webgui/` | Hosted control-plane GUI (Flask, behind oauth2-proxy → Keycloak) |
+| `webgui/` | Hosted control-plane GUI (Flask, behind oauth2-proxy → Keycloak), incl. platform-assistent: handboek-gegronde vragen met bronvermelding, strikt lezend |
 | `.woodpecker.yml` | Codeberg CI (lint + tests + secret scan) |
 | `docs/` | Documentation — start at [docs/index.md](docs/index.md) |
 

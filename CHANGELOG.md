@@ -4,6 +4,27 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-07-10 (webgui: platform-assistent, v1 strikt lezend)
+- **`webgui/assistant.py`** — server-side agent-sessies (Claude Agent SDK) die vragen
+  beantwoorden gegrond in het technisch handboek, met verplichte herkomst (component,
+  pagina, owner, last_reviewed). De sessie krijgt uitsluitend drie read-tools om de
+  hub-contentlaag (`docs_mcp` als library, zelfde importlijst/max-age als het handboek)
+  en geen enkele ingebouwde tool — er bestaat niets om uit te voeren of te schrijven.
+  Grenzen: rate limit per SSO-identiteit (10/uur), turn-cap (12), timeout (180s),
+  vraaglengte-cap; JSONL-audit van wie/vraag/antwoord/bronnen (`ASSISTANT_AUDIT_LOG`).
+- **`webgui/server.py`** — `GET /assistant` (chatvenster) + `POST /api/assistant/ask`
+  (NDJSON-stream: delta*, sources, done|error); zit achter de bestaande fail-closed
+  SSO-gate. **`templates/assistant.html`** nieuw; **`templates/home.html`** kreeg de
+  card "Vraag het platform".
+- **Model-auth**: de SDK leest `ANTHROPIC_API_KEY` (default, straks ESO-secret) of
+  `CLAUDE_CODE_OAUTH_TOKEN` (testfase-afwijking, besluit 2026-07-10) uit de omgeving.
+- **Tests**: `tests/test_assistant.py` (limieten, audit, strikt-lezende tool-surface,
+  tool-implementaties tegen een fake store; draait zonder Flask/SDK) +
+  `tests/test_assistant_routes.py` (NDJSON, 429, 403 fail-closed). 147 tests groen.
+- **`webgui/requirements.txt`**: + `claude-agent-sdk`, `PyYAML`.
+- Spec: `platform-assistant` (techbook, change add-platform-assistant). Nog open:
+  egress + Argo-deploy (taken 3.2/3.3) en de livegang-verificatie (4.x).
+
 ### Changed — 2026-06-22 (webgui: visible logout/login)
 - **`webgui/deploy/oauth2-proxy.cfg`**: `skip_provider_button` `true` → **`false`**. oauth2-proxy
   now shows its own sign-in page instead of silently auto-redirecting to Keycloak, so a

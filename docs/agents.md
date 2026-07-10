@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-07-08
+last_reviewed: 2026-07-10
 owner: mark
 ---
 
@@ -24,6 +24,17 @@ elke stap GET-checkt eerst en slaat over wat al klopt.
 | webgui deployen | mens-vereist | — | webgui/deploy-flow |
 | Push | mens-vereist | — | gates draaien bij de mens |
 | Echte API-keys/credentials in config of git | verboden | — | secret-scan in CI; config draagt lege placeholder |
+
+## Platform-assistent (webgui, v1 strikt lezend)
+
+De webgui bevat een assistent-endpoint (`/assistant`) dat server-side
+agent-sessies draait: vragen beantwoorden, gegrond in het handboek, met
+verplichte herkomst. De sessie krijgt uitsluitend drie read-tools
+(search_docs, read_page, list_components — de hub-contentlaag als
+library) en geen enkele ingebouwde tool; er valt dus niets uit te voeren
+of te schrijven. Grenzen: rate limit per SSO-identiteit, turn-cap,
+timeout; elke sessie wordt geauditeerd (wie/vraag/antwoord/bronnen).
+Zie `webgui/assistant.py` en de spec `platform-assistant` in techbook.
 
 ## Grondwaarheid en gedrag
 

@@ -55,7 +55,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitlib    # noqa: E402
 import tenants   # noqa: E402
 import argolib   # noqa: E402  — read-only Argo Application status (post-merge rollout check)
+import assistant  # noqa: E402 — handboek-gegronde assistent (v1 strikt lezend)
 import hashlib   # noqa: E402
+import json      # noqa: E402
 import re        # noqa: E402
 
 TENANTS_DIR = "nextcloud-platform/values/tenants"
@@ -341,6 +343,35 @@ def dashboard_data():
     except gitlib.GitlibError as exc:
         out["errors"].append(f"git: {exc.detail}")
     return out, 200
+
+
+@app.get("/assistant")
+def assistant_page():
+    """Chatvenster: vragen over het platform, antwoorden gegrond in het
+    handboek met herkomst (change add-platform-assistant, v1 strikt lezend)."""
+    return render_template("assistant.html", user=current_user())
+
+
+@app.post("/api/assistant/ask")
+def assistant_ask():
+    """Eén vraag -> NDJSON-eventstream (delta*, sources, done|error).
+    Validatie en rate limit lopen vóór de stream start; de vraag zelf wordt
+    door assistant.py geauditeerd (wie/vraag/antwoord/bronnen)."""
+    data = request.get_json(silent=True) or {}
+    user = current_user()
+    try:
+        stream = assistant.ask_stream(data.get("question", ""), user)
+    except assistant.AssistantError as exc:
+        app.logger.warning("assistant geweigerd: user=%s status=%s reden=%s",
+                           user, exc.http_status, exc)
+        return {"errors": [str(exc)]}, exc.http_status
+    app.logger.info("assistant vraag gestart: user=%s", user)
+
+    def ndjson():
+        for event in stream:
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return Response(ndjson(), mimetype="application/x-ndjson")
 
 
 if __name__ == "__main__":

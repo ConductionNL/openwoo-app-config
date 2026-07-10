@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Platform-assistent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 0 1rem 3rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center;
+              padding: 1rem 0; border-bottom: 1px solid #eee; margin-bottom: 1.5rem; }
+    .topbar .who { color: #666; font-size: .85rem; }
+    h1 { font-size: 1.4rem; }
+    p.lead { color: #555; font-size: .9rem; }
+    #log { display: flex; flex-direction: column; gap: .8rem; margin: 1.2rem 0; }
+    .msg { border-radius: 10px; padding: .7rem 1rem; font-size: .92rem; white-space: pre-wrap; }
+    .msg.q { background: #eef4fb; align-self: flex-end; max-width: 85%; }
+    .msg.a { background: #f6f6f4; border: 1px solid #eee; }
+    .msg.err { background: #fbeaea; color: #962; }
+    .sources { font-size: .8rem; color: #666; margin: -.4rem 0 0; padding-left: 1rem; }
+    .sources li { margin: .15rem 0; }
+    form { display: flex; gap: .6rem; margin-top: 1rem; }
+    textarea { flex: 1; min-height: 3.2rem; padding: .6rem .8rem; border: 1px solid #ccc;
+               border-radius: 8px; font: inherit; resize: vertical; }
+    button { padding: .6rem 1.3rem; border: 0; border-radius: 8px; background: #2a7;
+             color: #fff; font-weight: 600; cursor: pointer; align-self: flex-end; }
+    button:disabled { background: #aaa; cursor: wait; }
+    .muted { color: #999; font-size: .82rem; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="who">{% if user and user != '-' %}Ingelogd als <strong>{{ user }}</strong>{% else %}Platform-assistent{% endif %}</span>
+    <a href="/">← Overzicht</a>
+  </div>
+
+  <h1>Platform-assistent</h1>
+  <p class="lead">Stel een vraag over het platform. Antwoorden komen uit het
+    technisch handboek, mét bronvermelding. De assistent kan alleen lezen —
+    wijzigingen lopen altijd via een pull request.</p>
+
+  <div id="log"></div>
+
+  <form id="ask">
+    <textarea id="q" placeholder="Bijv.: hoe voeg ik een tenant toe?" required></textarea>
+    <button id="send" type="submit">Vraag</button>
+  </form>
+  <p class="muted" id="status"></p>
+
+  <script>
+    const log = document.getElementById('log');
+    const form = document.getElementById('ask');
+    const q = document.getElementById('q');
+    const send = document.getElementById('send');
+    const status = document.getElementById('status');
+
+    function bubble(cls, text){
+      const div = document.createElement('div');
+      div.className = 'msg ' + cls;
+      div.textContent = text;
+      log.appendChild(div);
+      div.scrollIntoView({block: 'end'});
+      return div;
+    }
+
+    function showSources(sources){
+      if (!sources || !sources.length) return;
+      const ul = document.createElement('ul');
+      ul.className = 'sources';
+      for (const s of sources){
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = s.source; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = `${s.component}/${s.path}`;
+        li.appendChild(a);
+        li.appendChild(document.createTextNode(
+          ` — owner: ${s.owner || '?'}, gereviewd: ${s.last_reviewed || '?'}`));
+        ul.appendChild(li);
+      }
+      log.appendChild(ul);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const question = q.value.trim();
+      if (!question) return;
+      bubble('q', question);
+      q.value = ''; send.disabled = true;
+      status.textContent = 'De assistent leest het handboek…';
+      const answer = bubble('a', '');
+      try {
+        const resp = await fetch('/api/assistant/ask', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({question}),
+        });
+        if (!resp.ok){
+          const err = await resp.json().catch(() => ({}));
+          answer.classList.add('err');
+          answer.textContent = (err.errors || [`fout (${resp.status})`]).join(' · ');
+          return;
+        }
+        // NDJSON-stream: één JSON-object per regel.
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true){
+          const {done, value} = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, {stream: true});
+          let nl;
+          while ((nl = buf.indexOf('\n')) >= 0){
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            const ev = JSON.parse(line);
+            if (ev.type === 'delta') answer.textContent += ev.text;
+            else if (ev.type === 'sources') showSources(ev.sources);
+            else if (ev.type === 'error'){
+              answer.classList.add('err');
+              answer.textContent += (answer.textContent ? '\n\n' : '') + '⚠ ' + ev.message;
+            }
+          }
+        }
+        if (!answer.textContent) answer.textContent = '(geen antwoord ontvangen)';
+      } catch (err){
+        answer.classList.add('err');
+        answer.textContent = 'verbinding onderbroken: ' + err;
+      } finally {
+        send.disabled = false;
+        status.textContent = '';
+      }
+    });
+  </script>
+</body>
+</html>
