@@ -58,6 +58,16 @@ spec:
                   name: openwoo-assistant
                   key: api-key
                   optional: true
+            # Testfase-alternatief (vastgelegde afwijking 2026-07-10):
+            # persoonlijke subscription-token (`claude setup-token`). Zet
+            # PRECIES ÉÉN van beide keys in het secret — de API-key wint
+            # als beide gezet zijn.
+            - name: CLAUDE_CODE_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openwoo-assistant
+                  key: oauth-token
+                  optional: true
             # Leestoken voor private componenten in de handboek-importlijst.
             # docs_mcp zet dit in een 0600 credential-file in de cache — nooit
             # in een clone-URL of git-config. Publieke componenten werken zonder.
