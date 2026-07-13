@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-13 (incident: secret.example.yaml gedefused — geen applybare manifests meer)
+- Een apply van (een kopie van) het oude example-bestand — drie complete
+  Secret-manifests met placeholders — overschreef twee werkende secrets
+  (oauth cookie-secret, Forgejo-token) en brak de 0.3.0-rollout en de
+  tenant-PR-flow. Herstel: originele waarden teruggepatcht uit de env van
+  de nog draaiende oude pod (waarden nergens getoond).
+- Het bestand is nu volledig commentaar (0 YAML-documents): `kubectl apply`
+  faalt hard i.p.v. stil te vergiftigen; per secret staat het juiste
+  create/patch-commando erin. Regel: secrets per stuk, nooit gebundeld.
+
 ### Toegevoegd — 2026-07-13 (assistent-deploy voorbereid: taken 3.2 + 3.3 van add-platform-assistant)
 - `Dockerfile`: git + ca-certificates in het image (runtime-deps van de
   handboek-contentlaag); hub gepind op sha `27cc04e8…` met build-verificatie
