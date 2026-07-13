@@ -9,7 +9,10 @@ resources:
   - service.yaml
   - ingress.yaml
   - networkpolicy.yaml
-  - networkpolicy-egress.yaml  # apart object: onafhankelijk terugdraaibaar (zie file-kop)
+  # networkpolicy-egress.yaml UITGESCHAKELD 2026-07-13: brak DNS op prod
+  # (tweede bevestigde keer onder Gardener/Calico, ondanks correcte
+  # kube-system-regel — bevindingen in de kop van die file). Heractiveren
+  # alleen na het debug-pod-experiment dat daar beschreven staat.
   - rbac-argo.yaml   # cluster-scoped read-only on Argo Applications (status poll)
   # secret.example.yaml is a TEMPLATE — create the real Secret out-of-band.
 

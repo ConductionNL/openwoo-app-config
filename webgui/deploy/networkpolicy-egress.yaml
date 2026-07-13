@@ -26,6 +26,18 @@
 #   3. login-flow werkt (Keycloak via oauth2-proxy-sidecar, zelfde pod)
 #   4. provisioning-smoke tegen een testtenant (in-cluster Services)
 #   Faalt 1-4: policy weghalen (zie boven) en bevindingen hier aanvullen.
+#
+# BEVINDING 2026-07-13 (policy live geweest, direct teruggetrokken):
+# oauth2-proxy in de nieuwe pod faalde op "lookup iam.commonground.nu:
+# i/o timeout" — DNS geblokkeerd ONDANKS de kube-system/53-regel. Feiten:
+# CoreDNS draait normaal in kube-system (geen hostNetwork, pod-IP's
+# 100.96.x), kube-dns Service 100.64.0.10, en kube-system hééft het
+# kubernetes.io/metadata.name-label. Tweede bevestigde breuk onder deze
+# Gardener/Calico-combinatie; mechanisme onbekend (verdenking: policy-
+# evaluatie vóór service-DNAT of IPVS/Calico-interactie). VOLGENDE STAP
+# vóór heractivering: debug-pod met dezelfde labels in de namespace,
+# dig naar 100.64.0.10 én rechtstreeks naar een CoreDNS-pod-IP, met en
+# zonder policy — dan weten we of de Service-DNAT of de selector faalt.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
