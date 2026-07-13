@@ -1,0 +1,76 @@
+# Egress-policy voor de webgui-pod (change add-platform-assistant, taak 3.2).
+#
+# APART object naast de ingress-policy (networkpolicy.yaml), zodat dit
+# onafhankelijk terug te draaien is: bij problemen deze file uit
+# kustomization.yaml revert-en (of buiten Argo om `kubectl delete netpol
+# openwoo-provisioner-egress -n openwoo-platform`) — de ingress-ankers
+# blijven dan staan.
+#
+# WAAROM NIET STRAKKER — risico-analyse (2026-07-13):
+# - Hostnaam-pinnen (api.anthropic.com, codeberg.org) kan niet in vanilla
+#   NetworkPolicy/Calico OSS: geen FQDN-selectors. De haalbare versmalling
+#   is: extern alléén 443/TCP (geen plaintext, geen andere poorten).
+#   Écht per-hostnaam allowlisten vergt een egress-proxy (het squid-patroon
+#   uit talos con-ci) of een FQDN-capabele CNI — bewust uitgesteld.
+# - Eerdere egress-poging brak DNS onder deze Calico-CNI (gedocumenteerd in
+#   networkpolicy.yaml). Daarom expliciet DNS naar kube-system, UDP én TCP.
+# - Sinds image 0.2.7 provisioneert de app IN-CLUSTER (cluster-local
+#   Services) en pollt hij de kube-API voor Argo-status. Daarom ook:
+#   6443/TCP (kube-API endpoint ná service-DNAT, Gardener) en 80+8080/TCP
+#   naar pods binnen het cluster (namespaceSelector {} matcht alléén
+#   cluster-intern verkeer, geen externe IP's).
+#
+# APPLY IS MENSENWERK, gefaseerd testen na apply:
+#   1. /assistant: vraag stellen → antwoord mét bronnen (Anthropic + codeberg)
+#   2. dashboard: tenants + PR-status zichtbaar (kube-API + Forgejo)
+#   3. login-flow werkt (Keycloak via oauth2-proxy-sidecar, zelfde pod)
+#   4. provisioning-smoke tegen een testtenant (in-cluster Services)
+#   Faalt 1-4: policy weghalen (zie boven) en bevindingen hier aanvullen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openwoo-provisioner-egress
+  namespace: openwoo-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openwoo-provisioner
+  policyTypes:
+    - Egress
+  egress:
+    # DNS naar kube-system (CoreDNS) — UDP én TCP (grote antwoorden/retries).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Extern: alléén HTTPS. Dekt api.anthropic.com, codeberg.org, Keycloak
+    # (iam.commonground.nu) en publieke tenant-URLs.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+    # kube-API: de Service 443 wordt ge-DNAT naar het endpoint op 6443
+    # (Gardener); zonder deze regel breekt de Argo-statuspoll.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 6443
+    # In-cluster provisioning (0.2.7): HTTP naar cluster-local Services van
+    # tenant-namespaces. namespaceSelector {} = alle pods in het cluster,
+    # géén externe bestemmingen — extern blijft 443-only.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080

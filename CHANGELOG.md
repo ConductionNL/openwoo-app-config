@@ -4,6 +4,25 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-07-13 (assistent-deploy voorbereid: taken 3.2 + 3.3 van add-platform-assistant)
+- `Dockerfile`: git + ca-certificates in het image (runtime-deps van de
+  handboek-contentlaag); hub gepind op sha `27cc04e8…` met build-verificatie
+  (build faalt als hub-main verder is — bump is een bewuste act); env-defaults
+  `HUB_DIR`/`DOCS_MCP_CACHE`.
+- `webgui/deploy/deployment.yaml`: assistent-env (`ANTHROPIC_API_KEY` +
+  `DOCS_READ_TOKEN` uit secret `openwoo-assistant`, beide optional zodat de
+  webgui zonder assistent-secret blijft draaien), emptyDir-volumes voor
+  docs-cache en `$HOME` (claude-CLI-state), memory-limit 512Mi → 1Gi.
+- `webgui/deploy/networkpolicy-egress.yaml` (taak 3.2): egress-versmalling als
+  apart, onafhankelijk terugdraaibaar object — DNS naar kube-system, extern
+  443-only, kube-API 6443, in-cluster HTTP 80/8080. Hostnaam-pinnen kan niet
+  in vanilla Calico (risico-analyse + gefaseerde testchecklist in de file-kop;
+  eerdere DNS-breuk en de 0.2.7 in-cluster-provisioning meegenomen).
+- `webgui/deploy/secret.example.yaml`: template `openwoo-assistant`;
+  `kustomization.yaml`: newTag 0.3.0 (image éérst bouwen/pushen, dan mergen);
+  deploy-README bijgewerkt (assistent-sectie, prereq 5, egress-verify).
+- Apply/build/push blijft mensenwerk (cataloog: webgui deployen = mens).
+
 ### Gewijzigd — 2026-07-13 (eigenaarschap → info@conduction.nl, review WP8)
 - Alle `owner:`-front-matter en CODEOWNERS omgezet van `mark` naar
   `info@conduction.nl` (opvolging na 2026-08-31). Voorbereid op branch

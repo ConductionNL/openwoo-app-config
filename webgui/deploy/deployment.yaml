@@ -48,6 +48,29 @@ spec:
               value: "conduction/Nextcloud-base"
             - name: TENANTS_BASE
               value: "main"
+            # Platform-assistent (change add-platform-assistant, v1 strikt
+            # lezend). Model-auth via het assistent-secret; ontbreekt dat, dan
+            # draait de rest van de webgui gewoon en geeft /assistant een
+            # nette fout (503) — daarom optional: true.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openwoo-assistant
+                  key: api-key
+                  optional: true
+            # Leestoken voor private componenten in de handboek-importlijst.
+            # docs_mcp zet dit in een 0600 credential-file in de cache — nooit
+            # in een clone-URL of git-config. Publieke componenten werken zonder.
+            - name: DOCS_READ_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openwoo-assistant
+                  key: docs-read-token
+                  optional: true
+            - name: HUB_DIR
+              value: "/opt/hub"
+            - name: DOCS_MCP_CACHE
+              value: "/var/cache/docs-mcp"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -56,13 +79,24 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 128Mi
+              memory: 256Mi
             limits:
               cpu: "1"
-              memory: 512Mi
+              # 1Gi (was 512Mi): de assistent spawnt per sessie de gebundelde
+              # claude-CLI als subprocess; rate limit + turn-cap houden de
+              # gelijktijdigheid laag, maar één sessie erbij past niet in 512Mi.
+              memory: 1Gi
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # Shallow clones van de handboek-componenten (docs_mcp), vluchtig
+            # per pod; max-age zorgt voor verversing.
+            - name: docs-cache
+              mountPath: /var/cache/docs-mcp
+            # De gebundelde claude-CLI schrijft sessie-state onder $HOME;
+            # readOnlyRootFilesystem maakt het image-home onbeschrijfbaar.
+            - name: home
+              mountPath: /home/appuser
         # The auth front: the SOLE network listener. Validates the operator
         # against Keycloak (which brokers Google) and forwards the identity as
         # X-Forwarded-Email to the app on localhost.
@@ -115,6 +149,12 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: docs-cache
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 512Mi
         - name: oauth2-cfg
           configMap:
             name: oauth2-proxy-cfg

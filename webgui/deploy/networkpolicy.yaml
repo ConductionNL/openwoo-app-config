@@ -11,11 +11,12 @@ spec:
   # (only ingress-nginx may reach the pod, only on :4180) which — together with
   # the app's 127.0.0.1 bind — is the trust anchor for X-Forwarded-Email.
   #
-  # Egress is intentionally NOT restricted: an egress policy here (even allowing
-  # 53 to all destinations) broke DNS resolution under this cluster's Calico CNI
-  # (oauth2-proxy → "lookup iam.commonground.nu: i/o timeout"), and the app
-  # legitimately needs outbound to Keycloak + arbitrary tenant public URLs anyway.
-  # This matches the working tenant-namespace baseline (no egress policy).
+  # Egress lives in a SEPARATE policy (networkpolicy-egress.yaml, change
+  # add-platform-assistant) so it can be rolled back independently. History:
+  # an earlier egress attempt (even allowing 53 to all destinations) broke DNS
+  # under this cluster's Calico CNI (oauth2-proxy → "lookup iam.commonground.nu:
+  # i/o timeout") — hence the explicit DNS/UDP+TCP rules and the staged test
+  # checklist documented there.
   policyTypes:
     - Ingress
   ingress:
