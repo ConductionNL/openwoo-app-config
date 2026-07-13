@@ -1,6 +1,6 @@
 ---
 last_reviewed: 2026-07-06
-owner: mark
+owner: info@conduction.nl
 ---
 
 # Bug: scheduled synchronization jobs run as `Anonymous` and are denied object writes

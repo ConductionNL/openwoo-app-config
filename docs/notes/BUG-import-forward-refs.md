@@ -1,6 +1,6 @@
 ---
 last_reviewed: 2026-07-06
-owner: mark
+owner: info@conduction.nl
 ---
 
 # BUG: config import does not resolve forward-reference slugs to ids

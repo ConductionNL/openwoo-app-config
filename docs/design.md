@@ -1,6 +1,6 @@
 ---
 last_reviewed: 2026-07-06
-owner: mark
+owner: info@conduction.nl
 ---
 
 # Design — why this repo works the way it does
