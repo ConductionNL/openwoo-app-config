@@ -138,6 +138,7 @@ def provision():
     values["force_import"] = bool(form.get("force_import"))
     values["run_syncs"] = bool(form.get("run_syncs"))
     values["dry_run"] = bool(form.get("dry_run"))
+    values["in_cluster"] = bool(form.get("in_cluster"))
     try:
         argv, env = provision_gui.build_command(values)
     except ValueError as exc:
@@ -145,8 +146,11 @@ def provision():
 
     user = current_user()
     # Audit: who + what + options. NEVER the password/apikey (they live only in env).
-    app.logger.info("provision requested: user=%s base=%s run_syncs=%s force_import=%s",
-                    user, values["base"], values["run_syncs"], values["force_import"])
+    # Log the PUBLIC base (recognisable in audit), plus whether in-cluster mode
+    # rewrote the connect target. Never the internal svc URL — keeps logs uniform.
+    app.logger.info("provision requested: user=%s base=%s run_syncs=%s force_import=%s in_cluster=%s",
+                    user, values["base"], values["run_syncs"], values["force_import"],
+                    values["in_cluster"])
 
     def stream():
         yield f"# provisioning {values['base']} (requested by {user})\n\n"

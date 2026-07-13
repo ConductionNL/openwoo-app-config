@@ -10,10 +10,26 @@
 
 import base64
 import json
+import socket
 import urllib.error
 import urllib.request
 
 from .helpers import log
+
+
+def _urlerror_detail(exc):
+    """Human-readable detail for a urllib URLError.
+
+    A DNS failure surfaces as a socket.gaierror (e.g. `[Errno -5] No address
+    associated with hostname`) — cryptic on its own. For a tenant that lives in
+    the cluster this usually means the public record is flapping/propagating
+    after a (re)deploy; point the operator at the fix instead of the raw errno.
+    """
+    if isinstance(exc.reason, socket.gaierror):
+        return (f"kan host niet resolven ({exc.reason}) — waarschijnlijk "
+                f"DNS-propagatie/flap na tenant-deploy; gebruik in-cluster mode "
+                f"of wacht 1-2 min en probeer opnieuw")
+    return str(exc.reason)
 
 # --- Thin HTTP client (basic-auth, JSON) ---
 
@@ -57,7 +73,7 @@ class Client:
                 f"{method} {path} -> HTTP {exc.code}: {detail}"
             ) from exc
         except urllib.error.URLError as exc:
-            raise ProvisionError(f"{method} {path} -> {exc.reason}") from exc
+            raise ProvisionError(f"{method} {path} -> {_urlerror_detail(exc)}") from exc
         if not raw.strip():
             # A 2xx with an empty body (e.g. DELETE -> 204 No Content) is a
             # success with nothing to parse. Return {} so callers don't trip the
@@ -104,7 +120,7 @@ class Client:
             detail = exc.read().decode(errors="replace")[:200]
             raise ProvisionError(f"POST {path} (file) -> HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
-            raise ProvisionError(f"POST {path} (file) -> {exc.reason}") from exc
+            raise ProvisionError(f"POST {path} (file) -> {_urlerror_detail(exc)}") from exc
 
 
 class ProvisionError(Exception):

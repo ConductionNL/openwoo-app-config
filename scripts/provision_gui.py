@@ -30,8 +30,53 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from urllib.parse import urlsplit
 
 PROVISION = str(Path(__file__).resolve().parent / "provision.py")
+
+# In-cluster provisioning target. Both the provisioner and every tenant Nextcloud
+# run in the same cluster, so we can reach the tenant's internal Service over
+# cluster-local DNS instead of its public `*.commonground.nu` record. The public
+# record is published by external-dns with TTL=1 and can flap while a tenant's
+# ingress is (re)created, which intermittently breaks a run with a DNS error;
+# the internal Service name never flaps. See docs/design.md.
+INCLUSTER_SERVICE = "nextcloud"        # Service name in the tenant namespace
+INCLUSTER_PORT = "8080"                # Nextcloud http port on that Service
+_PLATFORM_DOMAIN = ".commonground.nu"  # tenant public-host convention
+
+
+def incluster_target(public_base):
+    """Map a public tenant base URL to its in-cluster equivalent.
+
+    Returns `(internal_base, host_header)` where `internal_base` points at the
+    tenant's cluster-local Nextcloud Service and `host_header` is the original
+    public hostname (a Nextcloud trusted_domain, so requests are accepted).
+
+    The tenant namespace is `<org>-<env>`, derived from the public host per the
+    platform convention (inverse of webgui/templates/tenant.html):
+      - `<org>.commonground.nu`        -> org=<org>, env=prod
+      - `<org>.<env>.commonground.nu`  -> org=<org>, env=<env>
+
+    Returns None when the host is not a `*.commonground.nu` tenant host (caller
+    then falls back to the public base unchanged).
+    """
+    host = urlsplit(public_base).hostname
+    if not host or not host.endswith(_PLATFORM_DOMAIN):
+        return None
+    labels = host[: -len(_PLATFORM_DOMAIN)].split(".")
+    if len(labels) == 1:
+        org, env = labels[0], "prod"
+    elif len(labels) == 2:
+        org, env = labels[0], labels[1]
+    else:
+        return None
+    if not org or not env:
+        return None
+    namespace = f"{org}-{env}"
+    internal_base = (
+        f"http://{INCLUSTER_SERVICE}.{namespace}.svc.cluster.local:{INCLUSTER_PORT}"
+    )
+    return internal_base, host
 
 # (key, label, secret?, default) — the per-tenant inputs the form collects.
 FIELDS = [
@@ -55,7 +100,17 @@ def build_command(values):
     base = (values.get("base") or "").strip()
     if not base or base.startswith("https://<") or base.startswith("http://<"):
         raise ValueError("Tenant base URL is required")
-    argv = [sys.executable, PROVISION, "all", "--base", base]
+    # In-cluster mode: hit the tenant's internal Service (stable cluster-local DNS)
+    # and present the public host as Host, instead of resolving the flaky public
+    # record. Falls back to the public base when the host isn't a tenant host.
+    connect_base, host_header = base, None
+    if values.get("in_cluster"):
+        target = incluster_target(base)
+        if target:
+            connect_base, host_header = target
+    argv = [sys.executable, PROVISION, "all", "--base", connect_base]
+    if host_header:
+        argv += ["--host-header", host_header]
     if values.get("user"):
         argv += ["--user", values["user"].strip()]
     if values.get("source_url"):

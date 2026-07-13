@@ -30,4 +30,5 @@ images:
     # 0.2.4: landing dashboard (tenants + recent PRs) + real logout (RP-initiated to Keycloak).
     # 0.2.5: batch create (one PR, many tenants) + delete tenant (PR removing the file).
     # 0.2.6: Dutch UI + PO-jargon (no script/Argo names); dashboard shows open requests above environments.
-    newTag: "0.2.6"
+    # 0.2.7: in-cluster provisioning mode (cluster-local Service + --host-header) — DNS-flap-proof.
+    newTag: "0.2.7"

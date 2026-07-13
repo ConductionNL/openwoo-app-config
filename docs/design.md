@@ -39,22 +39,38 @@ step — some steps *validate* (`verify-import`, `sync-check`), others
 *configure or repair* (`settings`, `oc-settings`, `import`,
 `authorization`, `catalog`, `delete-menu`, `credentials`).
 
-## Provisioning is operator-driven (not in-cluster)
+## Provisioning is operator-driven (public URL by default)
 
-The target track runs from **outside** the cluster, against a tenant's
-**public URL** (a trusted domain), so it needs no in-cluster wiring:
-after `Nextcloud-base` deploys a tenant, an operator runs `provision.py`
-(or the GUI) to converge the WOO config and set the source connection.
-Driving tenants in-cluster was tried and dropped — the internal service
-Host isn't a trusted domain, and it added standing Argo apps nobody
-wanted. Outbound-from-outside is simpler and works.
+The target track is **operator-driven**: after `Nextcloud-base` deploys a
+tenant, an operator runs `provision.py` (or the GUI) to converge the WOO
+config and set the source connection. By default it drives the tenant's
+**public URL** (a trusted domain), so it needs no standing in-cluster
+wiring. We deliberately avoided standing Argo apps for this — the operator
+runs it on demand.
+
+**In-cluster mode (opt-in), for when the public record is unreliable.**
+The public host is published by external-dns with a very short TTL and can
+briefly flap while a tenant's ingress is (re)created; because nothing caches
+a short-TTL record, a single run does one DNS lookup per step and any lookup
+landing in an "absent" moment aborts the whole run with `[Errno -5] No
+address associated with hostname`. In-cluster mode sidesteps this: it
+connects to the tenant's **cluster-local Service**
+(`http://nextcloud.<org>-<env>.svc.cluster.local:8080`, resolved over
+`cluster.local` which never flaps) while presenting the public host via
+`--host-header` — so Nextcloud still sees a trusted domain (the earlier
+"internal Host isn't trusted" objection is exactly what `--host-header`
+resolves). It also avoids a hairpin from the in-cluster GUI to its own
+cluster's public ingress IP. Enable it with `provision.py --host-header`
+or the GUI's "Via in-cluster service" checkbox (default on for
+`*.commonground.nu`); it falls back to the public base for any other host.
 
 ## Hosted control-plane (`webgui/`)
 
 The operator flow is also available as a small **hosted web GUI** — a
 Flask app (`webgui/server.py`) that runs `provision.py all` from a form
-and streams the log back. It drives tenants **outbound** over their
-public URLs, so one hosted instance can converge any tenant.
+and streams the log back. One hosted instance can converge any tenant —
+over the tenant's public URL, or (default for `*.commonground.nu`) via the
+cluster-local Service with `--host-header`, see the in-cluster note above.
 
 - **Auth:** no login of its own — it sits behind **oauth2-proxy →
   Keycloak** (realm `commonground`), which brokers **Google**. The app

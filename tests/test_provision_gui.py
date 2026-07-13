@@ -70,3 +70,53 @@ def test_build_command_requires_base():
     for bad in ("", "   ", "https://<org>.accept.commonground.nu"):
         with pytest.raises(ValueError, match="base URL is required"):
             provision_gui.build_command({"base": bad})
+
+
+def test_incluster_target_prod_and_env():
+    # prod tenant: <org>.commonground.nu -> ns <org>-prod
+    assert provision_gui.incluster_target("https://noorderzijlvest.commonground.nu") == (
+        "http://nextcloud.noorderzijlvest-prod.svc.cluster.local:8080",
+        "noorderzijlvest.commonground.nu",
+    )
+    # non-prod tenant: <org>.<env>.commonground.nu -> ns <org>-<env>
+    assert provision_gui.incluster_target("https://klant.accept.commonground.nu") == (
+        "http://nextcloud.klant-accept.svc.cluster.local:8080",
+        "klant.accept.commonground.nu",
+    )
+
+
+def test_incluster_target_non_tenant_host_returns_none():
+    for other in ("https://bron.example/api", "http://localhost:8080",
+                  "https://a.b.c.commonground.nu"):
+        assert provision_gui.incluster_target(other) is None
+
+
+def test_build_command_in_cluster_rewrites_base_and_adds_host_header():
+    argv, env = provision_gui.build_command({
+        "base": "https://noorderzijlvest.commonground.nu",
+        "user": "admin", "password": "s3cr3t", "in_cluster": True,
+    })
+    # connect to the internal Service, present the public host
+    assert argv[argv.index("--base") + 1] == \
+        "http://nextcloud.noorderzijlvest-prod.svc.cluster.local:8080"
+    assert argv[argv.index("--host-header") + 1] == "noorderzijlvest.commonground.nu"
+    # secrets still only via env
+    assert "s3cr3t" not in argv
+    assert env[argv[argv.index("--password-env") + 1]] == "s3cr3t"
+
+
+def test_build_command_in_cluster_off_keeps_public_base():
+    argv, _ = provision_gui.build_command({
+        "base": "https://noorderzijlvest.commonground.nu", "user": "admin",
+    })
+    assert argv[argv.index("--base") + 1] == "https://noorderzijlvest.commonground.nu"
+    assert "--host-header" not in argv
+
+
+def test_build_command_in_cluster_non_tenant_host_falls_back():
+    # in_cluster requested but host isn't a tenant host -> unchanged public base
+    argv, _ = provision_gui.build_command({
+        "base": "https://custom.example.org", "user": "admin", "in_cluster": True,
+    })
+    assert argv[argv.index("--base") + 1] == "https://custom.example.org"
+    assert "--host-header" not in argv

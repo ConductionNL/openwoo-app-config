@@ -88,6 +88,33 @@ def test_provision_streams_subprocess_output(client, monkeypatch):
     assert "s3cret" in (captured["env"] or {}).get("GUI_PROVISION_PASSWORD", "")
 
 
+def test_provision_in_cluster_targets_internal_service(client, monkeypatch):
+    """The in_cluster checkbox rewrites --base to the tenant's cluster-local
+    Service and adds --host-header with the public host."""
+    captured = {}
+
+    class FakePopen:
+        def __init__(self, argv, env=None, cwd=None, **kw):
+            captured["argv"] = argv
+            self.stdout = iter(["ok\n"])
+            self.returncode = 0
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(server.subprocess, "Popen", FakePopen)
+
+    resp = client.post("/provision", data={
+        "base": "https://noorderzijlvest.commonground.nu",
+        "user": "admin", "in_cluster": "on",
+    })
+    assert resp.status_code == 200
+    argv = captured["argv"]
+    assert argv[argv.index("--base") + 1] == \
+        "http://nextcloud.noorderzijlvest-prod.svc.cluster.local:8080"
+    assert argv[argv.index("--host-header") + 1] == "noorderzijlvest.commonground.nu"
+
+
 def test_current_user_reads_proxy_header(client):
     with server.app.test_request_context(headers={"X-Forwarded-Email": "op@example.org"}):
         assert server.current_user() == "op@example.org"

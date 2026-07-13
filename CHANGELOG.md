@@ -4,6 +4,33 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Added — 2026-07-13 (webgui + provisioner: in-cluster mode, DNS-flap-proof)
+- **Probleem**: het inrichten van een tenant via de hosted GUI faalde intermitterend
+  met `[Errno -5] No address associated with hostname`. Oorzaak: de publieke
+  `*.commonground.nu`-record wordt door external-dns met TTL=1 gepubliceerd en flapt
+  terwijl de tenant-ingress (her)aangemaakt wordt — niets cachet een goed antwoord,
+  dus elke van de 11 stappen doet een verse lookup en één "afwezig" moment breekt de
+  run af (telkens op een andere stap). Geen stale cache — juist de *afwezigheid* van
+  caching + een flappende record.
+- **`scripts/provision_gui.py`** — nieuwe pure helper `incluster_target(base)` leidt uit
+  het publieke tenant-host de cluster-lokale Service af
+  (`http://nextcloud.<org>-<env>.svc.cluster.local:8080`) + het publieke host als
+  `Host`-header. `build_command` gebruikt die bij optie `in_cluster` (valt terug op de
+  publieke base voor niet-tenant hosts). Hergebruikt de bestaande `--host-header` van
+  `provision.py` (`scripts/provisionlib/cli.py`, `client.py`).
+- **`webgui/server.py`** — `/provision` leest de nieuwe checkbox `in_cluster`; audit-log
+  toont de **publieke** base + `in_cluster=<bool>` (nooit de interne svc-URL).
+- **`webgui/templates/index.html`** — checkbox "Via in-cluster service inrichten"
+  (default aan; omzeilt de publieke DNS én een hairpin naar de eigen ingress-IP).
+- **`scripts/provisionlib/client.py`** — DNS-fouten (`socket.gaierror`) krijgen een
+  bruikbare melding ("kan host niet resolven … gebruik in-cluster mode of wacht 1-2 min")
+  i.p.v. het rauwe errno.
+- **Tests**: `tests/test_provision_gui.py` (derivatie prod/env, fallback, argv-rewrite),
+  `tests/test_webgui.py` (checkbox threadt door naar interne base + `--host-header`),
+  `tests/test_provision.py` (`_urlerror_detail`). `./scripts/verify.sh` groen.
+- **Deploy**: de GUI-image bakt scripts, dus vergt een image-bump (`0.1.x`) — build,
+  push en Argo-sync doet een mens.
+
 ### Added — 2026-07-10 (webgui: platform-assistent, v1 strikt lezend)
 - **`webgui/assistant.py`** — server-side agent-sessies (Claude Agent SDK) die vragen
   beantwoorden gegrond in het technisch handboek, met verplichte herkomst (component,

@@ -997,3 +997,26 @@ def test_cmd_delete_menu_invokes_step(monkeypatch):
 
     assert provision.cli.cmd_delete_menu(_Args()) == 0
     assert seen == {"client": "CLIENT", "name": "User Menu"}
+
+
+# --- URLError detail: friendly DNS message vs raw reason ---
+
+def test_urlerror_detail_dns_failure_is_actionable():
+    import socket
+    import urllib.error
+
+    from provisionlib import client
+
+    exc = urllib.error.URLError(socket.gaierror(-5, "No address associated with hostname"))
+    detail = client._urlerror_detail(exc)
+    assert "resolven" in detail and "in-cluster" in detail          # points at the fix
+    assert "No address associated with hostname" in detail          # keeps the raw errno
+
+
+def test_urlerror_detail_non_dns_passes_reason_through():
+    import urllib.error
+
+    from provisionlib import client
+
+    exc = urllib.error.URLError("Connection refused")
+    assert client._urlerror_detail(exc) == "Connection refused"
