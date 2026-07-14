@@ -38,8 +38,15 @@ functional:
 image:
 	docker build -t $(IMAGE) .
 
+# push verifieert na afloop dat de tag écht op de registry staat: drie pushes
+# faalden stil (auth/rechten) terwijl de operator dacht dat ze geland waren —
+# Argo rolde dan naar een niet-bestaande tag (ImagePullBackOff).
 push:
 	docker push $(IMAGE)
+	python3 scripts/check_image_on_registry.py $(IMAGE)
+
+# Bouw + push + registry-check in één keer; faalt luid op elke stap.
+release: image push
 
 k8s-validate:
 	@if command -v kustomize >/dev/null 2>&1; then \

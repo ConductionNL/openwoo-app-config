@@ -4,6 +4,13 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-07-14 (make push verifieert de registry — stille push-fouten defused)
+- `scripts/check_image_on_registry.py` + aanroep in `make push` (en nieuw
+  target `make release` = image + push + check): drie image-pushes faalden
+  vandaag stil op auth/rechten terwijl ze geslaagd leken, waarna Argo naar
+  een niet-bestaande tag rolde (ImagePullBackOff). De check vraagt de tag
+  na de push anoniem op bij Docker Hub en faalt hard als hij ontbreekt.
+
 ### Toegevoegd — 2026-07-14 (platform_status: live Argo-status voor de assistent — 0.3.2)
 - Nieuwe read-tool `platform_status` (change add-assistant-live-status
   fase 1, GO Mark 2026-07-14): sync/health van alle Argo Applications via
