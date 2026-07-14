@@ -67,6 +67,7 @@ def test_allowed_tools_are_only_the_read_tools():
         "mcp__handboek__read_page",
         "mcp__handboek__list_components",
         "mcp__platform__platform_status",
+        "mcp__platform__metrics_query",
     ]
 
 
@@ -243,6 +244,108 @@ def test_system_prompt_labels_live_data():
     p = assistant.SYSTEM_PROMPT
     assert "platform_status" in p and "live" in p
     assert "verzin" in p  # backend weg => eerlijk, niet verzinnen
+
+
+# --- metrics_query (live metrics, fase 2 add-assistant-live-status) -----------
+
+def _fake_prom_payload():
+    return {"status": "success", "data": {"resultType": "vector", "result": [
+        {"metric": {"__name__": "kube_pod_container_status_restarts_total",
+                    "namespace": "openwoo-platform",
+                    "pod": "openwoo-provisioner-abc",
+                    "container": "app", "job": "kube-state-metrics"},
+         "value": [1752480000.0, "3"]},
+        {"metric": {"namespace": "monitoring", "pod": "mon-prom-0",
+                    "endpoint": "http", "service": "x"},
+         "value": [1752480000.0, "1"]},
+    ]}}
+
+
+class _FakeResp:
+    """Minimale urlopen-response: context manager met read() (json.load)."""
+
+    def __init__(self, payload):
+        self._data = json.dumps(payload).encode()
+
+    def read(self, *args):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_metrics_query_known_name_reduces_labels(fake_hub, monkeypatch):
+    import urllib.request
+    seen = {}
+
+    def fake_urlopen(url, timeout=None):
+        seen["url"] = url
+        seen["timeout"] = timeout
+        return _FakeResp(_fake_prom_payload())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    calls = []
+    impls = assistant._tool_impls([], calls)
+    out = _run(impls["metrics_query"]({"query": "pod-restarts-1h"}))
+    assert out["beschikbaar"] is True and out["query"] == "pod-restarts-1h"
+    assert out["bron"].startswith("Prometheus") and out["opgehaald"]
+    assert out["uitleg"]
+    # labels gereduceerd tot de identificerende set — job/container/__name__ weg
+    assert out["resultaten"] == [
+        {"labels": {"namespace": "openwoo-platform",
+                    "pod": "openwoo-provisioner-abc"}, "waarde": "3"},
+        {"labels": {"namespace": "monitoring", "pod": "mon-prom-0"},
+         "waarde": "1"},
+    ]
+    # de vastgelegde PromQL gaat urlencoded de lijn op, met de env-timeout
+    assert seen["url"].startswith(
+        assistant.PROMETHEUS_URL + "/api/v1/query?query=")
+    assert "kube_pod_container_status_restarts_total" in seen["url"]
+    assert seen["timeout"] == assistant.METRICS_TIMEOUT
+    assert calls == [{"tool": "metrics_query", "query": "pod-restarts-1h",
+                      "resultaat": "series=2"}]
+
+
+def test_metrics_query_rejects_freeform_promql(fake_hub):
+    # spec: named-query-catalogus — geen vrije PromQL; de fout noemt de namen
+    impls = assistant._tool_impls([], [])
+    with pytest.raises(ValueError, match="deployments-unavailable"):
+        _run(impls["metrics_query"]({"query": "sum(rate(x[5m]))"}))
+
+
+def test_metrics_query_backend_unreachable_is_honest(fake_hub, monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    def boom(url, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    calls = []
+    impls = assistant._tool_impls([], calls)
+    out = _run(impls["metrics_query"]({"query": "node-not-ready"}))
+    assert out["beschikbaar"] is False and "onbereikbaar" in out["fout"]
+    assert calls == [{"tool": "metrics_query", "query": "node-not-ready",
+                      "resultaat": "onbereikbaar"}]
+
+
+def test_metric_queries_catalogus_is_the_designed_eight():
+    assert set(assistant.METRIC_QUERIES) == {
+        "deployments-unavailable", "node-cpu-saturation",
+        "node-mem-saturation", "node-not-ready", "pod-restarts-1h",
+        "pvc-usage", "pods-pending", "pods-oomkilled"}
+    for entry in assistant.METRIC_QUERIES.values():
+        assert entry["promql"].strip() and entry["uitleg"].strip()
+
+
+def test_system_prompt_mentions_metrics_query():
+    p = assistant.SYSTEM_PROMPT
+    assert "metrics_query" in p
+    # de oude "nog geen tool"-zin is weg
+    assert "nog geen tool" not in p
 
 
 # --- audit (spec: auditable sessions) ----------------------------------------

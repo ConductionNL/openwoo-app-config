@@ -40,19 +40,74 @@ MAX_QUESTION_CHARS = int(os.environ.get("ASSISTANT_MAX_QUESTION_CHARS", "2000"))
 AUDIT_LOG_PATH = os.environ.get("ASSISTANT_AUDIT_LOG", "")
 
 # Alleen deze tools bestaan voor de sessie (spec: "no write or execute
-# tools"). Sinds add-assistant-live-status fase 1 is er naast de drie
-# handboek-read-tools één status-read-tool (Argo, vaste weergaven) —
-# een injectie-poging heeft nog steeds niets uitvoerbaars of vrije input.
+# tools"). Sinds add-assistant-live-status zijn er naast de drie
+# handboek-read-tools twee status-read-tools (fase 1: Argo, vaste
+# weergaven; fase 2: Prometheus, vaste query-catalogus) — een
+# injectie-poging heeft nog steeds niets uitvoerbaars of vrije input.
 ALLOWED_TOOLS = [
     "mcp__handboek__search_docs",
     "mcp__handboek__read_page",
     "mcp__handboek__list_components",
     "mcp__platform__platform_status",
+    "mcp__platform__metrics_query",
 ]
 
 # Vaste weergaven van platform_status — het model kiest een naam, nooit
 # vrije input (spec: fixed read-only status surface).
 STATUS_VIEWS = ("samenvatting", "degraded", "alles")
+
+# Named-query-catalogus voor metrics_query (add-assistant-live-status
+# fase 2, design.md 2026-07-14): het model kiest uitsluitend een naam,
+# de PromQL ligt hier vast — zelfde geen-vrije-input-principe als
+# STATUS_VIEWS.
+METRIC_QUERIES = {
+    "deployments-unavailable": {
+        "promql": "kube_deployment_status_replicas_unavailable > 0",
+        "uitleg": "Welke deployments draaien niet volledig?"},
+    "node-cpu-saturation": {
+        "promql": '1 - avg by(instance)'
+                  '(rate(node_cpu_seconds_total{mode="idle"}[5m]))',
+        "uitleg": "Hoe vol zitten de nodes qua CPU (fractie 0-1)?"},
+    "node-mem-saturation": {
+        "promql": "1 - (node_memory_MemAvailable_bytes"
+                  " / node_memory_MemTotal_bytes)",
+        "uitleg": "Hoe vol zitten de nodes qua geheugen (fractie 0-1)?"},
+    "node-not-ready": {
+        "promql": 'kube_node_status_condition'
+                  '{condition="Ready",status!="true"} == 1',
+        "uitleg": "Zijn alle nodes gezond (leeg = alles Ready)?"},
+    "pod-restarts-1h": {
+        "promql": "sum by(namespace,pod)(increase("
+                  "kube_pod_container_status_restarts_total[1h])) > 0",
+        "uitleg": "Wat crashloopt er (restarts in het laatste uur)?"},
+    "pvc-usage": {
+        "promql": "kubelet_volume_stats_used_bytes"
+                  " / kubelet_volume_stats_capacity_bytes > 0.8",
+        "uitleg": "Welke volumes lopen vol (>80% gebruikt)?"},
+    "pods-pending": {
+        "promql": 'kube_pod_status_phase{phase="Pending"} == 1',
+        "uitleg": "Blijft er iets hangen op scheduling?"},
+    "pods-oomkilled": {
+        "promql": "kube_pod_container_status_last_terminated_reason"
+                  '{reason="OOMKilled"} == 1',
+        "uitleg": "Wordt er iets OOM-gekilld?"},
+}
+
+# In-cluster route (design.md besluit: route 1, Service-URL). Komt de
+# egress-policy terug, dan moet 9090/TCP naar monitoring erin
+# (webgui/deploy/networkpolicy-egress.yaml).
+PROMETHEUS_URL = os.environ.get(
+    "PROMETHEUS_URL",
+    "http://mon-kube-prometheus-stack-prometheus.monitoring.svc:9090")
+METRICS_TIMEOUT = int(os.environ.get("ASSISTANT_METRICS_TIMEOUT", "10"))
+METRICS_MAX_SERIES = int(os.environ.get("ASSISTANT_METRICS_MAX_SERIES",
+                                        "50"))
+# Labelreductie: alleen identificerende labels het antwoord in — houdt
+# de tool-output (en dus het context-/tokenbudget) compact. `node` staat
+# erbij omdat kube_node_status_condition nodes zó identificeert
+# (node-exporter gebruikt `instance`).
+METRIC_LABEL_KEEP = ("namespace", "pod", "deployment", "instance",
+                     "persistentvolumeclaim", "node")
 # Riem én bretels: ingebouwde tools ook expliciet uit de context halen.
 DISALLOWED_TOOLS = [
     "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebSearch",
@@ -79,14 +134,15 @@ Regels:
    werkstation + operatiecataloog (docs/agents.md van de component),
    wijzigingen altijd via pull request.
 5. Antwoord beknopt en in het Nederlands, tenzij de vraag Engels is.
-6. Voor vragen naar de ACTUELE toestand van het platform (welke
-   applicaties degraded/out-of-sync zijn) gebruik je platform_status.
-   Label zo'n antwoord expliciet als live gemeten — noem de bron
-   (Argo CD) en het tijdstip uit het tool-antwoord — en presenteer het
-   nooit als handboek-inhoud. Is de status-backend onbereikbaar, zeg
-   dat eerlijk en val terug op het handboek (alerting/runbooks); verzin
-   geen getallen. Voor metrics (nodes, resources) heb je nog geen tool:
-   zeg dat, en verwijs naar Grafana/Prometheus via het handboek.
+6. Voor vragen naar de ACTUELE toestand van het platform gebruik je de
+   live-tools: platform_status voor sync/health van de applicaties
+   (Argo CD) en metrics_query voor metrics — nodes (CPU/geheugen/
+   Ready), pod-restarts, volumes, pending/OOM — via een vaste
+   query-catalogus (Prometheus). Label zo'n antwoord expliciet als
+   live gemeten — noem de bron en het tijdstip uit het tool-antwoord —
+   en presenteer het nooit als handboek-inhoud. Is een live-backend
+   onbereikbaar, zeg dat eerlijk en val terug op het handboek
+   (alerting/runbooks); verzin geen getallen.
 """
 
 logger = logging.getLogger("assistant")
@@ -255,9 +311,65 @@ def _tool_impls(sources: list[dict], status_calls: list[dict] | None = None):
                                    "health": a["health"]} for a in apps]
         return uit
 
+    async def metrics_query(args):
+        # Fase 2 van add-assistant-live-status: instant-query tegen de
+        # in-cluster Prometheus, uitsluitend via de vaste catalogus
+        # (METRIC_QUERIES) — het model levert een naam, nooit PromQL.
+        # Stdlib-urllib (geen extra dependency); bij een onbereikbare
+        # backend een eerlijk "beschikbaar: false", zelfde patroon als
+        # platform_status.
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+
+        naam = args.get("query", "")
+        if naam not in METRIC_QUERIES:
+            raise ValueError(
+                f"onbekende query {naam!r}; "
+                f"beschikbaar: {', '.join(sorted(METRIC_QUERIES))}")
+        entry = METRIC_QUERIES[naam]
+        basis = {"bron": "Prometheus (monitoring, read-only)",
+                 "opgehaald": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                 "query": naam, "uitleg": entry["uitleg"]}
+        url = (f"{PROMETHEUS_URL}/api/v1/query?query="
+               f"{urllib.parse.quote(entry['promql'])}")
+
+        def onbereikbaar(fout: str):
+            status_calls.append({"tool": "metrics_query", "query": naam,
+                                 "resultaat": "onbereikbaar"})
+            return {**basis, "beschikbaar": False,
+                    "fout": f"metrics-backend onbereikbaar: {fout}"}
+
+        try:
+            # urllib.error.URLError/HTTPError zijn OSError-subklassen;
+            # ValueError dekt kapotte JSON.
+            with urllib.request.urlopen(url,
+                                        timeout=METRICS_TIMEOUT) as resp:
+                payload = json.load(resp)
+        except (OSError, ValueError) as exc:
+            return onbereikbaar(str(exc))
+        if payload.get("status") != "success":
+            return onbereikbaar(f"prometheus-status {payload.get('status')!r}")
+
+        series = payload.get("data", {}).get("result", [])
+        resultaten = []
+        for s in series[:METRICS_MAX_SERIES]:
+            labels = {k: v for k, v in s.get("metric", {}).items()
+                      if k in METRIC_LABEL_KEEP}
+            resultaten.append({"labels": labels,
+                               "waarde": s.get("value", [None, None])[1]})
+        status_calls.append({"tool": "metrics_query", "query": naam,
+                             "resultaat": f"series={len(series)}"})
+        uit = {**basis, "beschikbaar": True, "resultaten": resultaten}
+        if len(series) > METRICS_MAX_SERIES:
+            uit["afgekapt"] = (f"{len(series)} series, eerste "
+                               f"{METRICS_MAX_SERIES} getoond")
+        return uit
+
     return {"search_docs": search_docs, "read_page": read_page,
             "list_components": list_components,
-            "platform_status": platform_status}
+            "platform_status": platform_status,
+            "metrics_query": metrics_query}
 
 
 def _sdk_servers(sources: list[dict], status_calls: list[dict]):
@@ -301,11 +413,20 @@ def _sdk_servers(sources: list[dict], status_calls: list[dict]):
     async def platform_status(args):
         return _text(await impls["platform_status"](args))
 
+    @tool(name="metrics_query",
+          description="Actuele platform-metrics (Prometheus, read-only) "
+                      "via een vaste query-catalogus. Kies een naam: "
+                      + ", ".join(sorted(METRIC_QUERIES)) + ".",
+          input_schema={"query": str})
+    async def metrics_query(args):
+        return _text(await impls["metrics_query"](args))
+
     handboek = create_sdk_mcp_server(name="handboek", version="1.0.0",
                                      tools=[search_docs, read_page,
                                             list_components])
     platform = create_sdk_mcp_server(name="platform", version="1.0.0",
-                                     tools=[platform_status])
+                                     tools=[platform_status,
+                                            metrics_query])
     return {"handboek": handboek, "platform": platform}
 
 

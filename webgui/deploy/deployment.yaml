@@ -85,6 +85,15 @@ spec:
             # 2026-07-14). Begrensd houden: langere vraag = meer tokens/kosten.
             - name: ASSISTANT_MAX_QUESTION_CHARS
               value: "8000"
+            # Live metrics voor de assistent (add-assistant-live-status
+            # fase 2): tool metrics_query, vaste query-catalogus tegen de
+            # in-cluster Prometheus-Service (zelfde waarde als de code-
+            # default; hier expliciet zodat de route zichtbaar en per env
+            # overschrijfbaar is). LET OP: komt de egress-policy terug
+            # (networkpolicy-egress.yaml), dan moet 9090/TCP naar de
+            # monitoring-namespace er expliciet in.
+            - name: PROMETHEUS_URL
+              value: "http://mon-kube-prometheus-stack-prometheus.monitoring.svc:9090"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

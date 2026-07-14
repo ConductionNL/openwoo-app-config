@@ -29,7 +29,7 @@ elke stap GET-checkt eerst en slaat over wat al klopt.
 
 De webgui bevat een assistent-endpoint (`/assistant`) dat server-side
 agent-sessies draait: vragen beantwoorden, gegrond in het handboek, met
-verplichte herkomst. De sessie krijgt uitsluitend vier read-tools en
+verplichte herkomst. De sessie krijgt uitsluitend vijf read-tools en
 geen enkele ingebouwde tool; er valt dus niets uit te voeren of te
 schrijven:
 
@@ -38,7 +38,12 @@ schrijven:
 - `platform_status` — actuele Argo-sync/health via de RBAC die de pod
   al had (change add-assistant-live-status fase 1, GO 2026-07-14):
   alleen vaste weergaven, geen vrije input; antwoorden worden expliciet
-  als live gelabeld (bron + tijdstip), gescheiden van handboek-herkomst.
+  als live gelabeld (bron + tijdstip), gescheiden van handboek-herkomst;
+- `metrics_query` — actuele metrics (nodes, restarts, volumes,
+  pending/OOM) via de in-cluster Prometheus (change
+  add-assistant-live-status fase 2): named-query-catalogus, het model
+  kiest alléén een naam en de PromQL ligt vast in code; zelfde
+  live-labeling en audit als `platform_status`.
 
 Grenzen: rate limit per SSO-identiteit, turn-cap, timeout; elke sessie
 wordt geauditeerd (wie/vraag/antwoord/bronnen/status-aanroepen).
