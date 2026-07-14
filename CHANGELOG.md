@@ -8,6 +8,12 @@ All notable changes to this repository are documented here.
 - `ASSISTANT_MAX_QUESTION_CHARS` (default 2000) vervangt de hardcoded cap in
   `webgui/assistant.py` — regel van Mark: élke limiet env-tunable, niets
   hardcoded. Zit pas in het image vanaf de volgende build (0.3.1).
+- SDK-isolatie in `assistant.py` (`setting_sources=[]` + neutrale cwd):
+  sessies laden geen filesystem-settings of project-`.mcp.json` meer. Dit
+  verklaarde en verhielp sonnets 3× "geen toestemming" uit de benchmark
+  (tweede handboek-server `conduction-docs` zichtbaar bij runs vanuit de
+  repo-root); herrun van exact die drie vragen: 3/3 mét bronnen. Gaat mee
+  in image 0.3.1 (`newTag` gebumpt; image éérst bouwen/pushen).
 - Assistent live op platform.commonground.nu (0.3.0, Argo Synced/Healthy);
   livecheck spec-scenario's door Mark uitgevoerd. Modelkeuze
   (`ASSISTANT_MODEL`) volgt nadat het team de benchmark-testset zelf over

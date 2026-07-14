@@ -22,6 +22,7 @@ import logging
 import os
 import queue
 import sys
+import tempfile
 import threading
 import time
 from collections import deque
@@ -243,6 +244,14 @@ async def _run_session(question: str, sources: list[dict], events: queue.Queue):
         allowed_tools=list(ALLOWED_TOOLS),
         disallowed_tools=list(DISALLOWED_TOOLS),
         max_turns=MAX_TURNS,
+        # SDK-isolatie: geen filesystem-settings of project-.mcp.json laden
+        # (None = CLI-defaults = alles). Zonder dit zag een benchmark vanuit
+        # de repo-root een twééde handboek-server (conduction-docs) naast
+        # `handboek`, en werden calls daarnaartoe geweigerd (2026-07-13,
+        # sonnet 3× "geen toestemming"). Neutrale cwd om elke werkmap-
+        # afhankelijkheid uit te sluiten.
+        setting_sources=[],
+        cwd=tempfile.gettempdir(),
     )
     model = os.environ.get("ASSISTANT_MODEL")
     if model:

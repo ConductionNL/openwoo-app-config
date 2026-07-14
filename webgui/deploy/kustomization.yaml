@@ -39,5 +39,7 @@ images:
     #        gepind in het image (HUB_SHA in Dockerfile), git in het image,
     #        assistent-env + cache/home-volumes. LET OP: image éérst
     #        bouwen en pushen (make image/push), dan pas de tag hier bumpen.
-    # 0.3.1 (nog te bouwen): ASSISTANT_MAX_QUESTION_CHARS env-tunable.
-    newTag: "0.3.0"
+    # 0.3.1: ASSISTANT_MAX_QUESTION_CHARS env-tunable + SDK-isolatie
+    #        (setting_sources=[] + neutrale cwd — geen project-.mcp.json
+    #        meer in sessies).
+    newTag: "0.3.1"
