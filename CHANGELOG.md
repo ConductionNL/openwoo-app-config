@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-07-14 (metrics_query: live metrics voor de assistent — 0.4.0)
+- Vijfde read-tool `metrics_query` (add-assistant-live-status fase 2,
+  GO Mark 2026-07-14): 8 named queries (deployments-unavailable,
+  node-cpu/mem-saturatie, node-not-ready, pod-restarts, pvc-usage,
+  pods-pending, pods-oomkilled) tegen de in-cluster Prometheus — het
+  model kiest alléén een naam, de PromQL ligt vast in code. Zelfde
+  live-labeling en status_calls-audit als platform_status; eerlijk
+  "beschikbaar: false" bij een onbereikbare backend.
+- Env-knobs: `PROMETHEUS_URL` (expliciet in deployment.yaml, met
+  egress-notitie 9090/TCP), `ASSISTANT_METRICS_TIMEOUT`,
+  `ASSISTANT_METRICS_MAX_SERIES` (afkap gemarkeerd met `afgekapt`-veld).
+- 6 nieuwe tests (155/189 groen); docs mee (agents.md: vijf read-tools,
+  deploy-README).
+
 ### Gewijzigd — 2026-07-14 (veegronde assistent — 0.3.3)
 - Heartbeat in de NDJSON-stream: direct een `start`-event bij openen en
   een `ping` elke `ASSISTANT_HEARTBEAT_SECONDS` (default 10) zolang de

@@ -47,4 +47,7 @@ images:
     #        en status_calls-veld. Image éérst bouwen/pushen, dan mergen.
     # 0.3.3: heartbeat-events in de stream (start + ping, env-tunable
     #        interval) en is_error correct bij auth-fouten in de audit.
-    newTag: "0.3.3"
+    # 0.4.0: metrics_query — live metrics via vaste Prometheus-catalogus
+    #        (add-assistant-live-status fase 2). Image éérst bouwen/pushen
+    #        (make release), dan mergen.
+    newTag: "0.4.0"
