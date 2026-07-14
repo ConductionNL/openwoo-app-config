@@ -38,6 +38,10 @@
 # vóór heractivering: debug-pod met dezelfde labels in de namespace,
 # dig naar 100.64.0.10 én rechtstreeks naar een CoreDNS-pod-IP, met en
 # zonder policy — dan weten we of de Service-DNAT of de selector faalt.
+# Het volledige experiment (beslistabel, rollback, valkuilen) staat in
+# egress-debug-runbook.md hiernaast (2026-07-14). NB: fase 2 van
+# add-assistant-live-status (Prometheus) wil t.z.t. óók 9090/TCP naar de
+# monitoring-namespace — meenemen bij heractivering.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

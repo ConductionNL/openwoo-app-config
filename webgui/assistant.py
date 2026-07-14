@@ -35,6 +35,7 @@ RATE_LIMIT_MAX = int(os.environ.get("ASSISTANT_RATE_LIMIT", "10"))
 RATE_LIMIT_WINDOW = int(os.environ.get("ASSISTANT_RATE_WINDOW", "3600"))
 MAX_TURNS = int(os.environ.get("ASSISTANT_MAX_TURNS", "12"))
 TIMEOUT_SECONDS = int(os.environ.get("ASSISTANT_TIMEOUT", "180"))
+HEARTBEAT_SECONDS = int(os.environ.get("ASSISTANT_HEARTBEAT_SECONDS", "10"))
 MAX_QUESTION_CHARS = int(os.environ.get("ASSISTANT_MAX_QUESTION_CHARS", "2000"))
 AUDIT_LOG_PATH = os.environ.get("ASSISTANT_AUDIT_LOG", "")
 
@@ -308,6 +309,15 @@ def _sdk_servers(sources: list[dict], status_calls: list[dict]):
     return {"handboek": handboek, "platform": platform}
 
 
+def _reads_as_error(result: str) -> bool:
+    """Gerichte check: de SDK levert een auth-/API-fout (bv. 401 invalid
+    bearer token) soms als ResultMessage met is_error=False en de fouttekst
+    als result. De CLI-fouttekst begint dan met "API Error"; de SDK-exceptie
+    varianten bevatten "error result". Bewust geen bredere heuristiek."""
+    t = (result or "").strip().lower()
+    return t.startswith("api error") or "error result" in t
+
+
 def _audit(record: dict) -> None:
     line = json.dumps(record, ensure_ascii=False)
     audit_logger.info(line)
@@ -360,7 +370,9 @@ async def _run_session(question: str, sources: list[dict],
 
 def ask_stream(question: str, user: str):
     """Valideer en start één vraag; geeft een generator van events terug
-    (delta*, sources, done|error). Validatie/rate limit lopen EAGER —
+    (start, [ping|delta]*, sources, done|error) — ping komt elke
+    HEARTBEAT_SECONDS zolang de sessie stil is (proxy-keepalive).
+    Validatie/rate limit lopen EAGER —
     vóór er een response-stream bestaat — zodat de route een echte
     HTTP-status kan geven; het audit-record wordt altijd geschreven.
     """
@@ -386,7 +398,8 @@ def _event_stream(question: str, user: str):
             asyncio.run(_run_session(question, sources, status_calls, events))
         except Exception as exc:  # noqa: BLE001 — één nette fout naar de client
             logger.exception("assistent-sessie faalde")
-            events.put({"type": "error", "message": str(exc)})
+            events.put({"type": "error", "message": str(exc),
+                        "is_error": True})
         finally:
             events.put(None)
 
@@ -399,15 +412,35 @@ def _event_stream(question: str, user: str):
     # in het audit-record. Vóór 2026-07-14 stond dit ná de loop en
     # verdween het record bij een disconnect.
     try:
+        # Direct bytes op de lijn: proxies (oauth2-proxy e.d.) zien meteen
+        # een levende response i.p.v. stilte tot het eerste delta.
+        yield {"type": "start"}
         while True:
-            event = events.get()
+            try:
+                event = events.get(timeout=HEARTBEAT_SECONDS)
+            except queue.Empty:
+                # Heartbeat zolang de sessie stil is: houdt élke
+                # tussenliggende proxy wakker. De browser-JS negeert
+                # onbekende event-types.
+                yield {"type": "ping"}
+                continue
             if event is None:
                 break
             if event["type"] == "delta":
                 answer_parts.append(event["text"])
                 yield event
             elif event["type"] == "result":
-                outcome = event
+                if (not event["is_error"] and not answer_parts
+                        and _reads_as_error(event.get("result", ""))):
+                    # SDK-eigenaardigheid: auth-fout als "gewoon" resultaat
+                    # (is_error=False). Zonder delta's is dat geen antwoord —
+                    # audit en client krijgen een echte fout.
+                    event = {**event, "type": "error", "is_error": True,
+                             "message": event["result"]}
+                    outcome = event
+                    yield event
+                else:
+                    outcome = event
             elif event["type"] == "error":
                 outcome = event
                 yield event

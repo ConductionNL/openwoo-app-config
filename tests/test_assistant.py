@@ -7,6 +7,7 @@
 
 import json
 import sys
+import threading
 import types
 from pathlib import Path
 
@@ -256,6 +257,107 @@ def test_audit_appends_jsonl(tmp_path, monkeypatch):
     lines = path.read_text().strip().splitlines()
     assert len(lines) == 2
     assert json.loads(lines[0])["user"] == "a@x"
+
+
+# --- event-stream: heartbeat + fout-uitkomst (zonder SDK, via fake sessie) ---
+
+def _fake_session(*puts, wait: threading.Event | None = None):
+    """Vervanger voor _run_session: wacht optioneel, en zet dan de gegeven
+    events op de queue (de worker zelf sluit af met None)."""
+    async def run(question, sources, status_calls, events):
+        if wait is not None:
+            wait.wait(timeout=5)
+        for p in puts:
+            events.put(p)
+    return run
+
+
+def test_stream_starts_with_start_event(monkeypatch):
+    monkeypatch.setattr(assistant, "_run_session", _fake_session(
+        {"type": "delta", "text": "hoi"},
+        {"type": "result", "is_error": False, "result": "hoi",
+         "cost_usd": 0.0, "usage": {}, "duration_ms": 1}))
+    events = list(assistant._event_stream("vraag", "a@x"))
+    assert events[0] == {"type": "start"}  # meteen bytes voor de proxy
+    assert [e["type"] for e in events] == ["start", "delta", "sources",
+                                           "done"]
+    assert events[-1]["is_error"] is False
+
+
+def test_heartbeat_pings_while_session_is_silent(monkeypatch):
+    monkeypatch.setattr(assistant, "HEARTBEAT_SECONDS", 0.01)
+    release = threading.Event()
+    monkeypatch.setattr(assistant, "_run_session", _fake_session(
+        {"type": "delta", "text": "antwoord"},
+        {"type": "result", "is_error": False, "result": "antwoord",
+         "cost_usd": 0.0, "usage": {}, "duration_ms": 1},
+        wait=release))
+    gen = assistant._event_stream("vraag", "a@x")
+    assert next(gen)["type"] == "start"
+    assert next(gen)["type"] == "ping"  # queue stil -> keepalive
+    release.set()
+    rest = [e for e in gen if e["type"] != "ping"]
+    assert [e["type"] for e in rest] == ["delta", "sources", "done"]
+
+
+def test_heartbeat_knob_is_env_tunable_int():
+    assert isinstance(assistant.HEARTBEAT_SECONDS, int)
+    assert assistant.HEARTBEAT_SECONDS > 0
+
+
+def test_result_that_reads_as_error_becomes_error(tmp_path, monkeypatch):
+    """SDK-eigenaardigheid: 401 invalid bearer token komt als ResultMessage
+    met is_error=False en de fouttekst als result — zonder delta's is dat
+    een fout, geen antwoord (audit + client)."""
+    path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(assistant, "AUDIT_LOG_PATH", str(path))
+    fout = ('API Error: 401 {"type":"error","error":'
+            '{"type":"authentication_error","message":"invalid bearer token"}}')
+    monkeypatch.setattr(assistant, "_run_session", _fake_session(
+        {"type": "result", "is_error": False, "result": fout,
+         "cost_usd": None, "usage": None, "duration_ms": 1}))
+    events = list(assistant._event_stream("vraag", "a@x"))
+    errors = [e for e in events if e["type"] == "error"]
+    assert errors and "invalid bearer token" in errors[0]["message"]
+    assert events[-1] == {"type": "done", "is_error": True}
+    record = json.loads(path.read_text().strip())
+    assert record["is_error"] is True
+
+
+def test_result_with_deltas_stays_an_answer(monkeypatch):
+    # Een echt antwoord dat toevallig over "API Error" gáát blijft een
+    # antwoord: de fout-check geldt alleen zonder delta's.
+    monkeypatch.setattr(assistant, "_run_session", _fake_session(
+        {"type": "delta", "text": "Een API Error betekent…"},
+        {"type": "result", "is_error": False,
+         "result": "API Error: uitleg", "cost_usd": 0.0, "usage": {},
+         "duration_ms": 1}))
+    events = list(assistant._event_stream("vraag", "a@x"))
+    assert [e["type"] for e in events] == ["start", "delta", "sources",
+                                           "done"]
+    assert events[-1]["is_error"] is False
+
+
+def test_session_exception_is_error_in_audit(tmp_path, monkeypatch):
+    path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(assistant, "AUDIT_LOG_PATH", str(path))
+
+    async def boom(question, sources, status_calls, events):
+        raise RuntimeError("Claude process gaf een error result")
+
+    monkeypatch.setattr(assistant, "_run_session", boom)
+    events = list(assistant._event_stream("vraag", "a@x"))
+    errors = [e for e in events if e["type"] == "error"]
+    assert errors and "error result" in errors[0]["message"]
+    assert events[-1] == {"type": "done", "is_error": True}
+    assert json.loads(path.read_text().strip())["is_error"] is True
+
+
+def test_reads_as_error_is_targeted():
+    assert assistant._reads_as_error("API Error: 401 invalid bearer token")
+    assert assistant._reads_as_error("proces eindigde met een error result")
+    assert not assistant._reads_as_error("Zo voeg je een tenant toe.")
+    assert not assistant._reads_as_error("")
 
 
 # --- benchmark-vragenset (webgui/bench_questions.json) ------------------------

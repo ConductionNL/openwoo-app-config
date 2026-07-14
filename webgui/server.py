@@ -358,7 +358,8 @@ def assistant_page():
 
 @app.post("/api/assistant/ask")
 def assistant_ask():
-    """Eén vraag -> NDJSON-eventstream (delta*, sources, done|error).
+    """Eén vraag -> NDJSON-eventstream (start, [ping|delta]*, sources,
+    done|error); start/ping zijn proxy-keepalives, de browser negeert ze.
     Validatie en rate limit lopen vóór de stream start; de vraag zelf wordt
     door assistant.py geauditeerd (wie/vraag/antwoord/bronnen)."""
     data = request.get_json(silent=True) or {}

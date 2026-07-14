@@ -109,6 +109,9 @@ def test_provision_in_cluster_targets_internal_service(client, monkeypatch):
         "user": "admin", "in_cluster": "on",
     })
     assert resp.status_code == 200
+    # De route streamt: Popen draait pas in de generator, dus de body moet
+    # geconsumeerd zijn vóór er iets in `captured` staat.
+    assert "exit code 0" in resp.get_data(as_text=True)
     argv = captured["argv"]
     assert argv[argv.index("--base") + 1] == \
         "http://nextcloud.noorderzijlvest-prod.svc.cluster.local:8080"

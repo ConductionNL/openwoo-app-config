@@ -98,8 +98,9 @@ Deploy-relevant:
   taak 1.2 van de change) — zet `ASSISTANT_AUDIT_LOG` voor een extra file;
 - tuning via env: `ASSISTANT_MODEL`, `ASSISTANT_RATE_LIMIT`,
   `ASSISTANT_MAX_TURNS`, `ASSISTANT_TIMEOUT`,
-  `ASSISTANT_MAX_QUESTION_CHARS` (defaults in assistant.py; regel:
-  élke limiet is env-tunable, niets hardcoded);
+  `ASSISTANT_MAX_QUESTION_CHARS`, `ASSISTANT_HEARTBEAT_SECONDS`
+  (defaults in assistant.py; regel: élke limiet is env-tunable,
+  niets hardcoded);
 - live status: tool `platform_status` leest Argo-sync/health via de
   bestaande SA-RBAC (`rbac-argo.yaml`) — vaste weergaven, antwoorden
   gelabeld als live, aanroepen in het audit-record (change

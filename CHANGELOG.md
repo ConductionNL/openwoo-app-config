@@ -4,6 +4,26 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-14 (veegronde assistent — 0.3.3)
+- Heartbeat in de NDJSON-stream: direct een `start`-event bij openen en
+  een `ping` elke `ASSISTANT_HEARTBEAT_SECONDS` (default 10) zolang de
+  sessie stil is — robuust tegen élke tussenliggende proxy-timeout
+  (de 30s-breuk van gisteren kan structureel niet meer). UI negeert
+  onbekende event-types al.
+- `is_error` klopt nu ook bij auth-fouten: een resultaat zonder delta's
+  dat als fout leest (bv. "API Error: 401") wordt een error-event én
+  `is_error: true` in de audit; SDK-excepties in de worker idem
+  (die misten de sleutel überhaupt).
+- Pre-existing testfailure gefixt: `test_provision_in_cluster_targets_
+  internal_service` (uit 242a9d8) consumeerde de gestreamde response
+  nooit, waardoor de gemockte Popen nooit instantieerde — testfout, de
+  productiecode was correct. Suites: 150 (systeem) / 184 (venv) groen.
+- `webgui/deploy/egress-debug-runbook.md`: stap-voor-stap experiment om
+  de Calico/Gardener-DNS-breuk te isoleren (drie hypotheses, beslistabel,
+  rollback) — voorwaarde vóór heractivering van de egress-policy;
+  verwijzing in de policy-kop, incl. notitie dat fase 2 (Prometheus)
+  t.z.t. 9090/TCP nodig heeft.
+
 ### Toegevoegd — 2026-07-14 (make push verifieert de registry — stille push-fouten defused)
 - `scripts/check_image_on_registry.py` + aanroep in `make push` (en nieuw
   target `make release` = image + push + check): drie image-pushes faalden
