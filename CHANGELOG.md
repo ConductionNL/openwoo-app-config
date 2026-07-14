@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-07-14 (platform_status: live Argo-status voor de assistent — 0.3.2)
+- Nieuwe read-tool `platform_status` (change add-assistant-live-status
+  fase 1, GO Mark 2026-07-14): sync/health van alle Argo Applications via
+  de RBAC die de pod al had — nul nieuwe permissies. Drie vaste weergaven
+  (samenvatting/degraded/alles), vrije input geweigerd; eigen in-process
+  MCP-server `platform` naast `handboek` zodat allowlist en herkomst
+  gescheiden blijven. Systeemprompt: live antwoorden expliciet labelen
+  (bron + tijdstip), backend weg = eerlijk zeggen.
+- Audit: `status_calls`-veld per sessie, en het record wordt nu in een
+  `finally` geschreven — vóór deze fix verdween het bij een
+  client-disconnect (veegronde-punt).
+- 6 nieuwe unit tests (149 totaal, 1 pre-existing failure in
+  test_webgui provision-in-cluster, los van dit werk); docs mee:
+  `docs/agents.md` (vier read-tools), deploy-README.
+
 ### Gewijzigd — 2026-07-14 (oauth2-proxy upstream_timeout 30s → 300s — assistent-502 opgelost)
 - Elke assistent-vraag die >30s duurde stierf met een 502: oauth2-proxy's
   default upstream-timeout, exact 30.0s in de access-log. De stream zwijgt

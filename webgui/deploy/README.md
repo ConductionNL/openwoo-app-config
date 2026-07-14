@@ -99,4 +99,8 @@ Deploy-relevant:
 - tuning via env: `ASSISTANT_MODEL`, `ASSISTANT_RATE_LIMIT`,
   `ASSISTANT_MAX_TURNS`, `ASSISTANT_TIMEOUT`,
   `ASSISTANT_MAX_QUESTION_CHARS` (defaults in assistant.py; regel:
-  élke limiet is env-tunable, niets hardcoded).
+  élke limiet is env-tunable, niets hardcoded);
+- live status: tool `platform_status` leest Argo-sync/health via de
+  bestaande SA-RBAC (`rbac-argo.yaml`) — vaste weergaven, antwoorden
+  gelabeld als live, aanroepen in het audit-record (change
+  add-assistant-live-status fase 1).

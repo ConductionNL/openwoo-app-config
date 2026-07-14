@@ -60,11 +60,12 @@ def test_too_long_question_rejected():
 
 # --- strikt-lezende tool-surface (spec: prompt-injected mutation attempt) ----
 
-def test_allowed_tools_are_only_handboek_read_tools():
+def test_allowed_tools_are_only_the_read_tools():
     assert assistant.ALLOWED_TOOLS == [
         "mcp__handboek__search_docs",
         "mcp__handboek__read_page",
         "mcp__handboek__list_components",
+        "mcp__platform__platform_status",
     ]
 
 
@@ -166,6 +167,81 @@ def test_unknown_component_is_a_clear_error(fake_hub):
     impls = assistant._tool_impls([])
     with pytest.raises(ValueError, match="onbekende component"):
         _run(impls["read_page"]({"component": "nope", "path": "index.md"}))
+
+
+# --- platform_status (live status, fase 1 add-assistant-live-status) ---------
+
+def _fake_apps():
+    return [
+        {"name": "nc-a", "tenant": "a", "sync": "Synced", "health": "Healthy"},
+        {"name": "nc-b", "tenant": "b", "sync": "OutOfSync",
+         "health": "Degraded"},
+        {"name": "openwoo-provisioner", "tenant": "", "sync": "Synced",
+         "health": "Progressing"},
+    ]
+
+
+def test_platform_status_summary_counts(fake_hub, monkeypatch):
+    import argolib
+    monkeypatch.setattr(argolib, "list_apps", lambda prefix="": _fake_apps())
+    calls = []
+    impls = assistant._tool_impls([], calls)
+    out = _run(impls["platform_status"]({}))
+    assert out["beschikbaar"] is True and out["totaal"] == 3
+    assert out["per_health"] == {"Healthy": 1, "Degraded": 1,
+                                 "Progressing": 1}
+    assert out["aandacht_aantal"] == 2
+    # samenvatting bevat géén lijsten — dat is de compacte weergave
+    assert "aandacht" not in out and "applicaties" not in out
+    assert out["bron"].startswith("Argo CD") and out["opgehaald"]
+    assert calls == [{"tool": "platform_status", "weergave": "samenvatting",
+                      "resultaat": "apps=3"}]
+
+
+def test_platform_status_degraded_view_lists_attention_only(fake_hub,
+                                                            monkeypatch):
+    import argolib
+    monkeypatch.setattr(argolib, "list_apps", lambda prefix="": _fake_apps())
+    impls = assistant._tool_impls([], [])
+    out = _run(impls["platform_status"]({"weergave": "degraded"}))
+    assert [a["name"] for a in out["aandacht"]] == ["nc-b",
+                                                    "openwoo-provisioner"]
+    assert "applicaties" not in out
+
+
+def test_platform_status_alles_lists_everything(fake_hub, monkeypatch):
+    import argolib
+    monkeypatch.setattr(argolib, "list_apps", lambda prefix="": _fake_apps())
+    impls = assistant._tool_impls([], [])
+    out = _run(impls["platform_status"]({"weergave": "alles"}))
+    assert len(out["applicaties"]) == 3 and len(out["aandacht"]) == 2
+
+
+def test_platform_status_rejects_freeform_view(fake_hub):
+    # spec: fixed read-only status surface — geen vrije input
+    impls = assistant._tool_impls([], [])
+    with pytest.raises(ValueError, match="samenvatting"):
+        _run(impls["platform_status"]({"weergave": "sum(rate(x[5m]))"}))
+
+
+def test_platform_status_backend_unreachable_is_honest(fake_hub, monkeypatch):
+    import argolib
+
+    def boom(prefix=""):
+        raise argolib.ArgoError(0, "cannot reach kube API")
+
+    monkeypatch.setattr(argolib, "list_apps", boom)
+    calls = []
+    impls = assistant._tool_impls([], calls)
+    out = _run(impls["platform_status"]({"weergave": "samenvatting"}))
+    assert out["beschikbaar"] is False and "onbereikbaar" in out["fout"]
+    assert calls[0]["resultaat"] == "onbereikbaar"
+
+
+def test_system_prompt_labels_live_data():
+    p = assistant.SYSTEM_PROMPT
+    assert "platform_status" in p and "live" in p
+    assert "verzin" in p  # backend weg => eerlijk, niet verzinnen
 
 
 # --- audit (spec: auditable sessions) ----------------------------------------

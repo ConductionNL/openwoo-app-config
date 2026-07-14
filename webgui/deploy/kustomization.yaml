@@ -42,4 +42,7 @@ images:
     # 0.3.1: ASSISTANT_MAX_QUESTION_CHARS env-tunable + SDK-isolatie
     #        (setting_sources=[] + neutrale cwd — geen project-.mcp.json
     #        meer in sessies).
-    newTag: "0.3.1"
+    # 0.3.2: platform_status (live Argo-status, add-assistant-live-status
+    #        fase 1) + audit-record in finally (overleeft client-disconnect)
+    #        en status_calls-veld. Image éérst bouwen/pushen, dan mergen.
+    newTag: "0.3.2"

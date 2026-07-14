@@ -39,12 +39,19 @@ MAX_QUESTION_CHARS = int(os.environ.get("ASSISTANT_MAX_QUESTION_CHARS", "2000"))
 AUDIT_LOG_PATH = os.environ.get("ASSISTANT_AUDIT_LOG", "")
 
 # Alleen deze tools bestaan voor de sessie (spec: "no write or execute
-# tools" — een injectie-poging heeft letterlijk niets om aan te roepen).
+# tools"). Sinds add-assistant-live-status fase 1 is er naast de drie
+# handboek-read-tools één status-read-tool (Argo, vaste weergaven) —
+# een injectie-poging heeft nog steeds niets uitvoerbaars of vrije input.
 ALLOWED_TOOLS = [
     "mcp__handboek__search_docs",
     "mcp__handboek__read_page",
     "mcp__handboek__list_components",
+    "mcp__platform__platform_status",
 ]
+
+# Vaste weergaven van platform_status — het model kiest een naam, nooit
+# vrije input (spec: fixed read-only status surface).
+STATUS_VIEWS = ("samenvatting", "degraded", "alles")
 # Riem én bretels: ingebouwde tools ook expliciet uit de context halen.
 DISALLOWED_TOOLS = [
     "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebSearch",
@@ -71,6 +78,14 @@ Regels:
    werkstation + operatiecataloog (docs/agents.md van de component),
    wijzigingen altijd via pull request.
 5. Antwoord beknopt en in het Nederlands, tenzij de vraag Engels is.
+6. Voor vragen naar de ACTUELE toestand van het platform (welke
+   applicaties degraded/out-of-sync zijn) gebruik je platform_status.
+   Label zo'n antwoord expliciet als live gemeten — noem de bron
+   (Argo CD) en het tijdstip uit het tool-antwoord — en presenteer het
+   nooit als handboek-inhoud. Is de status-backend onbereikbaar, zeg
+   dat eerlijk en val terug op het handboek (alerting/runbooks); verzin
+   geen getallen. Voor metrics (nodes, resources) heb je nog geen tool:
+   zeg dat, en verwijs naar Grafana/Prometheus via het handboek.
 """
 
 logger = logging.getLogger("assistant")
@@ -144,11 +159,15 @@ def _provenance(page) -> dict:
             "source": page.source}
 
 
-def _tool_impls(sources: list[dict]):
-    """De drie read-tools als kale coroutines; `sources` verzamelt de
-    daadwerkelijk gelezen pagina's (herkomst voor UI en audit).
+def _tool_impls(sources: list[dict], status_calls: list[dict] | None = None):
+    """De read-tools als kale coroutines; `sources` verzamelt de
+    daadwerkelijk gelezen pagina's (herkomst voor UI en audit) en
+    `status_calls` elke status-tool-aanroep (spec: audited).
     SDK-onafhankelijk zodat dit zonder claude_agent_sdk testbaar is."""
     from docs_mcp import search as search_mod
+
+    if status_calls is None:
+        status_calls = []
 
     def _component(name: str):
         _, comps = _hub()
@@ -185,15 +204,68 @@ def _tool_impls(sources: list[dict]):
             out.append(entry)
         return out
 
+    async def platform_status(args):
+        # Fase 1 van add-assistant-live-status: Argo Applications via de
+        # RBAC die de pod al heeft (rbac-argo.yaml) — nul nieuwe
+        # permissies. Alleen vaste weergaven; bij een onbereikbare
+        # backend een eerlijk "beschikbaar: false" zodat het model niets
+        # hoeft te verzinnen (spec-scenario).
+        import argolib
+
+        weergave = args.get("weergave", "samenvatting")
+        if weergave not in STATUS_VIEWS:
+            raise ValueError(
+                f"onbekende weergave {weergave!r}; "
+                f"beschikbaar: {', '.join(STATUS_VIEWS)}")
+        opgehaald = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        basis = {"bron": "Argo CD Applications (kube-API, read-only)",
+                 "opgehaald": opgehaald}
+        try:
+            apps = argolib.list_apps(prefix="")
+        except (argolib.ArgoError, OSError) as exc:
+            status_calls.append({"tool": "platform_status",
+                                 "weergave": weergave,
+                                 "resultaat": "onbereikbaar"})
+            return {**basis, "beschikbaar": False,
+                    "fout": f"status-backend onbereikbaar: {exc}"}
+
+        def telling(veld):
+            uit: dict[str, int] = {}
+            for a in apps:
+                key = a.get(veld) or "Unknown"
+                uit[key] = uit.get(key, 0) + 1
+            return uit
+
+        aandacht = [{"name": a["name"], "sync": a["sync"],
+                     "health": a["health"]} for a in apps
+                    if a.get("health") != "Healthy"
+                    or a.get("sync") != "Synced"]
+        status_calls.append({"tool": "platform_status",
+                             "weergave": weergave,
+                             "resultaat": f"apps={len(apps)}"})
+        uit = {**basis, "beschikbaar": True, "totaal": len(apps),
+               "per_health": telling("health"),
+               "per_sync": telling("sync"),
+               "aandacht_aantal": len(aandacht)}
+        if weergave in ("degraded", "alles"):
+            uit["aandacht"] = aandacht
+        if weergave == "alles":
+            uit["applicaties"] = [{"name": a["name"], "sync": a["sync"],
+                                   "health": a["health"]} for a in apps]
+        return uit
+
     return {"search_docs": search_docs, "read_page": read_page,
-            "list_components": list_components}
+            "list_components": list_components,
+            "platform_status": platform_status}
 
 
-def _sdk_server(sources: list[dict]):
-    """Wikkel de tool-implementaties in een in-process MCP-server."""
+def _sdk_servers(sources: list[dict], status_calls: list[dict]):
+    """Wikkel de tool-implementaties in twee in-process MCP-servers:
+    `handboek` (documentatie) en `platform` (live status) — bewust
+    gescheiden namen zodat herkomst en allowlist elkaar niet vervuilen."""
     from claude_agent_sdk import create_sdk_mcp_server, tool
 
-    impls = _tool_impls(sources)
+    impls = _tool_impls(sources, status_calls)
 
     def _text(result) -> dict:
         return {"content": [{"type": "text",
@@ -220,9 +292,20 @@ def _sdk_server(sources: list[dict]):
     async def list_components(args):
         return _text(await impls["list_components"](args))
 
-    return create_sdk_mcp_server(name="handboek", version="1.0.0",
-                                 tools=[search_docs, read_page,
-                                        list_components])
+    @tool(name="platform_status",
+          description="Actuele sync/health-status van de platform-"
+                      "applicaties (Argo CD, read-only). Weergaven: "
+                      "samenvatting (default), degraded, alles.",
+          input_schema={"weergave": str})
+    async def platform_status(args):
+        return _text(await impls["platform_status"](args))
+
+    handboek = create_sdk_mcp_server(name="handboek", version="1.0.0",
+                                     tools=[search_docs, read_page,
+                                            list_components])
+    platform = create_sdk_mcp_server(name="platform", version="1.0.0",
+                                     tools=[platform_status])
+    return {"handboek": handboek, "platform": platform}
 
 
 def _audit(record: dict) -> None:
@@ -233,14 +316,15 @@ def _audit(record: dict) -> None:
             fh.write(line + "\n")
 
 
-async def _run_session(question: str, sources: list[dict], events: queue.Queue):
+async def _run_session(question: str, sources: list[dict],
+                       status_calls: list[dict], events: queue.Queue):
     """Draai één agent-sessie; push delta/done-events naar de queue."""
     from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions,
                                   ResultMessage, TextBlock, query)
 
     options = ClaudeAgentOptions(
         system_prompt=SYSTEM_PROMPT,
-        mcp_servers={"handboek": _sdk_server(sources)},
+        mcp_servers=_sdk_servers(sources, status_calls),
         allowed_tools=list(ALLOWED_TOOLS),
         disallowed_tools=list(DISALLOWED_TOOLS),
         max_turns=MAX_TURNS,
@@ -293,12 +377,13 @@ def ask_stream(question: str, user: str):
 
 def _event_stream(question: str, user: str):
     sources: list[dict] = []
+    status_calls: list[dict] = []
     events: queue.Queue = queue.Queue()
     started = time.time()
 
     def worker():
         try:
-            asyncio.run(_run_session(question, sources, events))
+            asyncio.run(_run_session(question, sources, status_calls, events))
         except Exception as exc:  # noqa: BLE001 — één nette fout naar de client
             logger.exception("assistent-sessie faalde")
             events.put({"type": "error", "message": str(exc)})
@@ -309,30 +394,36 @@ def _event_stream(question: str, user: str):
 
     answer_parts: list[str] = []
     outcome: dict = {"is_error": True, "message": "sessie zonder resultaat"}
-    while True:
-        event = events.get()
-        if event is None:
-            break
-        if event["type"] == "delta":
-            answer_parts.append(event["text"])
-            yield event
-        elif event["type"] == "result":
-            outcome = event
-        elif event["type"] == "error":
-            outcome = event
-            yield event
-
-    answer = "".join(answer_parts) or outcome.get("result", "")
-    _audit({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "user": user,
-        "question": question,
-        "answer": answer,
-        "sources": sources,
-        "is_error": bool(outcome.get("is_error")),
-        "cost_usd": outcome.get("cost_usd"),
-        "usage": outcome.get("usage"),
-        "duration_s": round(time.time() - started, 1),
-    })
+    # Audit in een finally: ook als de client de stream verlaat
+    # (GeneratorExit) hoort de sessie — inclusief status-tool-aanroepen —
+    # in het audit-record. Vóór 2026-07-14 stond dit ná de loop en
+    # verdween het record bij een disconnect.
+    try:
+        while True:
+            event = events.get()
+            if event is None:
+                break
+            if event["type"] == "delta":
+                answer_parts.append(event["text"])
+                yield event
+            elif event["type"] == "result":
+                outcome = event
+            elif event["type"] == "error":
+                outcome = event
+                yield event
+    finally:
+        answer = "".join(answer_parts) or outcome.get("result", "")
+        _audit({
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "user": user,
+            "question": question,
+            "answer": answer,
+            "sources": sources,
+            "status_calls": status_calls,
+            "is_error": bool(outcome.get("is_error")),
+            "cost_usd": outcome.get("cost_usd"),
+            "usage": outcome.get("usage"),
+            "duration_s": round(time.time() - started, 1),
+        })
     yield {"type": "sources", "sources": sources}
     yield {"type": "done", "is_error": bool(outcome.get("is_error"))}

@@ -29,11 +29,19 @@ elke stap GET-checkt eerst en slaat over wat al klopt.
 
 De webgui bevat een assistent-endpoint (`/assistant`) dat server-side
 agent-sessies draait: vragen beantwoorden, gegrond in het handboek, met
-verplichte herkomst. De sessie krijgt uitsluitend drie read-tools
-(search_docs, read_page, list_components — de hub-contentlaag als
-library) en geen enkele ingebouwde tool; er valt dus niets uit te voeren
-of te schrijven. Grenzen: rate limit per SSO-identiteit, turn-cap,
-timeout; elke sessie wordt geauditeerd (wie/vraag/antwoord/bronnen).
+verplichte herkomst. De sessie krijgt uitsluitend vier read-tools en
+geen enkele ingebouwde tool; er valt dus niets uit te voeren of te
+schrijven:
+
+- `search_docs`, `read_page`, `list_components` — de hub-contentlaag
+  als library (handboek);
+- `platform_status` — actuele Argo-sync/health via de RBAC die de pod
+  al had (change add-assistant-live-status fase 1, GO 2026-07-14):
+  alleen vaste weergaven, geen vrije input; antwoorden worden expliciet
+  als live gelabeld (bron + tijdstip), gescheiden van handboek-herkomst.
+
+Grenzen: rate limit per SSO-identiteit, turn-cap, timeout; elke sessie
+wordt geauditeerd (wie/vraag/antwoord/bronnen/status-aanroepen).
 Zie `webgui/assistant.py` en de spec `platform-assistant` in techbook.
 
 ## Grondwaarheid en gedrag
