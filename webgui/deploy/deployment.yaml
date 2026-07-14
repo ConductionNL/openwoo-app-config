@@ -81,6 +81,10 @@ spec:
               value: "/opt/hub"
             - name: DOCS_MCP_CACHE
               value: "/var/cache/docs-mcp"
+            # Vraaglengte-cap (default 2000 bleek te krap in gebruik,
+            # 2026-07-14). Begrensd houden: langere vraag = meer tokens/kosten.
+            - name: ASSISTANT_MAX_QUESTION_CHARS
+              value: "8000"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

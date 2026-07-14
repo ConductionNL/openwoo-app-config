@@ -4,6 +4,10 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-14 (vraaglengte-cap in productie naar 8000)
+- `deployment.yaml`: `ASSISTANT_MAX_QUESTION_CHARS=8000` — de default van
+  2000 bleek in gebruik te krap. Env-only wijziging, geen image-rebuild.
+
 ### Gewijzigd — 2026-07-14 (vraaglengte-cap env-tunable; egress-rollback gedocumenteerd)
 - `ASSISTANT_MAX_QUESTION_CHARS` (default 2000) vervangt de hardcoded cap in
   `webgui/assistant.py` — regel van Mark: élke limiet env-tunable, niets
