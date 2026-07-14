@@ -37,6 +37,7 @@ images:
     # 0.2.7: in-cluster provisioning mode (cluster-local Service + --host-header) — DNS-flap-proof.
     # 0.3.0: platform-assistent (/assistant): claude-agent-sdk + hub-contentlaag
     #        gepind in het image (HUB_SHA in Dockerfile), git in het image,
-    #        assistent-env + cache/home-volumes. LET OP: image 0.3.0 éérst
-    #        bouwen en pushen (make image/push), dan pas dit mergen/syncen.
+    #        assistent-env + cache/home-volumes. LET OP: image éérst
+    #        bouwen en pushen (make image/push), dan pas de tag hier bumpen.
+    # 0.3.1 (nog te bouwen): ASSISTANT_MAX_QUESTION_CHARS env-tunable.
     newTag: "0.3.0"

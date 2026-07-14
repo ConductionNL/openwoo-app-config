@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-14 (vraaglengte-cap env-tunable; egress-rollback gedocumenteerd)
+- `ASSISTANT_MAX_QUESTION_CHARS` (default 2000) vervangt de hardcoded cap in
+  `webgui/assistant.py` — regel van Mark: élke limiet env-tunable, niets
+  hardcoded. Zit pas in het image vanaf de volgende build (0.3.1).
+- Assistent live op platform.commonground.nu (0.3.0, Argo Synced/Healthy);
+  livecheck spec-scenario's door Mark uitgevoerd. Modelkeuze
+  (`ASSISTANT_MODEL`) volgt nadat het team de benchmark-testset zelf over
+  de modellen heeft gedraaid (agent-run 2026-07-13: default 9/9, haiku 9/9
+  en 2× sneller, sonnet 6/9 door intermitterende MCP-permissieweigering —
+  rapport in /tmp/assistant-bench/).
+- Egress-policy teruggetrokken na DNS-breuk op prod (bevindingen en
+  vervolg-experiment in de kop van `networkpolicy-egress.yaml`).
+
 ### Gewijzigd — 2026-07-13 (incident: secret.example.yaml gedefused — geen applybare manifests meer)
 - Een apply van (een kopie van) het oude example-bestand — drie complete
   Secret-manifests met placeholders — overschreef twee werkende secrets

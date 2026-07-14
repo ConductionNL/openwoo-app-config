@@ -97,4 +97,6 @@ Deploy-relevant:
 - audit-log gaat als JSONL naar stdout (k8s logs; retentiebesluit is
   taak 1.2 van de change) — zet `ASSISTANT_AUDIT_LOG` voor een extra file;
 - tuning via env: `ASSISTANT_MODEL`, `ASSISTANT_RATE_LIMIT`,
-  `ASSISTANT_MAX_TURNS`, `ASSISTANT_TIMEOUT` (defaults in assistant.py).
+  `ASSISTANT_MAX_TURNS`, `ASSISTANT_TIMEOUT`,
+  `ASSISTANT_MAX_QUESTION_CHARS` (defaults in assistant.py; regel:
+  élke limiet is env-tunable, niets hardcoded).

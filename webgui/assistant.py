@@ -34,7 +34,7 @@ RATE_LIMIT_MAX = int(os.environ.get("ASSISTANT_RATE_LIMIT", "10"))
 RATE_LIMIT_WINDOW = int(os.environ.get("ASSISTANT_RATE_WINDOW", "3600"))
 MAX_TURNS = int(os.environ.get("ASSISTANT_MAX_TURNS", "12"))
 TIMEOUT_SECONDS = int(os.environ.get("ASSISTANT_TIMEOUT", "180"))
-MAX_QUESTION_CHARS = 2000
+MAX_QUESTION_CHARS = int(os.environ.get("ASSISTANT_MAX_QUESTION_CHARS", "2000"))
 AUDIT_LOG_PATH = os.environ.get("ASSISTANT_AUDIT_LOG", "")
 
 # Alleen deze tools bestaan voor de sessie (spec: "no write or execute
