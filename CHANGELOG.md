@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-14 (oauth2-proxy upstream_timeout 30s → 300s — assistent-502 opgelost)
+- Elke assistent-vraag die >30s duurde stierf met een 502: oauth2-proxy's
+  default upstream-timeout, exact 30.0s in de access-log. De stream zwijgt
+  tijdens de tool-fase; /provision had nergens last van (stuurt direct
+  bytes). ConfigMap-wijziging, kustomize-hash rolt de pod.
+- Genoteerd voor een 0.3.2-veegronde (proefdraaimaand): heartbeat-event bij
+  stream-start + periodiek (robuust tegen élke tussenliggende timeout),
+  audit-record in `finally` (mist nu bij client-disconnect), en auth-fouten
+  als `is_error: true` in de audit (401 logde als gewoon antwoord).
+
 ### Gewijzigd — 2026-07-14 (vraaglengte-cap in productie naar 8000)
 - `deployment.yaml`: `ASSISTANT_MAX_QUESTION_CHARS=8000` — de default van
   2000 bleek in gebruik te krap. Env-only wijziging, geen image-rebuild.
