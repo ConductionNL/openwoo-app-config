@@ -7,7 +7,7 @@
 # blijven dan staan.
 #
 # WAAROM NIET STRAKKER — risico-analyse (2026-07-13):
-# - Hostnaam-pinnen (api.anthropic.com, codeberg.org) kan niet in vanilla
+# - Hostnaam-pinnen (api.anthropic.com, api.github.com) kan niet in vanilla
 #   NetworkPolicy/Calico OSS: geen FQDN-selectors. De haalbare versmalling
 #   is: extern alléén 443/TCP (geen plaintext, geen andere poorten).
 #   Écht per-hostnaam allowlisten vergt een egress-proxy (het squid-patroon
@@ -21,8 +21,8 @@
 #   cluster-intern verkeer, geen externe IP's).
 #
 # APPLY IS MENSENWERK, gefaseerd testen na apply:
-#   1. /assistant: vraag stellen → antwoord mét bronnen (Anthropic + codeberg)
-#   2. dashboard: tenants + PR-status zichtbaar (kube-API + Forgejo)
+#   1. /assistant: vraag stellen → antwoord mét bronnen (Anthropic + docs-bron)
+#   2. dashboard: tenants + PR-status zichtbaar (kube-API + GitHub)
 #   3. login-flow werkt (Keycloak via oauth2-proxy-sidecar, zelfde pod)
 #   4. provisioning-smoke tegen een testtenant (in-cluster Services)
 #   Faalt 1-4: policy weghalen (zie boven) en bevindingen hier aanvullen.
@@ -64,7 +64,8 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Extern: alléén HTTPS. Dekt api.anthropic.com, codeberg.org, Keycloak
+    # Extern: alléén HTTPS. Dekt api.anthropic.com, api.github.com (tenant-
+    # PR-flow sinds de migratie 2026-07-17; voorheen codeberg.org), Keycloak
     # (iam.commonground.nu) en publieke tenant-URLs.
     - to:
         - ipBlock:

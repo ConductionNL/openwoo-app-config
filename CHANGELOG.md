@@ -4,6 +4,31 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-17 (tenant-PR-flow geport naar de GitHub-API)
+- `webgui/gitlib.py` is geport van de Forgejo/Codeberg-API naar de
+  GitHub-API (repo-migratie Codeberg→GitHub, besluit Mark 17-07). Zelfde
+  stdlib-only opzet en identieke functie-signaturen; server.py ongewijzigd.
+  API-verschillen geabsorbeerd in gitlib: branch aanmaken = 2 calls
+  (base-ref-sha → POST git/refs), contents = PUT i.p.v. POST, `merged`
+  afgeleid uit `merged_at` in lijstweergave, en GitHubs 422 "Reference
+  already exists" genormaliseerd naar 409 zodat de bestaande
+  tenant-in-flight-afhandeling blijft werken.
+- Env-namen: `FORGEJO_API_URL`/`FORGEJO_TOKEN` → `GITHUB_API_URL` (default
+  https://api.github.com) / `GITHUB_TOKEN`; `TENANTS_REPO` nu
+  `ConductionNL/Nextcloud-base`. Deployment, secret-documentatie
+  (fine-grained PAT: Contents+Pull requests write op de tenants-repo),
+  egress-commentaar en ArgoCD-example mee. LET OP bij uitrol: het
+  secret `openwoo-provisioner-git` moet een GitHub-token krijgen —
+  het oude Codeberg-token werkt niet.
+- Dockerfile: `HUB_REPO` wijst naar github.com/ConductionNL/hub
+  (sha-pin is host-onafhankelijk); eerstvolgende image-build vereist dat
+  de hub-migratie (docs/sites-batch) gedaan is.
+- Tests bijgewerkt op de nieuwe call-volgorde en foutmapping
+  (+ regressietest dat een niet-"already exists"-422 níét wordt gemaskeerd).
+- Bewust NIET mee: `.woodpecker.yml` (CI-besluit is een eigen spoor),
+  pre-commit-verwijzing naar Codeberg-techbook (kan pas na de
+  techbook-migratie) en de schema-`$id` (identifier, geen endpoint).
+
 ### Toegevoegd — 2026-07-14 (metrics_query: live metrics voor de assistent — 0.4.0)
 - Vijfde read-tool `metrics_query` (add-assistant-live-status fase 2,
   GO Mark 2026-07-14): 8 named queries (deployments-unavailable,

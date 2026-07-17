@@ -34,18 +34,20 @@ spec:
           env:
             - name: REQUIRE_AUTH
               value: "true"
-            # Tenant creation via PR (POST /tenant -> gitlib). Token is a
-            # write:repository PAT (MVP: maintainer; hardening: a bot) — out-of-band
-            # Secret `openwoo-provisioner-git` (see deploy/secret.example.yaml).
-            - name: FORGEJO_TOKEN
+            # Tenant creation via PR (POST /tenant -> gitlib). Token is a GitHub
+            # PAT met contents+pull-requests write op de tenants-repo (MVP:
+            # maintainer; hardening: bot/GitHub App) — out-of-band Secret
+            # `openwoo-provisioner-git` (see deploy/secret.example.yaml).
+            # Geport van Forgejo/Codeberg naar GitHub (migratie 2026-07-17).
+            - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: openwoo-provisioner-git
                   key: token
-            - name: FORGEJO_API_URL
-              value: "https://codeberg.org/api/v1"
+            - name: GITHUB_API_URL
+              value: "https://api.github.com"
             - name: TENANTS_REPO
-              value: "conduction/Nextcloud-base"
+              value: "ConductionNL/Nextcloud-base"
             - name: TENANTS_BASE
               value: "main"
             # Platform-assistent (change add-platform-assistant, v1 strikt

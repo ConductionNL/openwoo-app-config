@@ -18,7 +18,7 @@
 #   /tmp/assistant-bench); de repo zelf blijft onaangeraakt.
 # Idempotent: ja (bestanden krijgen een timestamp-naam)
 # Requires: webgui-venv (claude-agent-sdk, PyYAML), hub-checkout naast
-#   deze repo (of HUB_DIR), netwerk naar codeberg.org + model-API.
+#   deze repo (of HUB_DIR), netwerk naar github.com + model-API.
 #
 # Usage:
 #   webgui/.venv/bin/python webgui/benchmark.py                # default,sonnet,haiku
