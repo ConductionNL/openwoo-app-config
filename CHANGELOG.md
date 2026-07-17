@@ -21,8 +21,11 @@ All notable changes to this repository are documented here.
   secret `openwoo-provisioner-git` moet een GitHub-token krijgen —
   het oude Codeberg-token werkt niet.
 - Dockerfile: `HUB_REPO` wijst naar github.com/ConductionNL/hub
-  (sha-pin is host-onafhankelijk); eerstvolgende image-build vereist dat
-  de hub-migratie (docs/sites-batch) gedaan is.
+  (sha-pin is host-onafhankelijk); de hub-migratie is 17-07 uitgevoerd
+  (3× refs identiek geverifieerd). `HUB_SHA` bewust gebumpt
+  27cc04e8 → 9f6aed88: hub-main stond 1 commit voorbij de pin
+  (docs-commit 14-07, alleen CHANGELOG + agents.md — operatiecataloog),
+  anders faalt de eerstvolgende image-build op de pin-gate.
 - Tests bijgewerkt op de nieuwe call-volgorde en foutmapping
   (+ regressietest dat een niet-"already exists"-422 níét wordt gemaskeerd).
 - Bewust NIET mee: `.woodpecker.yml` (CI-besluit is een eigen spoor),

@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir -r webgui/requirements.txt
 # (docs/sites-batch) vóór de eerstvolgende image-build. De sha-pin is
 # host-onafhankelijk (zelfde commit op beide hosts).
 ARG HUB_REPO=https://github.com/ConductionNL/hub.git
-ARG HUB_SHA=27cc04e818ffe33f864540e5dcbd5155b3e212d4
+ARG HUB_SHA=9f6aed888e636013516d3df13937364afc3e88b2
 RUN git clone --depth 1 "$HUB_REPO" /opt/hub \
  && [ "$(git -C /opt/hub rev-parse HEAD)" = "$HUB_SHA" ] \
  && rm -rf /opt/hub/.git
