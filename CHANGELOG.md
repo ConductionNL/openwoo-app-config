@@ -4,6 +4,15 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-07-20 (release-administratie 0.5.0 — GitHub-port uitrolbaar)
+- `webgui/deploy/kustomization.yaml`: `newTag` 0.4.0 → 0.5.0. Het
+  0.4.0-image bevatte nog de Forgejo-gitlib; gecombineerd met de al
+  gemergde GITHUB_*-manifests gaf dat in de pod "server misconfigured:
+  missing FORGEJO_API_URL, FORGEJO_TOKEN". Image 0.5.0 (gebouwd van de
+  GitHub-port + HUB_SHA 9f6aed88) is gepusht en op de registry
+  geverifieerd (check_image_on_registry, 2026-07-20). Na merge synct
+  Argo (targetRevision main) en rolt de pod met de juiste code.
+
 ### Gewijzigd — 2026-07-17 (tenant-PR-flow geport naar de GitHub-API)
 - `webgui/gitlib.py` is geport van de Forgejo/Codeberg-API naar de
   GitHub-API (repo-migratie Codeberg→GitHub, besluit Mark 17-07). Zelfde

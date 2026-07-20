@@ -50,4 +50,8 @@ images:
     # 0.4.0: metrics_query — live metrics via vaste Prometheus-catalogus
     #        (add-assistant-live-status fase 2). Image éérst bouwen/pushen
     #        (make release), dan mergen.
-    newTag: "0.4.0"
+    # 0.5.0: gitlib geport van Forgejo/Codeberg naar de GitHub-API
+    #        (GITHUB_TOKEN/GITHUB_API_URL i.p.v. FORGEJO_*) + HUB_SHA-bump
+    #        naar 9f6aed88 (hub-main op GitHub). Secret openwoo-provisioner-git
+    #        moet een GitHub-PAT bevatten (zie secret.example.yaml).
+    newTag: "0.5.0"
