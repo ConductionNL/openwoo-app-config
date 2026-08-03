@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### 2026-08-03 — pre-commit-hookbron naar GitHub
+- `.pre-commit-config.yaml`: de techbook-hook komt van
+  `github.com/ConductionNL/techbook` in plaats van `codeberg.org`. De pin
+  `edf269ee…` blijft ongewijzigd: die commit bestaat op beide forges en is
+  daar voorouder van `main`. Host-only dus — de gates (`docs-contract`,
+  `docs-claims`) gedragen zich identiek.
+- Waarom: dit was de laatste harde Codeberg-afhankelijkheid buiten talos.
+  Zolang die bestond moest `techbook` naar twee forges gepusht blijven
+  worden, en dat is niet volgehouden — 7 van de 9 repos zijn daar uit
+  elkaar gelopen. De bron van het patroon zat in
+  `techbook/scripts/rollout_precommit_hook.sh`, dat deze URL in élke repo
+  schreef; die is in dezelfde ronde omgezet.
+
 ### Gewijzigd — 2026-07-20 (release-administratie 0.5.0 — GitHub-port uitrolbaar)
 - `webgui/deploy/kustomization.yaml`: `newTag` 0.4.0 → 0.5.0. Het
   0.4.0-image bevatte nog de Forgejo-gitlib; gecombineerd met de al
