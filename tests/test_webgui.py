@@ -196,6 +196,40 @@ def test_tenant_happy_derives_everything(client, monkeypatch):
     assert "managed: true" in c
 
 
+def test_tenant_branding_extras_reach_the_pr(client, monkeypatch):
+    """The optional branding fields end up in the proposed tenant file, so a
+    themed tenant needs no hand-edit after the PR is merged."""
+    captured = {}
+
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: captured.update(kw) or {"number": 8, "html_url": "u/8"})
+    resp = client.post("/tenant", data={
+        "org": "almere", "environment": "accept",
+        "frontend_theme": "almere-theme",
+        "frontend_jumbotron": "https://ex.org/j.jpg",
+        "frontend_favicon": "https://ex.org/f.ico",
+    })
+    assert resp.status_code == 201
+    c = captured["content"]
+    assert 'themeClassname: "almere-theme"' in c
+    assert 'jumbotronImageUrl: "https://ex.org/j.jpg"' in c
+    assert 'faviconUrl: "https://ex.org/f.ico"' in c
+
+
+def test_tenant_without_theme_leaves_the_baseline_alone(client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: captured.update(kw) or {"number": 9, "html_url": "u/9"})
+    client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    assert "themeClassname" not in captured["content"]
+
+
+def test_tenant_form_offers_the_branding_fields(client):
+    body = client.get("/tenant").get_data(as_text=True)
+    for field in ("frontend_theme", "frontend_jumbotron", "frontend_favicon"):
+        assert f'name="{field}"' in body
+
+
 def test_tenant_requester_stamped_from_proxy(authed_client, monkeypatch):
     captured = {}
     monkeypatch.setattr(server.gitlib, "propose_file",

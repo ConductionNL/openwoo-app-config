@@ -72,6 +72,49 @@ def test_render_with_frontend_block():
     assert '      organisationName: "Gemeente Almere"' in out
 
 
+def test_render_branding_extras():
+    """themeClassname/jumbotron/favicon land under branding, in the shape the
+    react-tenants ApplicationSet reads (cf. tenant-tubbergen-accept.yaml)."""
+    out = tenants.render(_base(frontend_org="Gemeente Almere",
+                               frontend_theme="almere-theme",
+                               frontend_jumbotron="https://ex.org/jumbotron.jpg",
+                               frontend_favicon="https://ex.org/favicon.ico"))
+    assert '      organisationName: "Gemeente Almere"' in out
+    assert '      themeClassname: "almere-theme"' in out
+    assert '      jumbotronImageUrl: "https://ex.org/jumbotron.jpg"' in out
+    assert '      faviconUrl: "https://ex.org/favicon.ico"' in out
+
+
+def test_render_blank_theme_is_omitted_so_the_baseline_applies():
+    """A blank theme must NOT be emitted: the ApplicationSet then falls back to
+    `conduction-theme`, which renders. Emitting an empty or derived `<org>-theme`
+    is the 2026-06-30 bug where onboarded tenants rendered without a theme."""
+    out = tenants.render(_base(frontend_org="Gemeente Almere", frontend_theme="  "))
+    assert "themeClassname" not in out
+
+
+def test_render_branding_extra_without_organisation_name():
+    """A branding extra on its own still opens the frontend/branding blocks."""
+    out = tenants.render(_base(frontend_theme="almere-theme"))
+    assert "  frontend:" in out and "    branding:" in out
+    assert '      themeClassname: "almere-theme"' in out
+    assert "organisationName" not in out
+
+
+def test_from_org_leaves_branding_extras_blank_by_default():
+    f = tenants.from_org("almere", "accept")
+    assert f["frontend_theme"] == ""
+    assert f["frontend_jumbotron"] == "" and f["frontend_favicon"] == ""
+
+
+def test_from_org_passes_branding_extras_through():
+    f = tenants.from_org("almere", "accept", theme=" almere-theme ",
+                         jumbotron="https://ex.org/j.jpg", favicon="https://ex.org/f.ico")
+    assert f["frontend_theme"] == "almere-theme"          # trimmed
+    assert f["frontend_jumbotron"] == "https://ex.org/j.jpg"
+    assert f["frontend_favicon"] == "https://ex.org/f.ico"
+
+
 def test_render_quotes_escape():
     out = tenants.render(_base(frontend_org='He said "hi"'))
     assert r'\"hi\"' in out
