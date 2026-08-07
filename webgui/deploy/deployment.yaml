@@ -50,6 +50,18 @@ spec:
               value: "ConductionNL/Nextcloud-base"
             - name: TENANTS_BASE
               value: "main"
+            # Eenmalige wachtwoordlink (change tenant-onboarding-completion,
+            # sectie 4). Stond bewust uit tot de flow tegen een echte tenant
+            # gedraaid was: /reveal/<token> is de enige route buiten de
+            # operator-gate, en de mint-route leest een tenant-Secret.
+            # Aangezet 2026-08-07 voor de dry-run van taak 6.3.
+            # Uitzetten = deze twee regels weghalen; beide routes geven dan 404.
+            - name: REVEAL_ENABLED
+              value: "true"
+            # TTL blijft op de standaard van 24h (burnstore.TTL_SECONDS). De
+            # verlooptest van 6.3 draait op unit tests; hem hier op 60s zetten
+            # om dat live na te spelen zou een productiewaarde verbouwen voor
+            # een test die al gedekt is.
             # Platform-assistent (change add-platform-assistant, v1 strikt
             # lezend). Model-auth via het assistent-secret; ontbreekt dat, dan
             # draait de rest van de webgui gewoon en geeft /assistant een
