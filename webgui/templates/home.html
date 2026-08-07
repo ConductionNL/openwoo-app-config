@@ -126,8 +126,8 @@
             // links maakten was precies het probleem.
             const reveal = !d.reveal_enabled ? ''
               : (d.minted || []).includes(t.tenant)
-                ? `<span class="muted" title="een wachtwoordlink wordt één keer per omgeving gemaakt">wachtwoord gedeeld</span> &middot; `
-                : `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoord delen</a> &middot; `;
+                ? `<span class="muted" title="een wachtwoordlink wordt één keer per omgeving gemaakt">wachtwoord ingezien</span> &middot; `
+                : `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoord inzien</a> &middot; `;
             return `<tr><td>${esc(t.tenant)}</td><td>${badge(c,l)}</td>`+
                    `<td>${reveal}`+
                    `<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')

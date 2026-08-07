@@ -697,7 +697,7 @@ def test_dashboard_offers_exactly_one_reveal_action(client, monkeypatch):
     assert "data-reveal=" in body
     assert "data-reveal-copy" not in body     # de tweede knop is weg
     assert "confirm(" in body                 # misklik op productie afvangen
-    assert "wachtwoord gedeeld" in body       # reeds-gedeelde omgevingen
+    assert "wachtwoord ingezien" in body       # reeds-gedeelde omgevingen
 
 
 def test_reveal_token_is_redacted_in_access_logs():
