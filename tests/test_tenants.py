@@ -5,6 +5,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "webgui"))
 import tenants  # noqa: E402
@@ -168,6 +170,52 @@ def test_from_org_defaults_the_issuer_to_byo():
 def test_unknown_tls_issuer_rejected():
     assert tenants.validate(_base(frontend_tls_issuer="letsencrypt-staging"))
     assert not tenants.validate(_base(frontend_tls_issuer="none"))
+
+
+def test_render_roundtrips_through_from_declaration():
+    """What render() writes, from_declaration() must read back — otherwise the
+    edit-flow silently changes values the operator never touched."""
+    yaml = pytest.importorskip("yaml")
+    fields = _base(frontend_host="open.almere.nl", frontend_org="Gemeente Almere",
+                   frontend_theme="almere-theme",
+                   frontend_jumbotron="https://ex.org/j.jpg",
+                   frontend_favicon="https://ex.org/f.ico",
+                   frontend_tls_issuer="none")
+    back = tenants.from_declaration(yaml.safe_load(tenants.render(fields)))
+    for key in ("name", "environment", "dbType", "frontend_host", "frontend_org",
+                "frontend_theme", "frontend_jumbotron", "frontend_favicon",
+                "frontend_tls_issuer"):
+        assert back[key] == fields[key], key
+    assert back["apps"] == fields["apps"]
+
+
+def test_rendered_file_has_no_unknown_keys():
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(tenants.render(_base(frontend_host="open.almere.nl",
+                                              frontend_org="Gemeente Almere")))
+    assert tenants.unknown_keys(doc) == []
+
+
+def test_unknown_keys_flags_hand_written_fields():
+    """The live fleet carries keys the form does not model; those files must not
+    be re-rendered by the portal."""
+    doc = {"tenant": {"name": "almere-accept", "environment": "accept",
+                      "hostnameOverride": True,
+                      "frontend": {"tag": "dev", "host": "open.almere.nl"}},
+           "resources": {"limits": {}}}
+    assert tenants.unknown_keys(doc) == [
+        "resources", "tenant.frontend.tag", "tenant.hostnameOverride"]
+
+
+def test_unknown_keys_on_junk_input():
+    assert tenants.unknown_keys(None) == ["<geen geldig tenantbestand>"]
+    assert tenants.unknown_keys("nope") == ["<geen geldig tenantbestand>"]
+
+
+def test_from_declaration_defaults_a_missing_issuer():
+    doc = {"tenant": {"name": "a-accept", "environment": "accept",
+                      "frontend": {"host": "open.a.nl"}}}
+    assert tenants.from_declaration(doc)["frontend_tls_issuer"] == tenants.DEFAULT_TLS_ISSUER
 
 
 def test_render_quotes_escape():

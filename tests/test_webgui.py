@@ -154,6 +154,25 @@ def test_healthz_open_even_with_auth(authed_client):
 
 # --- Phase 3: tenant creation via PR (/tenant) ---
 
+@pytest.fixture(autouse=True)
+def _undeclared(monkeypatch):
+    """Default for every route test: the tenant does not exist in git yet.
+
+    The create route reads the tenants repo to decide create-vs-update, so
+    without this every test would hit the real GitHub client. Tests that care
+    about an existing tenant override gitlib.get_file themselves.
+    """
+    def not_found(path, ref=None):
+        raise server.gitlib.GitlibError(404, f"file not found: {path}")
+
+    monkeypatch.setattr(server.gitlib, "get_file", not_found)
+
+
+def _declared(monkeypatch, content):
+    """Make gitlib.get_file return `content` for any path."""
+    monkeypatch.setattr(server.gitlib, "get_file", lambda path, ref=None: (content, "sha123"))
+
+
 def test_tenant_form_renders(client):
     resp = client.get("/tenant")
     assert resp.status_code == 200
@@ -457,6 +476,109 @@ def test_reveal_page_warns_it_is_single_use(client, reveal_on):
     text = page.get_data(as_text=True)
     assert "eenmalig" in text.lower()
     assert "noindex" in text            # never indexed by a crawler
+
+
+# --- bestaande tenant: ophalen en bijwerken ---
+
+
+_PORTAL_FILE = """---
+tenant:
+  name: almere-accept
+  environment: accept
+  wave: "1"
+  dbType: postgres
+  secrets:
+    managed: true
+  apps:
+    enabled:
+      - opencatalogi
+  frontend:
+    branding:
+      organisationName: "Gemeente Almere"
+      themeClassname: "almere-theme"
+"""
+
+_HAND_EDITED_FILE = _PORTAL_FILE + "    tag: dev\n"
+
+
+def test_declaration_reports_absent_tenant(client):
+    body = client.get("/tenant/almere-accept/declaration").get_json()
+    assert body["exists"] is False and body["editable"] is False
+
+
+def test_declaration_returns_the_declared_values(client, monkeypatch):
+    _declared(monkeypatch, _PORTAL_FILE)
+    body = client.get("/tenant/almere-accept/declaration").get_json()
+    assert body["exists"] is True and body["editable"] is True
+    assert body["fields"]["frontend_theme"] == "almere-theme"
+    assert body["fields"]["frontend_org"] == "Gemeente Almere"
+
+
+def test_declaration_marks_a_hand_edited_file_uneditable(client, monkeypatch):
+    _declared(monkeypatch, _HAND_EDITED_FILE)
+    body = client.get("/tenant/almere-accept/declaration").get_json()
+    assert body["exists"] is True and body["editable"] is False
+    assert body["unknown"] == ["tenant.frontend.tag"]
+
+
+def test_declaration_rejects_a_bad_name(client):
+    assert client.get("/tenant/Not_Valid/declaration").status_code == 400
+
+
+def test_certificate_block_sits_outside_the_advanced_fold(client):
+    """Op een eigen domein is de certificaatkeuze een beslissing, geen tweak —
+    hij mag niet weggevouwen zitten onder 'standaardwaarden zijn al ingevuld'."""
+    body = client.get("/tenant").get_data(as_text=True)
+    assert body.index("</details>") < body.index('id="certBlock"')
+
+
+def test_dashboard_exposes_the_reveal_flag(client, monkeypatch):
+    monkeypatch.setattr(server.argolib, "list_apps", lambda: [])
+    monkeypatch.setattr(server.gitlib, "list_prs", lambda: [])
+    monkeypatch.setattr(server, "REVEAL_ENABLED", False)
+    assert client.get("/dashboard.json").get_json()["reveal_enabled"] is False
+    monkeypatch.setattr(server, "REVEAL_ENABLED", True)
+    assert client.get("/dashboard.json").get_json()["reveal_enabled"] is True
+
+
+def test_existing_tenant_is_updated_not_created(client, monkeypatch):
+    """A second submit for the same tenant must UPDATE the file. Creating would
+    fail on the API with a far less useful message."""
+    _declared(monkeypatch, _PORTAL_FILE)
+    seen = {}
+    monkeypatch.setattr(server.gitlib, "propose_update",
+                        lambda **kw: seen.update(kw) or {"number": 12, "html_url": "u/12"})
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: pytest.fail("create gebruikt terwijl de tenant bestaat"))
+
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    assert resp.status_code == 201 and resp.get_json()["updated"] is True
+    assert seen["branch"] == "edit-tenant/almere-accept"
+    # de PR moet de ignore-diff-val benoemen
+    assert "ignore-difft" in seen["pr_body"]
+
+
+def test_hand_edited_tenant_is_refused(client, monkeypatch):
+    _declared(monkeypatch, _HAND_EDITED_FILE)
+    monkeypatch.setattr(server.gitlib, "propose_update",
+                        lambda **kw: pytest.fail("handgeschreven bestand toch overschreven"))
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: pytest.fail("handgeschreven bestand toch overschreven"))
+
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    assert resp.status_code == 409
+    assert "tenant.frontend.tag" in resp.get_json()["errors"][0]
+
+
+def test_unreadable_git_refuses_rather_than_guessing(client, monkeypatch):
+    def boom(path, ref=None):
+        raise server.gitlib.GitlibError(0, "cannot reach github")
+
+    monkeypatch.setattr(server.gitlib, "get_file", boom)
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: pytest.fail("gegokt terwijl de status onbekend is"))
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    assert resp.status_code == 502
 
 
 # --- custom-domain TLS (sectie 3) ---

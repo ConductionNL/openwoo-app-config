@@ -4,6 +4,40 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (bestaande omgeving ophalen en bijwerken)
+- Het create-formulier deed géén bestaanscontrole: een bestaande organisatie +
+  omgeving invullen leverde een mislukte git-aanroep op in plaats van "die
+  bestaat al". Nu leest de portal het tenantbestand terug.
+- `gitlib.get_file()` (de contents-API gaf de inhoud al mee bij de sha, dus dit
+  kost geen extra call), plus `update_file()`/`propose_update()` — een PUT mét
+  blob-sha maakt van een create een update.
+- `GET /tenant/<naam>/declaration` geeft de gedeclareerde waarden terug. Bestaat
+  de omgeving, dan vult het formulier zich en wordt de submit een **wijziging**
+  (branch `edit-tenant/<naam>`) in plaats van een aanvraag.
+- **Waarborg tegen stil dataverlies.** `render()` schrijft een vaste
+  verzameling sleutels. Draagt een bestand iets daarbuiten, dan zou opnieuw
+  renderen dat weggooien — op de vloot van 78 tenantbestanden gaat het om
+  `frontend.tag` (24×), `hostname`/`hostnameOverride` (7/6), `namespace` (6) en
+  meer. `tenants.unknown_keys()` detecteert dat; zulke bestanden worden alleen
+  getoond, met vermelding van de gevonden sleutels. Die tenants zijn handwerk
+  en blijven dat.
+- Kan de portal de status niet ophalen, dan weigert hij in plaats van te gokken
+  (502). Gokken op "create" zou tegen een bestaand bestand alsnog stuklopen,
+  met een veel onduidelijker melding.
+- Bij een wijziging vermeldt de PR expliciet dat huisstijl een **draaiende**
+  frontend niet bereikt (de appset ignore-difft die env), terwijl `frontend.tls`,
+  `host` en `apps` wél direct gelden.
+- UI: de certificaatkeuze staat niet langer weggevouwen onder "Geavanceerd",
+  maar verschijnt als eigen blok zodra er een host buiten `openwoo.app` staat —
+  op een eigen domein is dat een beslissing, geen optionele tweak.
+- UI: per omgeving een knop **wachtwoordlink** op het dashboard, zichtbaar
+  zodra `REVEAL_ENABLED` aanstaat. Daarmee is de reveal-flow voor het eerst
+  zonder curl te gebruiken. De link wordt getoond om te kopiëren, niet geopend —
+  openen zou hem verbranden.
+- 14 nieuwe tests, waaronder een round-trip: wat `render()` schrijft moet
+  `from_declaration()` identiek teruglezen, anders wijzigt de bewerkmodus
+  waarden die niemand heeft aangeraakt.
+
 ### Toegevoegd — 2026-08-07 (`scripts/verify-onboarding.sh`)
 - Verifieert de tenant-onboarding tegen een draaiend cluster: preflight
   (image op de registry, Argo Synced/Healthy, pod op de verwachte tag) en de

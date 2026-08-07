@@ -11,6 +11,9 @@
     label { display: block; margin: .6rem 0 .15rem; font-size: .9rem; }
     input[type=text], select { width: 100%; padding: .45rem; box-sizing: border-box; }
     .hint { color: #666; font-size: .8rem; }
+    .declared { margin-top: .7rem; padding: .7rem .9rem; border-left: 4px solid #2a7;
+                background: #f2fbf6; font-size: .9rem; }
+    .declared.warn { border-left-color: #c40; background: #fff6f0; }
     button { margin-top: 1rem; padding: .6rem 1.2rem; font-size: 1rem; }
     fieldset { border: 1px solid #ccc; margin: 1rem 0; }
     details { margin: 1rem 0; }
@@ -43,9 +46,10 @@
         <option value="prod">productie</option>
       </select>
       <div class="preview" id="preview">…</div>
+      <div id="declared" class="declared" hidden></div>
     </fieldset>
 
-    <details>
+    <details id="adv">
       <summary>Geavanceerd (optioneel — standaardwaarden zijn al ingevuld)</summary>
       <label>Database <span class="hint">(standaard postgres)</span></label>
       <select name="dbType">
@@ -56,8 +60,20 @@
       <label>Weergavenaam organisatie <span class="hint">(standaard: Gemeente &lt;organisatie&gt;)</span></label>
       <input type="text" name="frontend_org" id="dispOverride" placeholder="Gemeente Almere">
       <label>Eigen frontend-host <span class="hint">(standaard: afgeleid &lt;org&gt;.&lt;omg&gt;.openwoo.app)</span></label>
-      <input type="text" name="frontend_host" placeholder="open.almere.nl">
-      <label>Certificaat <span class="hint">(alleen van toepassing bij een eigen host; op openwoo.app dekt het wildcard-certificaat het al)</span></label>
+      <input type="text" name="frontend_host" id="feHost" placeholder="open.almere.nl">
+      <label>NL Design-thema <span class="hint">(leeg laten tenzij de organisatie een eigen thema meelevert — leeg = conduction-theme, dat gegarandeerd rendert)</span></label>
+      <input type="text" name="frontend_theme" placeholder="almere-theme">
+      <label>Jumbotron-afbeelding <span class="hint">(URL; leeg = geen)</span></label>
+      <input type="text" name="frontend_jumbotron" placeholder="https://raw.githubusercontent.com/…/jumbotron.jpg">
+      <label>Favicon <span class="hint">(URL; leeg = platformstandaard)</span></label>
+      <input type="text" name="frontend_favicon" placeholder="https://…/favicon.ico">
+    </details>
+
+    <!-- Buiten de vouw, en alleen zichtbaar bij een eigen host: op een eigen
+         domein is dit geen optionele tweak maar een beslissing die iemand moet
+         nemen. Op *.openwoo.app dekt het wildcard het al en is de keuze zinloos. -->
+    <fieldset id="certBlock" hidden>
+      <legend>Certificaat voor <span id="certHost">de eigen host</span></legend>
       <select name="frontend_tls_issuer">
         <option value="none">de organisatie levert zelf een certificaat (standaard)</option>
         <option value="letsencrypt-prod">Let's Encrypt automatisch aanvragen</option>
@@ -67,15 +83,9 @@
          <a href="https://github.com/ConductionNL/openwoo-app-config/blob/main/docs/custom-domain-cert.md">de
          runbook</a>. Let op: zo'n certificaat verloopt zonder waarschuwing, want er is geen
          cert-manager die het bewaakt.</p>
-      <label>NL Design-thema <span class="hint">(leeg laten tenzij de organisatie een eigen thema meelevert — leeg = conduction-theme, dat gegarandeerd rendert)</span></label>
-      <input type="text" name="frontend_theme" placeholder="almere-theme">
-      <label>Jumbotron-afbeelding <span class="hint">(URL; leeg = geen)</span></label>
-      <input type="text" name="frontend_jumbotron" placeholder="https://raw.githubusercontent.com/…/jumbotron.jpg">
-      <label>Favicon <span class="hint">(URL; leeg = platformstandaard)</span></label>
-      <input type="text" name="frontend_favicon" placeholder="https://…/favicon.ico">
-    </details>
+    </fieldset>
 
-    <button type="submit">Aanvraag indienen</button>
+    <button type="submit" id="submit">Aanvraag indienen</button>
   </form>
 
   <div id="result"></div>
@@ -96,8 +106,68 @@
         `Omgeving <code>${o}-${e}</code> &middot; achterkant <code>${host}</code><br>` +
         `website <code>${fe}</code> &middot; organisatie <code>${disp}</code> &middot; apps: opencatalogi, openconnector, openregister`;
     }
+    // Certificaatkeuze alleen tonen bij een host buiten het platformdomein —
+    // spiegelt tenants.py::is_custom_frontend_host.
+    const feHost = document.getElementById('feHost'), certBlock = document.getElementById('certBlock'),
+          certHost = document.getElementById('certHost');
+    function refreshCert() {
+      const h = feHost.value.trim().toLowerCase();
+      const custom = h && !(h === 'openwoo.app' || h.endsWith('.openwoo.app'));
+      certBlock.hidden = !custom;
+      if (custom) certHost.textContent = h;
+    }
+    feHost.addEventListener('input', refreshCert); refreshCert();
+
+    // Bestaat deze omgeving al? Dan tonen we wat er gedeclareerd staat en wordt
+    // de submit een wijziging in plaats van een aanvraag.
+    const declared = document.getElementById('declared'), submitBtn = document.getElementById('submit');
+    const adv = document.getElementById('adv');
+    let lookupTimer = null, editing = false;
+
+    function setFields(v) {
+      for (const [name, val] of Object.entries(v)) {
+        const el = f.elements[name];
+        if (el && typeof val === 'string') el.value = val;
+      }
+      refresh(); refreshCert();
+    }
+
+    async function lookup() {
+      const o = org.value.trim().toLowerCase(), e = env.value;
+      editing = false;
+      declared.hidden = true;
+      submitBtn.textContent = 'Aanvraag indienen';
+      if (!o) return;
+      let d;
+      try { d = await (await fetch(`/tenant/${o}-${e}/declaration`)).json(); } catch (err) { return; }
+      if (!d || !d.exists) return;
+      declared.hidden = false;
+      if (d.editable) {
+        editing = true;
+        setFields(d.fields || {});
+        adv.open = true;
+        submitBtn.textContent = 'Wijziging indienen';
+        declared.className = 'declared';
+        declared.innerHTML =
+          `Deze omgeving <strong>bestaat al</strong>. De huidige waarden staan hieronder ingevuld; ` +
+          `wat je aanpast wordt als wijziging ingediend.<br>` +
+          `<span class="hint">Let op: huisstijl (thema, naam, jumbotron, favicon) wordt op een ` +
+          `draaiende frontend niet toegepast — die env is ignore-diffed. Host, certificaat en ` +
+          `apps gelden wél direct.</span>`;
+      } else {
+        declared.className = 'declared warn';
+        declared.innerHTML =
+          `Deze omgeving bestaat al en is <strong>met de hand aangepast</strong>, dus de portal ` +
+          `beheert hem niet: <code>${(d.unknown || []).join('</code>, <code>')}</code>.<br>` +
+          `<span class="hint">Wijzig het tenantbestand rechtstreeks in Nextcloud-base — ` +
+          `indienen via dit formulier zou die handmatige velden weggooien.</span>`;
+      }
+    }
+    function scheduleLookup() { clearTimeout(lookupTimer); lookupTimer = setTimeout(lookup, 400); }
+
     org.addEventListener('input', refresh); env.addEventListener('change', refresh);
     dispOverride.addEventListener('input', refresh); refresh();
+    org.addEventListener('input', scheduleLookup); env.addEventListener('change', lookup);
 
     let pollTimer = null, argoTimer = null;
     function pollStatus(num, tenant) {
