@@ -44,6 +44,23 @@
       <input type="password" name="apikey" autocomplete="off">
     </fieldset>
     <fieldset>
+      <legend>Huisstijl <span class="hint">(leeg = laat staan wat er nu op de omgeving staat)</span></legend>
+      <label>Naam <span class="hint">(naam van de omgeving zoals die in de interface staat)</span></label>
+      <input type="text" name="theme_name" placeholder="gemeente Voorbeeld">
+      <label>Slogan</label>
+      <input type="text" name="theme_slogan">
+      <label>Kleur <span class="hint">(hex, bijv. #154273)</span></label>
+      <input type="text" name="theme_color" placeholder="#154273">
+      <label>Weblink <span class="hint">(homepage van de organisatie)</span></label>
+      <input type="text" name="theme_url" placeholder="https://www.voorbeeld.nl">
+      <label>Thema-app inschakelen <span class="hint">(app-id; moet al op de omgeving geïnstalleerd zijn)</span></label>
+      <input type="text" name="theme_app">
+      <p class="hint">Logo, achtergrond en favicon kunnen hier niet: dat zijn bestandsuploads
+         in de beheerinterface van de omgeving, geen instellingen. Zie
+         <a href="https://github.com/ConductionNL/openwoo-app-config/blob/main/docs/provisioner-commands.md">de
+         commandoreferentie</a>.</p>
+    </fieldset>
+    <fieldset>
       <legend>Opties</legend>
       <div class="row"><label><input type="checkbox" name="force_import"> Forceer her-import (configuratie gewijzigd)</label></div>
       <div class="row"><label><input type="checkbox" name="run_syncs"> Synchronisaties draaien na inrichten (live ophalen)</label></div>

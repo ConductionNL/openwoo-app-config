@@ -4,6 +4,23 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (huisstijl in het inricht-formulier — taak 2.5)
+- `webgui/templates/index.html`: fieldset **Huisstijl** (naam, slogan, kleur,
+  weblink, thema-app) op het formulier achter de knop "Omgeving inrichten".
+  Zonder dit bereikte de knop de theme-stap wel, maar sloeg die altijd over.
+- `webgui/server.py`: de vijf velden toegevoegd aan de whitelist van
+  `/provision`.
+- `scripts/provision_gui.py`: `PASSTHROUGH_FLAGS` mapt elk optioneel veld op
+  zijn vlag (`--theme-name`, `--theme-color`, …); de bestaande
+  `--source-url`/`--api-interface-id`/`--job-user`-takken zijn erin opgegaan.
+  Een leeg veld belandt niet op argv, dus "laat staan wat er op de omgeving
+  staat" blijft de standaard — een half ingevuld formulier wist geen branding.
+  Dezelfde velden staan nu ook in de Tkinter-GUI, met een test die de twee
+  lijsten gelijk houdt.
+- 5 nieuwe tests: de argv-mapping en de sync tussen web- en Tkinter-formulier in
+  `tests/test_provision_gui.py`, de veldenlijst van de route en het template in
+  `tests/test_webgui.py`. Suite: 210 passed, 0 skipped.
+
 ### Toegevoegd — 2026-08-07 (provisioner-stap `theme` — sectie 2 van `tenant-onboarding-completion`)
 - `scripts/provisionlib/steps.py`: `provision_theme()` en
   `provision_theme_app()`. Zelfde convergentiepatroon als de bestaande

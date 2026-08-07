@@ -75,6 +75,10 @@ app-config values, so they cannot be set over the basic-auth API every
 other step uses. Upload them once in the tenant's admin UI, or track a
 follow-up if it needs automating.
 
+The same values are exposed as a **Huisstijl** fieldset on the webgui's
+"Omgeving inrichten" form, which builds exactly these flags — so the
+browser route and the CLI route converge a tenant identically.
+
 `--theme-app` enables (or, with `--disable-theme-app`, disables) one
 already-installed Nextcloud app — e.g. an NL Design System theme. It does
 **not** install an app from the app store; an unknown app id surfaces as

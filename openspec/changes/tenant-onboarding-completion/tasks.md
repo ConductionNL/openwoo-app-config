@@ -35,9 +35,17 @@
       absent key, blank values ignored, unknown key rejected, write that does
       not reflect, app enable/disable/idempotent/missing-id, CLI flag mapping).
       Mocked HTTP — no live Nextcloud needed.
-- [ ] 2.5 Add the NL Design System theme to `webgui/tenants.py::KNOWN_APPS`
-      only if it should be selectable from the create-tenant form later (not
-      required for MVP — operator can run the provisioner step directly first).
+- [x] 2.5 Theming from the web form (pulled forward from "not required for MVP"
+      — without it the "Omgeving inrichten" button reaches the theme step but
+      always skips it). A "Huisstijl" fieldset in
+      `webgui/templates/index.html`, the fields whitelisted in
+      `server.py::provision`, and a `PASSTHROUGH_FLAGS` table in
+      `provision_gui.build_command` mapping each field to its `--theme-*` flag.
+      A blank field is omitted from argv, so "leave what the tenant has" stays
+      the default.
+- [ ] 2.6 (follow-up) Add the NL Design System theme to
+      `webgui/tenants.py::KNOWN_APPS` if it should be selectable from the
+      *create-tenant* form as well. Blocked on 1.3 (app id unconfirmed).
 
 ## 3. Custom-domain TLS rendering
 

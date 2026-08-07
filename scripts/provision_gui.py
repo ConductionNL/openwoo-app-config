@@ -87,6 +87,25 @@ FIELDS = [
     ("api_interface_id", "API-Interface-ID (blank = keep config)", False, ""),
     ("apikey", "Source API key (blank = dummy)", True, ""),
     ("job_user", "Job user (blank = admin; Anonymous-bug workaround)", False, ""),
+    ("theme_name", "Theme: name (blank = leave as-is)", False, ""),
+    ("theme_slogan", "Theme: slogan (blank = leave as-is)", False, ""),
+    ("theme_color", "Theme: colour, e.g. #154273 (blank = leave as-is)", False, ""),
+    ("theme_url", "Theme: web link (blank = leave as-is)", False, ""),
+    ("theme_app", "Theme: app id to enable (blank = none)", False, ""),
+]
+
+# Form field -> provision.py flag, for the optional per-tenant values that are
+# passed through verbatim. A blank value is omitted from argv entirely, which is
+# what makes "leave it as it is on the tenant" the default everywhere.
+PASSTHROUGH_FLAGS = [
+    ("source_url", "--source-url"),
+    ("api_interface_id", "--api-interface-id"),
+    ("job_user", "--job-user"),
+    ("theme_name", "--theme-name"),
+    ("theme_slogan", "--theme-slogan"),
+    ("theme_color", "--theme-color"),
+    ("theme_url", "--theme-url"),
+    ("theme_app", "--theme-app"),
 ]
 
 
@@ -94,8 +113,10 @@ def build_command(values):
     """Build (argv, env) for `provision.py all` from collected form values.
 
     Non-secrets go on argv; secrets (password, apikey) go via env vars referenced
-    by --password-env / --apikey-env so they never land in argv. Raises ValueError
-    if the required base URL is missing.
+    by --password-env / --apikey-env so they never land in argv. Optional values
+    (source params, job user, theming) are only passed when non-blank — blank
+    means "leave whatever the tenant has". Raises ValueError if the required base
+    URL is missing.
     """
     base = (values.get("base") or "").strip()
     if not base or base.startswith("https://<") or base.startswith("http://<"):
@@ -113,12 +134,10 @@ def build_command(values):
         argv += ["--host-header", host_header]
     if values.get("user"):
         argv += ["--user", values["user"].strip()]
-    if values.get("source_url"):
-        argv += ["--source-url", values["source_url"].strip()]
-    if values.get("api_interface_id"):
-        argv += ["--api-interface-id", values["api_interface_id"].strip()]
-    if values.get("job_user"):
-        argv += ["--job-user", values["job_user"].strip()]
+    for key, flag in PASSTHROUGH_FLAGS:
+        value = (values.get(key) or "").strip()
+        if value:
+            argv += [flag, value]
     if values.get("force_import"):
         argv += ["--force-import"]
     if values.get("run_syncs"):
