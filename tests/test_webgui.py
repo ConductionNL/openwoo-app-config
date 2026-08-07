@@ -724,3 +724,10 @@ def test_reveal_is_rate_limited(client, reveal_on, monkeypatch):
     codes = [client.get("/reveal/nietbestaand").status_code for _ in range(5)]
     assert codes[:3] == [404, 404, 404]       # binnen budget: normaal antwoord
     assert codes[-1] == 429                   # daarna afgeknepen
+
+
+def test_branding_picker_is_reachable(client):
+    body = client.get("/").get_data(as_text=True)
+    assert 'href="/branding"' in body
+    page = client.get("/branding").get_data(as_text=True)
+    assert "Branding" in page and "/edit" in page
