@@ -143,6 +143,16 @@ only the default is opinionated.
 
 ## 6. Dry-run + done criteria
 
+`scripts/verify-onboarding.sh` automatiseert het **controleren** van 6.1–6.3.
+Het aanmaken van de wegwerptenant, het zaaien van het certificaat en het minten
+van een link blijven handwerk: dat zijn cluster-mutaties en die staan in
+`docs/agents.md` als mens-vereist. Eén wegwerptenant dekt alle drie.
+
+    ./scripts/verify-onboarding.sh --preflight
+    ./scripts/verify-onboarding.sh --tenant dryrun-test --theme dryrun-theme \
+      --host dryrun.example.org --ingress-ip <ip>
+
+
 - [ ] 6.1 Branding: create a throwaway tenant with a `themeClassname` from the
       form, confirm the PR carries the branding block and that the frontend
       comes up on that theme (not on `conduction-theme`).

@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (`scripts/verify-onboarding.sh`)
+- Verifieert de tenant-onboarding tegen een draaiend cluster: preflight
+  (image op de registry, Argo Synced/Healthy, pod op de verwachte tag) en de
+  drie dry-runs van sectie 6.
+- Automatiseert het **controleren**, niet het doen. Een tenant aanmaken, een
+  certificaat zaaien en een link minten zijn cluster-mutaties en blijven
+  mens-vereist per `docs/agents.md`. Het script leest alleen.
+- Drie controles die er anders bij inschieten: dat de Ingress géén
+  cert-manager-annotatie draagt (anders overschrijft Let's Encrypt een betaald
+  klantcertificaat), dat de portal-serviceaccount secrets wél mag `get`ten maar
+  níét mag `list`en, en dat het adminwachtwoord niet in de portal-logs staat.
+  Die laatste leest de waarde uit het secret en print hem nergens.
+- De secretnaam-afleiding is bewust in bash herhaald in plaats van de Python
+  aan te roepen, zodat het script ook draait waar de repo niet staat. Getest
+  tegen dezelfde twee gevallen als de unit tests van `tls_secret_name`.
+
 ### Gewijzigd — 2026-08-07 (image bouwt nu ook op elke merge)
 - `.github/workflows/image.yml` bouwt voortaan óók op een push naar `main`, met
   een onveranderlijke `sha-<kort>`-tag. Reden: zonder build-per-merge weet
