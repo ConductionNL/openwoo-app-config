@@ -611,7 +611,7 @@ def test_edit_route_updates_the_file(client, monkeypatch):
 def test_edit_page_renders_current_values(client, monkeypatch):
     _declared(monkeypatch, _PORTAL_FILE)
     body = client.get("/tenant/almere-accept/edit").get_data(as_text=True)
-    assert "almere-accept aanpassen" in body
+    assert "Branding van almere-accept" in body
     assert 'value="almere-theme"' in body          # huidige waarde ingevuld
     assert 'name="cert"' in body and 'name="key"' in body   # certificaat-upload
 
