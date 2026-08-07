@@ -167,7 +167,21 @@ check_tls() {
 
   local want ing_json got_secret got_issuer
   want="$(derive_secret_name "${host}")"
-  ing_json="$(kubectl -n "${tenant}" get ingress -o json 2>/dev/null || echo '{"items":[]}')"
+  # ALLEEN de ingress die deze host bedient. Een tenant-namespace draagt er
+  # meerdere: de Nextcloud-backend op *.commonground.nu (met zijn eigen
+  # Let's Encrypt-cert), de frontend op de eigen host, en tijdens een
+  # ACME-challenge een solver-ingress. Zomaar de eerste pakken beoordeelde de
+  # backend en riep dan "cert-manager staat erop" over de frontend — een vals
+  # alarm dat op élke custom-domain-tenant zou afgaan (gezien 2026-08-07).
+  ing_json="$(kubectl -n "${tenant}" get ingress -o json 2>/dev/null \
+    | jq --arg h "${host}" '{items: [.items[] | select(any(.spec.rules[]?; .host == $h))]}' \
+    || echo '{"items":[]}')"
+
+  if [[ "$(printf '%s' "${ing_json}" | jq '.items | length')" -eq 0 ]]; then
+    bad "geen Ingress in ${tenant} die ${host} bedient" \
+      "is de frontend al uitgerold? kubectl -n ${tenant} get ingress"
+    return
+  fi
 
   got_secret="$(printf '%s' "${ing_json}" | jq -r '[.items[].spec.tls[]?.secretName] | first // ""')"
   if [[ "${got_secret}" == "${want}" ]]; then

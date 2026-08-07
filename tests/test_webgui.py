@@ -634,3 +634,13 @@ def test_tenant_form_offers_the_certificate_choice(client):
     body = client.get("/tenant").get_data(as_text=True)
     assert 'name="frontend_tls_issuer"' in body
     assert "letsencrypt" in body
+
+
+def test_org_pattern_is_mirrored_in_the_form(client):
+    """De client-side check moet dezelfde regel hanteren als tenants.py::_ORG_RE.
+    Loopt dat uiteen, dan vuurt de lookup weer op namen die de server afwijst —
+    en die 400 werd stil ingeslikt (gezien 2026-08-07: drie mislukte pogingen
+    tijdens het typen van een organisatienaam)."""
+    body = client.get("/tenant").get_data(as_text=True)
+    assert "const ORG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;" in body
+    assert "function esc(" in body          # gebruikersinvoer gaat door innerHTML

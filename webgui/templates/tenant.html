@@ -98,6 +98,10 @@
     const preview = document.getElementById('preview'), dispOverride = document.getElementById('dispOverride');
 
     function cap(s){ return s.split('-').filter(Boolean).map(p => p.charAt(0).toUpperCase()+p.slice(1)).join(' '); }
+    // Wat de operator typt komt in innerHTML terecht; escapen dus. (home.html
+    // heeft dezelfde helper — bewust gedupliceerd, deze templates delen geen JS.)
+    function esc(s){ return String(s).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function refresh() {
       const o = org.value.trim().toLowerCase(), e = env.value;
       if (!o) { preview.textContent = '…'; return; }
@@ -134,12 +138,28 @@
       refresh(); refreshCert();
     }
 
+    // Spiegelt tenants.py::_ORG_RE. De lookup mag niet vuren op iets wat de
+    // server tóch afwijst: dat leverde bij elke toetsaanslag een 400 op die
+    // stil werd ingeslikt, dus je typte iets ongeldigs en het formulier zweeg.
+    const ORG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
     async function lookup() {
       const o = org.value.trim().toLowerCase(), e = env.value;
       editing = false;
       declared.hidden = true;
       submitBtn.textContent = 'Aanvraag indienen';
       if (!o) return;
+      if (!ORG_RE.test(o)) {
+        // Zeg het meteen, in plaats van pas bij indienen. Een punt in de naam
+        // is de klassieker: dan hoort de host in het veld eronder.
+        declared.hidden = false;
+        declared.className = 'declared warn';
+        declared.innerHTML =
+          `<strong>${esc(o)}</strong> kan niet als organisatienaam: alleen kleine letters, ` +
+          `cijfers en streepjes.<br><span class="hint">Een eigen domein hoort niet hier maar bij ` +
+          `Geavanceerd → Eigen frontend-host.</span>`;
+        return;
+      }
       let d;
       try { d = await (await fetch(`/tenant/${o}-${e}/declaration`)).json(); } catch (err) { return; }
       if (!d || !d.exists) return;

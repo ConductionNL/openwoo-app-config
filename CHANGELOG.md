@@ -4,6 +4,23 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (twee bevindingen uit de dry-run)
+- **`verify-onboarding.sh` beoordeelde de verkeerde Ingress.** Een tenant-namespace
+  draagt er meerdere: de Nextcloud-backend op `*.commonground.nu` met zijn eigen
+  Let's Encrypt-cert, de frontend op de eigen host, en tijdens een ACME-challenge
+  een solver-ingress. Het script nam simpelweg de eerste en meldde daardoor
+  "cert-manager staat op de Ingress" over de frontend — een vals alarm dat op
+  élke custom-domain-tenant zou afgaan. Hij filtert nu op de host, en zegt het
+  als er geen Ingress voor die host bestaat.
+- **De declaration-lookup vuurde op elke toetsaanslag**, ook op een naam die de
+  server afwijst, en slikte de 400 stil in. Je typte iets ongeldigs en het
+  formulier zweeg tot je op indienen drukte. De client hanteert nu dezelfde
+  regel als `tenants.py::_ORG_RE` en zegt meteen wat er mis is — met de meest
+  voorkomende oorzaak erbij: een punt in de naam betekent dat je een domein
+  invulde, en dat hoort bij Eigen frontend-host.
+- Daarbij een `esc()`-helper in `tenant.html`: de ingetypte naam belandt in
+  `innerHTML`.
+
 ### Gewijzigd — 2026-08-07 (dryrun.sh faalt snel als er niets is aangevraagd)
 - `scripts/dryrun.sh` controleert vóór het wachten of er een
   `add-tenant/<tenant>`-PR bestaat op de tenants-repo, en onderscheidt vier
