@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (image bouwt nu ook op elke merge)
+- `.github/workflows/image.yml` bouwt voortaan óók op een push naar `main`, met
+  een onveranderlijke `sha-<kort>`-tag. Reden: zonder build-per-merge weet
+  niemand of `main` überhaupt bouwt tot iemand een release probeert. Dat is
+  geen theorie — de `HUB_SHA`-pin was verlopen en dat kwam pas boven water toen
+  er gebouwd moest worden.
+- De releasepad blijft ongewijzigd: een `v*`-tag of een handmatige dispatch
+  publiceert de tag die een mens in `kustomization.yaml` zet. Een merge
+  publiceert die tag bewust **niet** — Argo volgt `newTag`, dus automatisch
+  bouwen bij merge zou Argo de tag laten zien vóórdat het image bestaat.
+- De "weiger een bestaande tag te overschrijven"-stap geldt alleen voor
+  releasetags. Een sha-tag is uit de commit afgeleid en kan niet botsen met
+  andere bytes.
+
 ### Toegevoegd — 2026-08-07 (CI-gate op PR's)
 - `.github/workflows/ci.yml`: draait op elke PR en elke push naar `main`.
   Tot nu toe was de enige poort op een GitHub-PR de lokale pre-commit-hooks van
