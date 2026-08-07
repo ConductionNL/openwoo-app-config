@@ -188,6 +188,12 @@ def tenant_form():
     return render_template("tenant.html")
 
 
+@app.get("/branding")
+def branding_picker():
+    """Kies eerst een omgeving; het brandingscherm zelf zit per tenant."""
+    return render_template("branding.html")
+
+
 @app.get("/tenant/<name>/edit")
 def tenant_edit_form(name):
     """Branding van een bestaande omgeving: wat de frontend toont, plus adres en
