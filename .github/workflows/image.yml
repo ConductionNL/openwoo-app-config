@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: EUPL-1.2
+#
+# Build and publish the control-plane image to ghcr.io.
+#
+# Why ghcr and not Docker Hub: the Docker Pro PAT expired 2026-08-03 and is not
+# being renewed, so the fleet pulls Docker Hub anonymously and sits under the
+# 100-pulls/6h limit again (cluster-config/docs/mirror.md). That document also
+# sets the convention: Conduction's own images are *published* to
+# ghcr.io/conductionnl from their own build pipeline — the `mirror/` prefix is
+# only for mirrored upstream images, and own images are deliberately not
+# mirrored (that would create a second source of truth).
+#
+# Why a workflow and not `make release` on a laptop: three pushes have failed
+# silently on auth/permissions while the operator believed they had landed, and
+# Argo then rolled to a tag that did not exist (ImagePullBackOff, 2026-07-14).
+# The registry check below is the same guard `make push` runs; here it runs on
+# every build, on a machine whose credentials are not somebody's docker login.
+#
+# What this workflow deliberately does NOT do:
+#   * override the Dockerfile's HUB_SHA pin — a stale pin must fail the build,
+#     because bumping the handbook content in the image is a conscious act
+#     (Dockerfile comment + CHANGELOG entry), not a build-time side effect;
+#   * touch webgui/deploy/kustomization.yaml — bumping `newTag` there is the
+#     human gate in front of Argo. Build first, merge the tag bump after.
+#
+# After the FIRST successful push: set the package to public. ghcr defaults new
+# packages to private, and a private package means every namespace needs a pull
+# secret again — exactly the cost this move avoids.
+name: image
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g. 0.6.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/conductionnl/openwoo-provisioner
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME#v}"          # v0.6.0 -> 0.6.0
+          else
+            tag="${{ inputs.tag }}"
+          fi
+          [[ -n "${tag}" ]] || { echo "empty tag" >&2; exit 1; }
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "ref=${IMAGE}:${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to overwrite an existing tag
+        run: |
+          set -euo pipefail
+          # An image tag is an audit anchor: Argo may already be running it, and
+          # silently republishing different bytes under the same tag makes "which
+          # code is live" unanswerable. Fail instead.
+          if python3 scripts/check_image_on_registry.py "${{ steps.meta.outputs.ref }}"; then
+            echo "::error::${{ steps.meta.outputs.ref }} already exists — bump the version" >&2
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.ref }}
+          provenance: false
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Verify the tag really landed
+        run: python3 scripts/check_image_on_registry.py "${{ steps.meta.outputs.ref }}"
+
+      - name: Next steps
+        run: |
+          echo "Published ${{ steps.meta.outputs.ref }}"
+          echo "Now bump newTag in webgui/deploy/kustomization.yaml to ${{ steps.meta.outputs.tag }} and merge."
+          echo "If this was the first push: set the ghcr package to public."

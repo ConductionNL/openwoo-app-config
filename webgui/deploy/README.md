@@ -52,13 +52,40 @@ anchor for `X-Forwarded-Email` (the Phase-2 review follow-up, now code not prose
 
 ## Build & push the image
 
+The image lives on **`ghcr.io/conductionnl/openwoo-provisioner`**. Docker Hub is
+the old home: the Docker Pro PAT expired 2026-08-03 and is not being renewed, so
+the fleet pulls Docker Hub anonymously under the 100-pulls/6h limit again
+(`cluster-config/docs/mirror.md`). That document also sets the convention —
+Conduction's own images are published to `ghcr.io/conductionnl` from their own
+pipeline, deliberately *not* mirrored, so there is one source of truth per tag.
+
+**Preferred: the workflow.** `.github/workflows/image.yml` builds and pushes on a
+`v*` tag, or on manual dispatch with a tag input. It refuses to overwrite an
+existing tag, and verifies afterwards that the tag really landed — three pushes
+have failed silently on auth while the operator believed they had landed, after
+which Argo rolled to a nonexistent tag (ImagePullBackOff, 2026-07-14).
+
+**Fallback: by hand.** Same guards, minus the clean credentials:
+
 ```bash
-make image IMAGE=<registry>/openwoo-provisioner:<tag>     # docker build
-make push  IMAGE=<registry>/openwoo-provisioner:<tag>
-# then point kustomize at it:
-cd webgui/deploy && kustomize edit set image \
-  ghcr.io/conductionnl/openwoo-provisioner=<registry>/openwoo-provisioner:<tag>
+make release IMAGE=ghcr.io/conductionnl/openwoo-provisioner:<tag>   # build + push + verify
 ```
+
+Then bump `newTag` in `kustomization.yaml` and merge. **That order is not
+optional:** merging first points Argo at a tag that does not exist yet.
+
+Two things that will bite you once each:
+
+- **The `HUB_SHA` pin in the Dockerfile is a hard gate.** The build clones
+  `ConductionNL/hub` and fails if main has moved past the pin. That is
+  deliberate — the handbook content baked into the image should change on
+  purpose, with a CHANGELOG entry, not as a side effect of when you happened to
+  build. Bump the pin first; the build will not do it for you.
+- **ghcr defaults new packages to private.** After the first push, set the
+  package to public. A private package means every namespace needs a pull
+  secret again, which is exactly the cost this move removes. The registry check
+  reports a 401 as "probably still private" rather than "tag missing", because
+  the fix is completely different.
 
 ## Apply
 

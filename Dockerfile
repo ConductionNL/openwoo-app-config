@@ -29,7 +29,12 @@ RUN pip install --no-cache-dir -r webgui/requirements.txt
 # (docs/sites-batch) vóór de eerstvolgende image-build. De sha-pin is
 # host-onafhankelijk (zelfde commit op beide hosts).
 ARG HUB_REPO=https://github.com/ConductionNL/hub.git
-ARG HUB_SHA=9f6aed888e636013516d3df13937364afc3e88b2
+# Bumped 2026-08-07: 9f6aed88 -> 4945cf97 (6 commits). Inhoud: docs-mcp leest
+# nu de lokale werkkopie als bron en geeft een herkomst-veld terug, publieke en
+# interne componentenlijst ontkoppeld, en clone_all.sh kloont van GitHub i.p.v.
+# Codeberg. Bewuste bump: zonder deze faalt elke build, want hub-main is voorbij
+# de oude pin.
+ARG HUB_SHA=4945cf97df16508dbc54233024c6aa998a671cd3
 RUN git clone --depth 1 "$HUB_REPO" /opt/hub \
  && [ "$(git -C /opt/hub rev-parse HEAD)" = "$HUB_SHA" ] \
  && rm -rf /opt/hub/.git

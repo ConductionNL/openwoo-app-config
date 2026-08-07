@@ -4,6 +4,33 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (image bouwt naar ghcr.io, via een workflow)
+- `.github/workflows/image.yml` (eerste CI in deze repo): bouwt en pusht naar
+  `ghcr.io/conductionnl/openwoo-provisioner` op een `v*`-tag of handmatige
+  dispatch. Auth via de ingebouwde `GITHUB_TOKEN` met `packages: write`; geen
+  PAT nodig. Weigert een bestaande tag te overschrijven — een tag is een
+  audit-anker, en stilletjes andere bytes onder dezelfde tag publiceren maakt
+  "welke code draait er" onbeantwoordbaar. Verifieert na afloop dat de tag écht
+  op de registry staat.
+- Waarom ghcr: de Docker Pro-PAT is 2026-08-03 verlopen en wordt niet
+  vernieuwd, dus de fleet pullt Docker Hub weer anoniem onder de limiet
+  (`cluster-config/docs/mirror.md`). Datzelfde document zet de conventie: eigen
+  images worden vanuit hun eigen pipeline naar `ghcr.io/conductionnl`
+  gepubliceerd en bewust *niet* gespiegeld, zodat er één bron per tag is.
+- `scripts/check_image_on_registry.py` kent nu ghcr naast Docker Hub (anoniem
+  token + manifest-HEAD, het recept uit `mirror.md`). Een 401 wordt gemeld als
+  "package staat waarschijnlijk nog op privé", niet als "tag bestaat niet" — de
+  fix verschilt volledig.
+- `webgui/deploy/kustomization.yaml`: `newName` naar ghcr, `newTag` 0.6.0.
+- **Dockerfile: `HUB_SHA` gebumpt** van `9f6aed88` naar `4945cf97` (6 commits).
+  Inhoud: docs-mcp leest de lokale werkkopie als bron en geeft een herkomst-veld
+  terug, publieke en interne componentenlijst ontkoppeld, en `clone_all.sh`
+  kloont van GitHub. Bewuste bump — zonder deze faalt élke build, want hub-main
+  is voorbij de oude pin.
+- Nog te doen bij de eerste push: de ghcr-package op **public** zetten. ghcr zet
+  nieuwe packages standaard op privé, en privé betekent dat elke namespace
+  alsnog een pull-secret nodig heeft.
+
 ### Toegevoegd — 2026-08-07 (eenmalige reveal-link voor het adminwachtwoord — sectie 4)
 - `webgui/burnstore.py`: eenmalige, verlopende tickets plus
   `read_admin_password()`. `POST /tenant/<naam>/secret-link` (operator-gated)
