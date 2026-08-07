@@ -4,6 +4,28 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (CI-gate op PR's)
+- `.github/workflows/ci.yml`: draait op elke PR en elke push naar `main`.
+  Tot nu toe was de enige poort op een GitHub-PR de lokale pre-commit-hooks van
+  de operator — dat werkt tot de eerste bijdrager die `pre-commit install` niet
+  heeft gedraaid.
+- De workflow **herimplementeert de checks niet**, maar draait dezelfde
+  `.pre-commit-config.yaml`. Een tweede lijst met checks is een tweede lijst die
+  gaat afwijken: `.woodpecker.yml` bevat letterlijk de belofte "Mirrors the
+  Makefile targets — keep them in sync", en precies dat houdt niemand vol.
+  Eén config, twee plekken die hem draaien.
+- `--hook-stage pre-push` is nodig: de `verify`-hook (lint + tests +
+  doc-assertions) staat als pre-push gedeclareerd en draait zonder die vlag
+  stilletjes niet — een groene CI zou dan niets betekenen.
+- **Skip-guard.** Losse stap die faalt zodra pytest ook maar één test overslaat.
+  Zonder Flask slaan `test_webgui.py` en `test_assistant_routes.py` zichzelf
+  over via `importorskip`; zo hebben 18 routetests hier wekenlang niet
+  gedraaid terwijl de uitvoer groen was. De guard maakt van dat stille geval
+  een harde fout met een naam eraan.
+- `.woodpecker.yml` blijft voorlopig staan. Die is van vóór de migratie naar
+  GitHub en vuurt alleen nog als iemand naar de `codeberg`-remote pusht; hij
+  ziet de PR's hier niet. Verwijderen is een aparte afweging.
+
 ### Toegevoegd — 2026-08-07 (certificaat voor een eigen domein — sectie 3)
 - `webgui/tenants.py`: bij een frontend-host buiten `openwoo.app` rendert het
   formulier nu een `frontend.tls`-blok. De secretnaam wordt afgeleid van de
