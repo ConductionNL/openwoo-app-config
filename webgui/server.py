@@ -193,6 +193,9 @@ def tenant_create():
         dbType=form.get("dbType", ""),
         display=form.get("frontend_org", ""),
         host=form.get("frontend_host", ""),
+        theme=form.get("frontend_theme", ""),
+        jumbotron=form.get("frontend_jumbotron", ""),
+        favicon=form.get("frontend_favicon", ""),
     )
     # defense-in-depth: the derived fields must still pass the full validator
     errors = tenants.validate(fields)
