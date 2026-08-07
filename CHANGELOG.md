@@ -18,6 +18,13 @@ All notable changes to this repository are documented here.
 - Vangnetten: bevestiging door de tenantnaam over te typen (`--yes` slaat dat
   over), en een productie-achtige naam vereist een expliciete extra vlag.
 - Benoemt wat het níét kan opruimen: S3-data en DNS-records.
+- `scripts/dryrun.sh` draait sectie 6 van begin tot eind in één invocatie:
+  preflight, wachten tot Argo de tenant heeft uitgerold, de controles, optioneel
+  een zelfondertekend certificaat zaaien, en de eenmaligheid van de
+  wachtwoordlink verifiëren (200 gevolgd door 404). Het stopt alleen op de twee
+  momenten waar een browser echt nodig is: de tenant aanmaken in het formulier
+  — dát is wat 6.1/6.2 test, dus het bestand met de hand schrijven zou de test
+  leeg maken — en één keer op de knop wachtwoordlink drukken.
 
 ### Gewijzigd — 2026-08-07 (mergen is uitrollen; geen tag-ceremonie meer)
 - `.github/workflows/image.yml` bouwt bij een push naar `main` het image,
