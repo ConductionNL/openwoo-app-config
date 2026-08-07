@@ -104,7 +104,7 @@ def validate_org(org, environment):
 
 
 def from_org(org, environment, dbType=None, display=None, host=None,
-             theme=None, jumbotron=None, favicon=None, tls_issuer=None):
+             theme=None, jumbotron=None, favicon=None, tls_issuer=None, tag=None):
     """Build the full fields dict from the minimal input. Everything not given is
     derived: name=`<org>-<env>`, all three apps, branding 'Gemeente <Org>',
     db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu).
@@ -126,6 +126,7 @@ def from_org(org, environment, dbType=None, display=None, host=None,
         "frontend_jumbotron": (jumbotron or "").strip(),
         "frontend_favicon": (favicon or "").strip(),
         "frontend_tls_issuer": (tls_issuer or "").strip() or DEFAULT_TLS_ISSUER,
+        "frontend_tag": (tag or "").strip(),
     }
 
 
@@ -138,7 +139,7 @@ def from_org(org, environment, dbType=None, display=None, host=None,
 RENDERED_TOP_KEYS = frozenset({"tenant"})
 RENDERED_TENANT_KEYS = frozenset({"name", "environment", "wave", "dbType",
                                   "secrets", "apps", "frontend"})
-RENDERED_FRONTEND_KEYS = frozenset({"host", "tls", "branding"})
+RENDERED_FRONTEND_KEYS = frozenset({"tag", "host", "tls", "branding"})
 RENDERED_BRANDING_KEYS = frozenset({"organisationName", "themeClassname",
                                     "jumbotronImageUrl", "faviconUrl"})
 RENDERED_TLS_KEYS = frozenset({"secretName", "issuer"})
@@ -199,6 +200,7 @@ def from_declaration(doc):
         "frontend_jumbotron": str(branding.get("jumbotronImageUrl") or ""),
         "frontend_favicon": str(branding.get("faviconUrl") or ""),
         "frontend_tls_issuer": str(tls.get("issuer") or DEFAULT_TLS_ISSUER),
+        "frontend_tag": str(frontend.get("tag") or ""),
     }
 
 
@@ -305,8 +307,15 @@ def render(fields):
              "  apps:", "    enabled:"]
     lines += [f"      - {a}" for a in apps]
 
-    if host or org or extras:
+    # Optionele image-pin voor de frontend (appset -> pwa.image.tag). Komt in de
+    # vloot voor als `latest`, `dev` of een vaste versie; zonder waarde volgt de
+    # frontend de platformstandaard.
+    tag = (fields.get("frontend_tag") or "").strip()
+
+    if host or org or extras or tag:
         lines.append("  frontend:")
+        if tag:
+            lines.append(f"    tag: {_q(tag)}")
         if host:
             lines.append(f"    host: {host}")
         if is_custom_frontend_host(host):

@@ -498,12 +498,36 @@ tenant:
       themeClassname: "almere-theme"
 """
 
-_HAND_EDITED_FILE = _PORTAL_FILE + "    tag: dev\n"
+# Vrije env-vars op de frontend: iets wat het formulier niet modelleert en ook
+# niet zou moeten modelleren. (`tag` was hier eerder het voorbeeld, maar dat
+# veld kent de portal inmiddels wél.)
+_HAND_EDITED_FILE = _PORTAL_FILE + '    env:\n      EXTRA: "1"\n'
 
 
 def test_declaration_reports_absent_tenant(client):
     body = client.get("/tenant/almere-accept/declaration").get_json()
     assert body["exists"] is False and body["editable"] is False
+
+
+def test_declaration_on_a_bare_tenant_has_nothing_to_show(client, monkeypatch):
+    """canary-accept draagt alleen naam/omgeving/wave/db/apps. Bewerkbaar, maar
+    er valt niets in te vullen — de UI moet dat zeggen in plaats van beloven dat
+    'de huidige waarden hieronder staan'."""
+    _declared(monkeypatch, """---
+tenant:
+  name: canary-accept
+  environment: accept
+  wave: "0"
+  dbType: postgres
+  apps:
+    enabled:
+      - opencatalogi
+""")
+    body = client.get("/tenant/canary-accept/declaration").get_json()
+    assert body["exists"] is True and body["editable"] is True
+    v = body["fields"]
+    assert all(v[k] == "" for k in ("frontend_org", "frontend_host",
+                                    "frontend_theme", "frontend_tag"))
 
 
 def test_declaration_returns_the_declared_values(client, monkeypatch):
@@ -518,7 +542,7 @@ def test_declaration_marks_a_hand_edited_file_uneditable(client, monkeypatch):
     _declared(monkeypatch, _HAND_EDITED_FILE)
     body = client.get("/tenant/almere-accept/declaration").get_json()
     assert body["exists"] is True and body["editable"] is False
-    assert body["unknown"] == ["tenant.frontend.tag"]
+    assert body["unknown"] == ["tenant.frontend.env"]
 
 
 def test_declaration_rejects_a_bad_name(client):
@@ -567,7 +591,7 @@ def test_hand_edited_tenant_is_refused(client, monkeypatch):
 
     resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
     assert resp.status_code == 409
-    assert "tenant.frontend.tag" in resp.get_json()["errors"][0]
+    assert "tenant.frontend.env" in resp.get_json()["errors"][0]
 
 
 def test_unreadable_git_refuses_rather_than_guessing(client, monkeypatch):

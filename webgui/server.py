@@ -207,6 +207,7 @@ def tenant_create():
         jumbotron=form.get("frontend_jumbotron", ""),
         favicon=form.get("frontend_favicon", ""),
         tls_issuer=form.get("frontend_tls_issuer", ""),
+        tag=form.get("frontend_tag", ""),
     )
     # defense-in-depth: the derived fields must still pass the full validator
     errors = tenants.validate(fields)

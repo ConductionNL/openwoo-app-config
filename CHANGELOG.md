@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (frontend-versie bewerkbaar + eerlijkere melding)
+- `frontend.tag` toegevoegd aan wat het formulier modelleert (image-pin voor de
+  frontend, in de vloot `latest` 15×, `dev` 8×, één vaste versie). Daarmee gaat
+  het aantal tenants dat de portal mag bewerken van **40 naar 59** van de 78.
+  De resterende 19 struikelen over structurele velden — `hostname`,
+  `hostnameOverride`, `namespace`, `features`, `resources` — en die horen ook
+  handwerk te blijven.
+- **Melding gecorrigeerd.** Bij een bestaande omgeving stond er "De huidige
+  waarden staan hieronder ingevuld", ook als het tenantbestand alleen naam,
+  omgeving, database en apps bevat. `tenant-canary-accept.yaml` is precies dat:
+  de portal las hem goed, vulde lege velden in, en de tekst beloofde iets wat
+  er niet was. Nu benoemt de melding welke waarden er daadwerkelijk stonden, of
+  zegt expliciet dat er nog geen huisstijl of eigen host is en dat wat je
+  invult wordt toegevoegd.
+- Het "Geavanceerd"-blok klapt alleen open als er iets in te zien valt.
+
 ### Toegevoegd — 2026-08-07 (`scripts/cleanup-tenant.sh`)
 - Ruimt een wegwerptenant volledig op. Het tenantbestand uit git halen laat het
   meeste staan: de ApplicationSet zet `preserveResourcesOnDeletion: true`, dus
