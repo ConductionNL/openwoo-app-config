@@ -65,4 +65,4 @@ images:
     #        LET OP: de ghcr-package moet PUBLIC staan, anders heeft deze
     #        namespace alsnog een pull-secret nodig.
     newName: ghcr.io/conductionnl/openwoo-provisioner
-    newTag: "sha-78ac6f4bf819"
+    newTag: "sha-2266e42c6a5d"
