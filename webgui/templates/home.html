@@ -53,6 +53,11 @@
       <p>Laad de WOO-basisconfiguratie (register, schema's, bronnen) in een bestaande omgeving.</p>
       <div class="go">Inrichten →</div>
     </a>
+    <a class="card" href="/branding">
+      <h2>Branding</h2>
+      <p>Pas aan wat de website toont: naam, thema, jumbotron, favicon, eigen host en certificaat.</p>
+      <div class="go">Aanpassen →</div>
+    </a>
     <a class="card" href="/tenant/batch">
       <h2>Meerdere tegelijk</h2>
       <p>Maak in één keer meerdere omgevingen aan — één organisatie per regel.</p>
@@ -124,7 +129,7 @@
                 ? `<span class="muted" title="een wachtwoordlink wordt één keer per omgeving gemaakt">wachtwoord gedeeld</span> &middot; `
                 : `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoord delen</a> &middot; `;
             return `<tr><td>${esc(t.tenant)}</td><td>${badge(c,l)}</td>`+
-                   `<td>${reveal}<a href="/tenant/${encodeURIComponent(t.tenant)}/edit">aanpassen</a> &middot; `+
+                   `<td>${reveal}<a href="/tenant/${encodeURIComponent(t.tenant)}/edit">branding</a> &middot; `+
                    `<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
         : '<tr><td colspan="3" class="muted">nog geen omgevingen</td></tr>';
       document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';

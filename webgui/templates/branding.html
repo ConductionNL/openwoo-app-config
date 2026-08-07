@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<!-- Kiezen wélke omgeving je gaat branden. De omgevingen komen uit
+     /dashboard.json, dezelfde bron als de tabel op de landingspagina. -->
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Branding</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.3rem; }
+    .hint { color: #666; font-size: .85rem; }
+    input[type=text] { width: 100%; padding: .5rem; box-sizing: border-box; margin: 1rem 0 .5rem; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li a { display: block; padding: .55rem .7rem; border-bottom: 1px solid #eee;
+           text-decoration: none; color: inherit; }
+    li a:hover { background: #f4f6f8; }
+    .muted { color: #999; }
+  </style>
+</head>
+<body>
+  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Uitloggen</a></p>
+  <h1>Branding</h1>
+  <p class="hint">Kies de omgeving waarvan je de weergave wilt aanpassen: naam,
+     thema, jumbotron, favicon, eigen host en certificaat.</p>
+
+  <input type="text" id="q" placeholder="filter op naam…" autofocus>
+  <ul id="list"><li class="muted">laden…</li></ul>
+
+  <script>
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    let all = [];
+    function render() {
+      const q = document.getElementById('q').value.trim().toLowerCase();
+      const hits = all.filter(t => t.toLowerCase().includes(q));
+      document.getElementById('list').innerHTML = hits.length
+        ? hits.map(t => `<li><a href="/tenant/${encodeURIComponent(t)}/edit">${esc(t)}</a></li>`).join('')
+        : '<li class="muted">geen omgeving gevonden</li>';
+    }
+    document.getElementById('q').addEventListener('input', render);
+    (async () => {
+      try {
+        const d = await (await fetch('/dashboard.json')).json();
+        all = (d.tenants || []).map(t => t.tenant).sort();
+      } catch (e) { all = []; }
+      render();
+    })();
+  </script>
+</body>
+</html>

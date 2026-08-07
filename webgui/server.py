@@ -188,9 +188,16 @@ def tenant_form():
     return render_template("tenant.html")
 
 
+@app.get("/branding")
+def branding_picker():
+    """Kies eerst een omgeving; het brandingscherm zelf zit per tenant."""
+    return render_template("branding.html")
+
+
 @app.get("/tenant/<name>/edit")
 def tenant_edit_form(name):
-    """Bewerken van een bestaande omgeving. Weigert wat de portal niet beheert."""
+    """Branding van een bestaande omgeving: wat de frontend toont, plus adres en
+    certificaat. Weigert wat de portal niet beheert."""
     if not _TENANT_RE.fullmatch(name):
         return Response("ongeldige naam\n", status=400, mimetype="text/plain")
     try:

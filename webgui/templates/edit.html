@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: EUPL-1.2 -->
-<!-- Bewerken van een BESTAANDE omgeving. Bewust een eigen scherm: dit onder de
-     kop "Nieuwe WOO-omgeving" doen was verwarrend — één scherm, één taak. -->
+<!-- Branding van een bestaande omgeving: alles wat de FRONTEND toont. Bewust
+     een eigen scherm; dit onder "Nieuwe WOO-omgeving" doen was verwarrend, en
+     het is ook een ander ding dan het wachtwoord — dat hoort bij Nextcloud. -->
 <html lang="nl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ tenant }} aanpassen</title>
+  <title>Branding — {{ tenant }}</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
     h1 { font-size: 1.3rem; }
@@ -24,7 +25,7 @@
 </head>
 <body>
   <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Uitloggen</a></p>
-  <h1>{{ tenant }} aanpassen</h1>
+  <h1>Branding van {{ tenant }}</h1>
 
   {% if not declared.exists %}
     <div class="warn">
@@ -68,15 +69,6 @@
         <select name="frontend_tls_issuer">
           <option value="none" {% if declared.fields.frontend_tls_issuer == 'none' %}selected{% endif %}>de organisatie levert zelf een certificaat</option>
           <option value="letsencrypt-prod" {% if declared.fields.frontend_tls_issuer != 'none' %}selected{% endif %}>Let's Encrypt automatisch aanvragen</option>
-        </select>
-      </fieldset>
-
-      <fieldset>
-        <legend>Database</legend>
-        <select name="dbType">
-          <option value="postgres" {% if declared.fields.dbType == 'postgres' %}selected{% endif %}>postgres</option>
-          <option value="mariadb" {% if declared.fields.dbType == 'mariadb' %}selected{% endif %}>mariadb (legacy)</option>
-          <option value="external" {% if declared.fields.dbType == 'external' %}selected{% endif %}>extern</option>
         </select>
       </fieldset>
 

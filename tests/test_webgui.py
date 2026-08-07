@@ -611,7 +611,7 @@ def test_edit_route_updates_the_file(client, monkeypatch):
 def test_edit_page_renders_current_values(client, monkeypatch):
     _declared(monkeypatch, _PORTAL_FILE)
     body = client.get("/tenant/almere-accept/edit").get_data(as_text=True)
-    assert "almere-accept aanpassen" in body
+    assert "Branding van almere-accept" in body
     assert 'value="almere-theme"' in body          # huidige waarde ingevuld
     assert 'name="cert"' in body and 'name="key"' in body   # certificaat-upload
 
@@ -724,3 +724,10 @@ def test_reveal_is_rate_limited(client, reveal_on, monkeypatch):
     codes = [client.get("/reveal/nietbestaand").status_code for _ in range(5)]
     assert codes[:3] == [404, 404, 404]       # binnen budget: normaal antwoord
     assert codes[-1] == 429                   # daarna afgeknepen
+
+
+def test_branding_picker_is_reachable(client):
+    body = client.get("/").get_data(as_text=True)
+    assert 'href="/branding"' in body
+    page = client.get("/branding").get_data(as_text=True)
+    assert "Branding" in page and "/edit" in page
