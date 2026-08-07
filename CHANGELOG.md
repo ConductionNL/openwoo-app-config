@@ -4,6 +4,56 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (CI-gate op PR's)
+- `.github/workflows/ci.yml`: draait op elke PR en elke push naar `main`.
+  Tot nu toe was de enige poort op een GitHub-PR de lokale pre-commit-hooks van
+  de operator — dat werkt tot de eerste bijdrager die `pre-commit install` niet
+  heeft gedraaid.
+- De workflow **herimplementeert de checks niet**, maar draait dezelfde
+  `.pre-commit-config.yaml`. Een tweede lijst met checks is een tweede lijst die
+  gaat afwijken: `.woodpecker.yml` bevat letterlijk de belofte "Mirrors the
+  Makefile targets — keep them in sync", en precies dat houdt niemand vol.
+  Eén config, twee plekken die hem draaien.
+- `--hook-stage pre-push` is nodig: de `verify`-hook (lint + tests +
+  doc-assertions) staat als pre-push gedeclareerd en draait zonder die vlag
+  stilletjes niet — een groene CI zou dan niets betekenen.
+- **Skip-guard.** Losse stap die faalt zodra pytest ook maar één test overslaat.
+  Zonder Flask slaan `test_webgui.py` en `test_assistant_routes.py` zichzelf
+  over via `importorskip`; zo hebben 18 routetests hier wekenlang niet
+  gedraaid terwijl de uitvoer groen was. De guard maakt van dat stille geval
+  een harde fout met een naam eraan.
+- `.woodpecker.yml` blijft voorlopig staan. Die is van vóór de migratie naar
+  GitHub en vuurt alleen nog als iemand naar de `codeberg`-remote pusht; hij
+  ziet de PR's hier niet. Verwijderen is een aparte afweging.
+
+### Toegevoegd — 2026-08-07 (certificaat voor een eigen domein — sectie 3)
+- `webgui/tenants.py`: bij een frontend-host buiten `openwoo.app` rendert het
+  formulier nu een `frontend.tls`-blok. De secretnaam wordt afgeleid van de
+  host (punten worden streepjes, `-tls` erachter) — dezelfde conventie die de
+  fleet al gebruikt, geen nieuwe. Op `*.openwoo.app` blijft het blok wég: daar
+  dekt het wildcard-certificaat het al, en een eigen blok zou de Ingress naar
+  een secret wijzen dat niemand heeft aangemaakt.
+- **Standaard `issuer: none`.** De faalmodi zijn niet symmetrisch: een ontbrekend
+  certificaat is luid (de browser klaagt, iemand lost het op), een verkeerd
+  uitgegeven certificaat is stil (Let's Encrypt overschrijft een betaald cert en
+  niemand merkt het tot de klant belt). Dat is precies de bug waarvoor in
+  Nextcloud-base de branch `fix/klantcertificaten-issuer-none` bestaat. Beide
+  waarden komen live voor, dus het formulier biedt de keuze; alleen de standaard
+  is stellig.
+- `validate()` weigert een onbekende issuer — een typefout zou anders een
+  cert-manager-annotatie worden die niemand oplost.
+- `docs/custom-domain-cert.md` (gelinkt vanuit `docs/index.md`): waarom het
+  certificaat niet in git zit, de merge-volgorde, `certswap` mét
+  `kubectl create secret tls` als volwaardig alternatief, verifiëren met
+  `openssl s_client`, en het vastleggen van vervaldatum en eigenaar.
+- **Bevinding, niet opgelost:** `CertificateExpiringSoon` dekt deze certificaten
+  níét. Die alert draait op `certmanager_certificate_expiration_timestamp_seconds`,
+  een metric die cert-manager alleen produceert bij een `Certificate`-object — en
+  `issuer: none` maakt er geen. Een handgezaaid certificaat verloopt dus zonder
+  waarschuwing. Staat in de runbook; de fix hoort in de monitoring-repo.
+- 11 nieuwe tests, waaronder een lookalike-domein (`evilopenwoo.app` telt níét
+  als platformdomein).
+
 ### Gewijzigd — 2026-08-07 (image bouwt naar ghcr.io, via een workflow)
 - `.github/workflows/image.yml` (eerste CI in deze repo): bouwt en pusht naar
   `ghcr.io/conductionnl/openwoo-provisioner` op een `v*`-tag of handmatige

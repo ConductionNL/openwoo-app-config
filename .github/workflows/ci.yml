@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: EUPL-1.2
+#
+# Server-side gate on every PR and every push to main.
+#
+# Until now the only gate on a GitHub PR was the operator's local pre-commit
+# hooks. That works right up to the first contributor who has not run
+# `pre-commit install`. `.woodpecker.yml` still exists but is Codeberg CI from
+# before the GitHub migration: it only fires if someone still pushes to the
+# `codeberg` remote, so it does not see pull requests here.
+#
+# This workflow does NOT re-implement the checks. It runs the same
+# `.pre-commit-config.yaml` the operator runs, because a second list of checks
+# is a second list to drift: `.woodpecker.yml` says "Mirrors the Makefile
+# targets — keep them in sync", which is exactly the promise nobody keeps.
+# One config, two places that run it.
+#
+# `--hook-stage pre-push` is required: the `verify` hook (lint + unit tests +
+# doc-assertions) is declared pre-push, and without the flag it silently does
+# not run — which would make a green CI meaningless.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks and the docs hooks read the working tree, but a full
+          # history keeps `git log`-based checks honest if any get added.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install what the suite needs
+        # Flask is a REAL test dependency, not an optional extra: without it
+        # tests/test_webgui.py and tests/test_assistant_routes.py skip
+        # themselves via importorskip. That is how 18 route tests silently did
+        # not run locally for weeks. The rest of webgui/requirements.txt
+        # (claude-agent-sdk, gunicorn) is not needed to run the tests.
+        #
+        # uv: techbook's `docs-contract` hook shells out to it ("Python tooling
+        # via uv, never pip directly" — techbook/openspec/project.md). Without
+        # it that hook fails with "Executable `uv` not found". Installed from
+        # PyPI rather than via a setup action, to keep this workflow's
+        # third-party surface to the two GitHub-owned actions above.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest "Flask>=3.0,<4.0" pre-commit uv
+
+      - name: Tests must not silently skip
+        # The guard that would have caught the above. If a dependency goes
+        # missing, pytest reports success with a skip count and a green tick —
+        # this turns that into a failure with a name attached.
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/ -rs | tee /tmp/pytest.out
+          if grep -qE '[0-9]+ skipped' /tmp/pytest.out; then
+            echo "::error::tests were skipped — a dependency is missing, so this run proves less than it looks like" >&2
+            exit 1
+          fi
+
+      - name: Run the same hooks the operator runs
+        run: pre-commit run --all-files --show-diff-on-failure --hook-stage pre-push

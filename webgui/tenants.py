@@ -21,6 +21,24 @@ ENVS = ("accept", "prod")
 DB_TYPES = ("mariadb", "postgres", "external")
 KNOWN_APPS = ("opencatalogi", "openconnector", "openregister")
 
+# Frontend hosts on the platform domain are covered by the shared wildcard cert
+# (`wildcard-openwoo-tls`, the ApplicationSet's default). Only a host OUTSIDE it
+# needs a per-tenant `frontend.tls` block — emitting one for a platform host
+# would replace a working wildcard with a secret nobody created.
+PLATFORM_FRONTEND_DOMAIN = "openwoo.app"
+
+# How a custom-domain frontend gets its certificate.
+#   none            — bring your own: no cert-manager annotation, no Certificate
+#                     object, so nothing can overwrite a customer-supplied cert.
+#                     An operator seeds the Secret out of band (docs/custom-domain-cert.md).
+#   letsencrypt-prod — cert-manager issues per host over HTTP-01.
+# The ApplicationSet treats "none" and "absent" identically (it only writes the
+# annotation `if and $tlsIssuer (ne $tlsIssuer "none")`); we still write "none"
+# explicitly, because "nobody has decided yet" and "we deliberately bring our
+# own" must not look the same in a tenant file.
+TLS_ISSUERS = ("none", "letsencrypt-prod")
+DEFAULT_TLS_ISSUER = "none"
+
 # `<org>-<suffix>` with org a valid k8s-ish name segment. Matches the
 # validate-values.sh convention (suffixes accept|test|demo|prod; test/demo -> accept).
 _NAME_RE = re.compile(r"^([a-z][a-z0-9-]*[a-z0-9]|[a-z])-(accept|test|demo|prod)$")
@@ -34,6 +52,31 @@ def filename(name):
 
 _ORG_RE = re.compile(r"^([a-z][a-z0-9-]*[a-z0-9]|[a-z])$")
 _RESERVED_SUFFIX = re.compile(r"-(accept|test|demo|prod)$")
+
+
+def is_custom_frontend_host(host):
+    """True when `host` needs its own certificate.
+
+    A blank host means the platform derives `<org>.<env>.openwoo.app`, which the
+    wildcard already covers — so blank is never custom.
+    """
+    host = (host or "").strip().lower()
+    if not host:
+        return False
+    return not (host == PLATFORM_FRONTEND_DOMAIN
+                or host.endswith("." + PLATFORM_FRONTEND_DOMAIN))
+
+
+def tls_secret_name(host):
+    """Derive the TLS Secret name for a custom frontend host.
+
+    Follows the convention already in the fleet rather than inventing one:
+    `acceptatie-open.oude-ijsselstreek.nl` -> `acceptatie-open-oude-ijsselstreek-nl-tls`
+    (see Nextcloud-base tenant-oudeijsselstreek-accept.yaml). Dots become
+    dashes; the name is a DNS-1123 label per Kubernetes' Secret naming rules.
+    """
+    host = (host or "").strip().lower().rstrip(".")
+    return re.sub(r"[^a-z0-9-]", "-", host).strip("-") + "-tls"
 
 
 def org_display(org):
@@ -61,7 +104,7 @@ def validate_org(org, environment):
 
 
 def from_org(org, environment, dbType=None, display=None, host=None,
-             theme=None, jumbotron=None, favicon=None):
+             theme=None, jumbotron=None, favicon=None, tls_issuer=None):
     """Build the full fields dict from the minimal input. Everything not given is
     derived: name=`<org>-<env>`, all three apps, branding 'Gemeente <Org>',
     db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu).
@@ -82,6 +125,7 @@ def from_org(org, environment, dbType=None, display=None, host=None,
         "frontend_theme": (theme or "").strip(),
         "frontend_jumbotron": (jumbotron or "").strip(),
         "frontend_favicon": (favicon or "").strip(),
+        "frontend_tls_issuer": (tls_issuer or "").strip() or DEFAULT_TLS_ISSUER,
     }
 
 
@@ -119,6 +163,12 @@ def validate(fields):
         if unknown:
             errors.append(f"unknown app(s): {', '.join(unknown)} "
                           f"(known: {', '.join(KNOWN_APPS)})")
+
+    # Only meaningful for a custom host, but reject a bad value regardless: a
+    # typo'd issuer silently becomes a cert-manager annotation nobody resolves.
+    issuer = (fields.get("frontend_tls_issuer") or "").strip()
+    if issuer and issuer not in TLS_ISSUERS:
+        errors.append(f"frontend.tls.issuer must be one of {TLS_ISSUERS}")
     return errors
 
 
@@ -148,7 +198,14 @@ def render(fields):
       env (`^(GATSBY_|NL_DESIGN_)`) so devs can edit it live, which also means a
       value added to an *existing* tenant file does not reach a running
       frontend. A new tenant's frontend is created fresh, so what is declared
-      here is what it starts with."""
+      here is what it starts with.
+
+    TLS note. A `frontend.tls` block is emitted only for a host outside the
+    platform domain; anything under `*.openwoo.app` is already covered by the
+    shared wildcard, and overriding it would point the Ingress at a Secret
+    nobody created. The Secret name is derived from the host, matching what the
+    fleet already does — the certificate BYTES never travel through git or this
+    portal, only the name does (see docs/custom-domain-cert.md)."""
     name = fields["name"].strip()
     env = fields["environment"].strip()
     wave = str(fields.get("wave") or "1").strip()
@@ -179,6 +236,11 @@ def render(fields):
         lines.append("  frontend:")
         if host:
             lines.append(f"    host: {host}")
+        if is_custom_frontend_host(host):
+            issuer = (fields.get("frontend_tls_issuer") or "").strip() or DEFAULT_TLS_ISSUER
+            lines += ["    tls:",
+                      f"      secretName: {tls_secret_name(host)}",
+                      f"      issuer: {issuer}"]
         if org or extras:
             lines.append("    branding:")
             if org:

@@ -115,6 +115,61 @@ def test_from_org_passes_branding_extras_through():
     assert f["frontend_favicon"] == "https://ex.org/f.ico"
 
 
+def test_custom_frontend_host_detection():
+    assert not tenants.is_custom_frontend_host("")            # derived -> wildcard
+    assert not tenants.is_custom_frontend_host("almere.accept.openwoo.app")
+    assert not tenants.is_custom_frontend_host("openwoo.app")
+    assert tenants.is_custom_frontend_host("open.almere.nl")
+    # a lookalike suffix must NOT count as the platform domain
+    assert tenants.is_custom_frontend_host("evilopenwoo.app")
+
+
+def test_tls_secret_name_follows_the_fleet_convention():
+    # exactly the shape of tenant-oudeijsselstreek-accept.yaml
+    assert tenants.tls_secret_name("acceptatie-open.oude-ijsselstreek.nl") == \
+        "acceptatie-open-oude-ijsselstreek-nl-tls"
+    assert tenants.tls_secret_name("open.almere.nl") == "open-almere-nl-tls"
+    assert tenants.tls_secret_name("OPEN.Almere.NL") == "open-almere-nl-tls"
+    assert tenants.tls_secret_name("open.almere.nl.") == "open-almere-nl-tls"
+
+
+def test_render_emits_tls_for_a_custom_host():
+    out = tenants.render(_base(frontend_host="open.almere.nl"))
+    assert "    tls:" in out
+    assert "      secretName: open-almere-nl-tls" in out
+    assert "      issuer: none" in out          # BYO is the default
+
+
+def test_render_tls_issuer_can_be_letsencrypt():
+    out = tenants.render(_base(frontend_host="open.almere.nl",
+                               frontend_tls_issuer="letsencrypt-prod"))
+    assert "      issuer: letsencrypt-prod" in out
+
+
+def test_render_omits_tls_on_the_platform_domain():
+    """The wildcard already covers it; a per-tenant block would point the
+    Ingress at a Secret nobody created."""
+    out = tenants.render(_base(frontend_host="almere.accept.openwoo.app"))
+    assert "tls:" not in out
+    assert "secretName" not in out
+
+
+def test_render_omits_tls_without_a_host():
+    assert "tls:" not in tenants.render(_base(frontend_org="Gemeente Almere"))
+
+
+def test_from_org_defaults_the_issuer_to_byo():
+    assert tenants.from_org("almere", "accept")["frontend_tls_issuer"] == "none"
+    assert tenants.from_org("almere", "accept",
+                            tls_issuer="letsencrypt-prod")["frontend_tls_issuer"] == \
+        "letsencrypt-prod"
+
+
+def test_unknown_tls_issuer_rejected():
+    assert tenants.validate(_base(frontend_tls_issuer="letsencrypt-staging"))
+    assert not tenants.validate(_base(frontend_tls_issuer="none"))
+
+
 def test_render_quotes_escape():
     out = tenants.render(_base(frontend_org='He said "hi"'))
     assert r'\"hi\"' in out
