@@ -25,10 +25,17 @@ def store(monkeypatch):
     return state
 
 
+def _live(store):
+    """Tickets zonder de permanente merktekens."""
+    return {d: e for d, e in store["tickets"].items() if not d.startswith("minted-")}
+
+
 def test_mint_returns_a_token_and_stores_only_its_digest(store):
     token = burnstore.mint("almere-accept", "op@conduction.nl")
     assert len(token) > 30
-    assert list(store["tickets"]) == [burnstore.digest(token)]
+    assert list(_live(store)) == [burnstore.digest(token)]
+    # naast het ticket staat er een permanent merkteken voor deze tenant
+    assert "minted-almere-accept" in store["tickets"]
     # the raw token must be nowhere in the stored state
     assert token not in str(store["tickets"])
 
@@ -44,7 +51,7 @@ def test_claim_returns_the_entry_once(store):
     entry = burnstore.claim(token)
     assert entry["tenant"] == "almere-accept"
     assert burnstore.claim(token) is None          # burned
-    assert store["tickets"] == {}
+    assert _live(store) == {}                      # merkteken blijft, ticket weg
 
 
 def test_claim_of_an_unknown_token_is_none(store):
@@ -54,14 +61,14 @@ def test_claim_of_an_unknown_token_is_none(store):
 def test_expired_ticket_is_not_claimable(store):
     token = burnstore.mint("almere-accept", "op@conduction.nl", ttl=10, now=1000)
     assert burnstore.claim(token, now=1011) is None
-    assert store["tickets"] == {}                  # and it is swept
+    assert _live(store) == {}                      # and it is swept
 
 
 def test_claim_burns_before_anything_else_can_fail(store):
     """Even a ticket whose tenant no longer resolves must be gone afterwards."""
     token = burnstore.mint("weg-accept", "op@conduction.nl", ttl=10, now=1000)
     burnstore.claim(token, now=1001)
-    assert store["tickets"] == {}
+    assert _live(store) == {}
 
 
 def test_mint_prunes_expired_tickets(store):
@@ -79,7 +86,7 @@ def test_mint_refuses_when_the_store_is_full(store, monkeypatch):
 
 
 def test_tokens_are_unique(store):
-    tokens = {burnstore.mint("a-accept", "op@conduction.nl") for _ in range(20)}
+    tokens = {burnstore.mint(f"t{i}-accept", "op@conduction.nl") for i in range(20)}
     assert len(tokens) == 20
 
 
@@ -131,3 +138,37 @@ def test_read_admin_password_missing_key_is_none(monkeypatch):
     monkeypatch.setattr(burnstore, "_request",
                         lambda *a, **kw: {"data": {"db-password": "c2VjcmV0"}})
     assert burnstore.read_admin_password("a-accept") is None
+
+
+def test_one_link_per_tenant_ever(store):
+    """Eén overdracht per omgeving. Vóór deze grens maakte elke klik een nieuwe
+    geldige link — vier stuks in een minuut tijdens de dry-run van 2026-08-07,
+    waarvan twee voor een productie-tenant."""
+    burnstore.mint("almere-accept", "op@conduction.nl")
+    with pytest.raises(burnstore.AlreadyMintedError) as exc:
+        burnstore.mint("almere-accept", "iemand@conduction.nl")
+    assert exc.value.record["requested_by"] == "op@conduction.nl"
+
+
+def test_claiming_does_not_reopen_the_door(store):
+    """Ook ná gebruik blijft het bij één keer: het merkteken verloopt niet."""
+    token = burnstore.mint("almere-accept", "op@conduction.nl")
+    assert burnstore.claim(token) is not None
+    with pytest.raises(burnstore.AlreadyMintedError):
+        burnstore.mint("almere-accept", "op@conduction.nl")
+
+
+def test_marker_survives_pruning(store):
+    burnstore.mint("almere-accept", "op@conduction.nl", ttl=10, now=1000)
+    burnstore.mint("bergen-accept", "op@conduction.nl", ttl=10, now=9999)
+    assert "minted-almere-accept" in store["tickets"]      # ticket weg, merkteken blijft
+    assert burnstore.minted_tenants() == ["almere-accept", "bergen-accept"]
+
+
+def test_markers_do_not_eat_the_ticket_cap(store, monkeypatch):
+    monkeypatch.setattr(burnstore, "MAX_TICKETS", 2)
+    burnstore.mint("a-accept", "op@conduction.nl")
+    burnstore.mint("b-accept", "op@conduction.nl")
+    # twee tickets + twee merktekens; de cap telt alleen de tickets
+    with pytest.raises(burnstore.BurnstoreError, match="full"):
+        burnstore.mint("c-accept", "op@conduction.nl")

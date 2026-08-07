@@ -53,6 +53,18 @@ class BurnstoreError(Exception):
     """The ticket store could not be read or written."""
 
 
+class AlreadyMintedError(Exception):
+    """Voor deze tenant is al eens een link gemaakt; dat gebeurt maar één keer.
+
+    Draagt het eerdere record (wie, wanneer) zodat de route dat kan tonen —
+    "al gedeeld" is een nuttiger antwoord dan een kale weigering.
+    """
+
+    def __init__(self, record):
+        self.record = record or {}
+        super().__init__("er is voor deze omgeving al een wachtwoordlink gemaakt")
+
+
 def _token_header():
     with open(f"{_SA_DIR}/token", encoding="utf-8") as fh:
         return fh.read().strip()
@@ -151,8 +163,38 @@ def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# Eén onthulling per tenant, ooit. Het initiële adminwachtwoord is een
+# overdracht, geen opzoekfunctie: na de eerste login hoort de ontvanger het te
+# wijzigen, en elke volgende link deelt een wachtwoord dat er niet meer toe doet
+# of juist nog wél — allebei redenen om het niet nog eens rond te sturen.
+#
+# Vóór deze grens maakte elke klik een nieuwe geldige link; vier stuks in een
+# minuut tijdens de dry-run van 2026-08-07, waarvan twee voor een productie-
+# tenant. De link zelf was eenmalig, de knop niet.
+#
+# Sleutel in dezelfde ConfigMap, met een prefix zodat hij niet met een ticket
+# te verwarren is. Kwijtgeraakte link? Dan leest een operator het secret met
+# kubectl — dat is bewust omslachtiger dan opnieuw delen.
+_MINTED_PREFIX = "minted-"
+
+
+def minted_record(tenant):
+    """Wanneer en door wie er voor `tenant` al een link is gemaakt, of None."""
+    tickets, _version = _load()
+    return tickets.get(_MINTED_PREFIX + tenant)
+
+
+def minted_tenants():
+    """Namen van omgevingen die hun wachtwoordlink al gehad hebben."""
+    tickets, _version = _load()
+    return sorted(d[len(_MINTED_PREFIX):] for d in tickets if d.startswith(_MINTED_PREFIX))
+
+
 def _prune(tickets, now):
-    return {d: e for d, e in tickets.items() if float(e.get("expires_at", 0)) > now}
+    """Verlopen tickets eruit. Merktekens (minted-<tenant>) blijven: die hebben
+    geen expires_at en horen niet te verlopen — ze zeggen "dit is ooit gedeeld"."""
+    return {d: e for d, e in tickets.items()
+            if d.startswith(_MINTED_PREFIX) or float(e.get("expires_at", 0)) > now}
 
 
 def mint(tenant, requested_by, ttl=None, now=None):
@@ -165,15 +207,28 @@ def mint(tenant, requested_by, ttl=None, now=None):
     now = time.time() if now is None else now
     token = secrets.token_urlsafe(TOKEN_BYTES)
     tickets, version = _load()
+    # Eén keer per tenant. Het merkteken verloopt niet mee met de tickets.
+    already = tickets.get(_MINTED_PREFIX + tenant)
+    if already:
+        raise AlreadyMintedError(already)
     tickets = _prune(tickets, now)
-    if len(tickets) >= MAX_TICKETS:
+    # Alleen echte tickets tellen: merktekens zijn permanent en zouden de cap
+    # anders langzaam volvreten tot niemand meer een link kan maken.
+    open_tickets = sum(1 for d in tickets if not d.startswith(_MINTED_PREFIX))
+    if open_tickets >= MAX_TICKETS:
         raise BurnstoreError(
-            f"ticket store full ({len(tickets)}/{MAX_TICKETS}); raise REVEAL_MAX_TICKETS "
+            f"ticket store full ({open_tickets}/{MAX_TICKETS}); raise REVEAL_MAX_TICKETS "
             f"or wait for tickets to expire")
     tickets[digest(token)] = {
         "tenant": tenant,
         "requested_by": requested_by,
         "expires_at": now + (TTL_SECONDS if ttl is None else ttl),
+    }
+    # Het merkteken heeft geen expires_at, dus _prune() raakt het niet.
+    tickets[_MINTED_PREFIX + tenant] = {
+        "tenant": tenant,
+        "requested_by": requested_by,
+        "minted_at": now,
     }
     _save(tickets, version)
     return token

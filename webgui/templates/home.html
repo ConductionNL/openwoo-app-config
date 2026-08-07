@@ -117,29 +117,27 @@
       const tb = document.getElementById('t-body');
       tb.innerHTML = (d.tenants && d.tenants.length)
         ? d.tenants.map(t => { const [c,l] = omgevingStatus(t);
-            const reveal = d.reveal_enabled
-              ? `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoord tonen</a> &middot; ` +
-                `<a href="#" data-reveal-copy="${esc(t.tenant)}" title="link om naar de product owner te sturen">link</a> &middot; `
-              : '';
+            // Eén actie, één keer. Twee knoppen die allebei onbeperkt nieuwe
+            // links maakten was precies het probleem.
+            const reveal = !d.reveal_enabled ? ''
+              : (d.minted || []).includes(t.tenant)
+                ? `<span class="muted" title="een wachtwoordlink wordt één keer per omgeving gemaakt">wachtwoord gedeeld</span> &middot; `
+                : `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoord delen</a> &middot; `;
             return `<tr><td>${esc(t.tenant)}</td><td>${badge(c,l)}</td>`+
-                   `<td>${reveal}<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
+                   `<td>${reveal}<a href="/tenant/${encodeURIComponent(t.tenant)}/edit">aanpassen</a> &middot; `+
+                   `<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
         : '<tr><td colspan="3" class="muted">nog geen omgevingen</td></tr>';
       document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';
 
       document.getElementById('dash-err').textContent = (d.errors && d.errors.length) ? ('⚠ ' + d.errors.join(' · ')) : '';
     }
 
-    // Eenmalige wachtwoordlink, twee wegen:
-    //   "wachtwoord tonen" — voor de operator zelf: mint, open direct in een
-    //      tabblad en verbrand hem meteen. Geen kopiëren, geen link die blijft
-    //      slingeren.
-    //   "link" — voor de product owner: toont de URL om te versturen. Die mag
-    //      niet hier geopend worden, want openen ís verbranden.
+    // Eén wachtwoordlink per omgeving, ooit. De link is klikbaar én
+    // kopieerbaar: zelf openen en doorsturen kan met dezelfde actie.
     //
-    // Elke klik mint een NIEUWE link. De vorige is dan al verbrand of verloopt
-    // vanzelf, maar minten op een productie-tenant is geen bijzaak — vandaar de
-    // bevestiging met de naam erin (een misklik op de verkeerde rij toonde
-    // tijdens de dry-run het wachtwoord van een levende gemeente).
+    // Bevestiging met de naam erin, want de knop staat ook op productie-
+    // omgevingen — tijdens de dry-run toonde een misklik op de verkeerde rij
+    // het wachtwoord van een levende gemeente.
     async function mint(tenant) {
       const r = await fetch(`/tenant/${encodeURIComponent(tenant)}/secret-link`, { method: 'POST' });
       const d = await r.json();
@@ -148,36 +146,31 @@
     }
 
     document.addEventListener('click', async (e) => {
-      const show = e.target.closest('[data-reveal]');
-      const copy = e.target.closest('[data-reveal-copy]');
-      const a = show || copy;
+      const a = e.target.closest('[data-reveal]');
       if (!a) return;
       e.preventDefault();
-      const tenant = a.getAttribute(show ? 'data-reveal' : 'data-reveal-copy');
-      if (!confirm(`Wachtwoord van ${tenant} onthullen?\n\n` +
-                   `Dit toont het beheerderswachtwoord van die omgeving. ` +
-                   `De link werkt daarna niet meer.`)) return;
+      const tenant = a.getAttribute('data-reveal');
+      if (!confirm(`Wachtwoordlink maken voor ${tenant}?\n\n` +
+                   `Dit kan één keer per omgeving. De link toont het ` +
+                   `beheerderswachtwoord één keer en verloopt daarna vanzelf.\n\n` +
+                   `Klik hem zelf om het wachtwoord te zien, of stuur hem door ` +
+                   `naar de product owner.`)) return;
 
-      // Het tabblad moet synchroon binnen de klik open: na een await weigert
-      // de popup-blokkering het.
-      const tab = show ? window.open('', '_blank') : null;
       a.textContent = 'bezig…';
       let url;
       try {
         url = await mint(tenant);
       } catch (err) {
-        if (tab) tab.close();
         a.textContent = 'mislukt';
         alert(err.message);
         return;
       }
-      if (show) {
-        tab.location = url;
-        a.replaceWith(document.createTextNode('getoond'));
-      } else {
-        a.outerHTML = `<input type="text" readonly value="${url}" style="width:22rem" ` +
-                      `onclick="this.select()" title="werkt één keer, verloopt vanzelf">`;
-      }
+      // Klikbaar én selecteerbaar: zelf openen kan, doorsturen ook. Eén ding
+      // dat beide doet, in plaats van twee knoppen die elk een link maken.
+      a.outerHTML =
+        `<a href="${url}" target="_blank" rel="noopener">wachtwoord openen</a> ` +
+        `<input type="text" readonly value="${url}" style="width:20rem" ` +
+        `onclick="this.select()" title="werkt één keer, verloopt vanzelf">`;
     });
     loadDash(); setInterval(loadDash, 15000);
   </script>

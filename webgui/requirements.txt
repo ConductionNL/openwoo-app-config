@@ -7,3 +7,8 @@ gunicorn>=22.0,<24.0
 # + de hub-contentlaag (docs_mcp, leest de handboek-importlijst via PyYAML).
 claude-agent-sdk>=0.1,<1.0
 PyYAML>=6.0,<7.0
+# Validatie van een geüpload TLS-paar vóórdat het het cluster in gaat: hoort de
+# sleutel bij het certificaat, dekt het de host, wanneer verloopt het. Zonder
+# die controle levert een verkeerde bundel een Ingress op die stilzwijgend het
+# verkeerde serveert. X.509 parsen met de stdlib is geen optie.
+cryptography>=42,<47

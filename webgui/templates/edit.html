@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<!-- Bewerken van een BESTAANDE omgeving. Bewust een eigen scherm: dit onder de
+     kop "Nieuwe WOO-omgeving" doen was verwarrend — één scherm, één taak. -->
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ tenant }} aanpassen</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.3rem; }
+    label { display: block; margin: .6rem 0 .15rem; font-size: .9rem; }
+    input[type=text], input[type=file], select { width: 100%; padding: .45rem; box-sizing: border-box; }
+    .hint { color: #666; font-size: .8rem; }
+    .warn { border-left: 4px solid #c40; background: #fff6f0; padding: .7rem .9rem; margin: 1rem 0; font-size: .9rem; }
+    .note { border-left: 4px solid #2a7; background: #f2fbf6; padding: .7rem .9rem; margin: 1rem 0; font-size: .9rem; }
+    button { margin-top: 1rem; padding: .6rem 1.2rem; font-size: 1rem; }
+    fieldset { border: 1px solid #ccc; margin: 1rem 0; }
+    #result { margin-top: 1rem; padding: 1rem; border-radius: 6px; display: none; }
+    #result.ok { background: #e7f6e7; border: 1px solid #8c8; }
+    #result.err { background: #fbeaea; border: 1px solid #d99; }
+  </style>
+</head>
+<body>
+  <p style="font-size:.85rem;margin:.5rem 0 1rem"><a href="/">← Home</a> &middot; <a href="/logout">Uitloggen</a></p>
+  <h1>{{ tenant }} aanpassen</h1>
+
+  {% if not declared.exists %}
+    <div class="warn">
+      Deze omgeving staat niet in de tenants-repo. Aanmaken doe je via
+      <a href="/tenant">Nieuwe omgeving</a>.
+    </div>
+  {% elif not declared.editable %}
+    <div class="warn">
+      Dit tenantbestand is met de hand aangepast en wordt niet door de portal
+      beheerd: <code>{{ declared.unknown | join('</code>, <code>') | safe }}</code>.<br>
+      <span class="hint">Opnieuw genereren zou die velden weggooien. Wijzig het
+      bestand rechtstreeks in Nextcloud-base.</span>
+    </div>
+  {% else %}
+    <div class="note">
+      Huisstijl (thema, naam, jumbotron, favicon) wordt op een <strong>draaiende</strong>
+      frontend niet toegepast — die env is ignore-diffed. Host, certificaat,
+      frontend-versie en apps gelden wél direct.
+    </div>
+
+    <form id="f">
+      <fieldset>
+        <legend>Huisstijl</legend>
+        <label>Weergavenaam organisatie</label>
+        <input type="text" name="frontend_org" value="{{ declared.fields.frontend_org }}">
+        <label>NL Design-thema <span class="hint">(leeg = conduction-theme)</span></label>
+        <input type="text" name="frontend_theme" value="{{ declared.fields.frontend_theme }}">
+        <label>Jumbotron-afbeelding</label>
+        <input type="text" name="frontend_jumbotron" value="{{ declared.fields.frontend_jumbotron }}">
+        <label>Favicon</label>
+        <input type="text" name="frontend_favicon" value="{{ declared.fields.frontend_favicon }}">
+        <label>Frontend-versie <span class="hint">(image-tag; leeg = platformstandaard)</span></label>
+        <input type="text" name="frontend_tag" value="{{ declared.fields.frontend_tag }}">
+      </fieldset>
+
+      <fieldset>
+        <legend>Adres en certificaat</legend>
+        <label>Eigen frontend-host <span class="hint">(leeg = afgeleid op openwoo.app)</span></label>
+        <input type="text" name="frontend_host" id="feHost" value="{{ declared.fields.frontend_host }}">
+        <label>Certificaat</label>
+        <select name="frontend_tls_issuer">
+          <option value="none" {% if declared.fields.frontend_tls_issuer == 'none' %}selected{% endif %}>de organisatie levert zelf een certificaat</option>
+          <option value="letsencrypt-prod" {% if declared.fields.frontend_tls_issuer != 'none' %}selected{% endif %}>Let's Encrypt automatisch aanvragen</option>
+        </select>
+      </fieldset>
+
+      <fieldset>
+        <legend>Database</legend>
+        <select name="dbType">
+          <option value="postgres" {% if declared.fields.dbType == 'postgres' %}selected{% endif %}>postgres</option>
+          <option value="mariadb" {% if declared.fields.dbType == 'mariadb' %}selected{% endif %}>mariadb (legacy)</option>
+          <option value="external" {% if declared.fields.dbType == 'external' %}selected{% endif %}>extern</option>
+        </select>
+      </fieldset>
+
+      <button type="submit">Wijziging indienen</button>
+    </form>
+
+    <hr style="margin:2rem 0">
+
+    <h2 style="font-size:1.05rem">Eigen certificaat plaatsen</h2>
+    <p class="hint">Voor een eigen host met <code>issuer: none</code>. Het paar wordt
+      gecontroleerd — hoort de sleutel bij het certificaat, dekt het de host, hoe lang
+      is het nog geldig — en pas daarna in het cluster gezet. Het gaat niet door git.</p>
+    <form id="cert" enctype="multipart/form-data">
+      <label>Certificaat <span class="hint">(PEM; leaf eerst, keten mag erbij)</span></label>
+      <input type="file" name="cert" accept=".pem,.crt,.cer" required>
+      <label>Privésleutel <span class="hint">(PEM, onversleuteld)</span></label>
+      <input type="file" name="key" accept=".pem,.key" required>
+      <button type="submit">Certificaat plaatsen</button>
+    </form>
+  {% endif %}
+
+  <div id="result"></div>
+
+  <script>
+    const result = document.getElementById('result');
+    function show(cls, html) { result.className = cls; result.style.display = 'block'; result.innerHTML = html; }
+
+    const f = document.getElementById('f');
+    if (f) f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      show('', 'bezig…');
+      const r = await fetch('/tenant/{{ tenant }}/edit', { method: 'POST', body: new FormData(f) });
+      const d = await r.json();
+      if (!r.ok) return show('err', (d.errors || ['onbekende fout']).join('<br>'));
+      show('ok', `Wijziging ingediend: <a href="${d.pr_url}" target="_blank" rel="noopener">PR #${d.pr_number}</a>. ` +
+                 `Na de merge rolt het platform hem uit.`);
+    });
+
+    const c = document.getElementById('cert');
+    if (c) c.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const host = document.getElementById('feHost').value.trim();
+      if (!host) return show('err', 'Vul eerst een eigen frontend-host in — zonder eigen host dekt het wildcard-certificaat het al.');
+      const fd = new FormData(c);
+      fd.append('host', host);
+      show('', 'controleren…');
+      const r = await fetch('/tenant/{{ tenant }}/certificate', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok) return show('err', (d.errors || ['onbekende fout']).join('<br>'));
+      show('ok', `Certificaat ${d.action === 'created' ? 'geplaatst' : 'vervangen'} als ` +
+                 `<code>${d.secret}</code>.<br>Geldig tot ${d.not_after} (${d.days_remaining} dagen), ` +
+                 `voor ${d.hosts.join(', ')}.<br>Uitgever: ${d.issuer}`);
+    });
+  </script>
+</body>
+</html>

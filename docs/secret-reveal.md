@@ -26,14 +26,30 @@ The portal replaces that with a link that works exactly once.
 4. Any second open — by anyone, including the same person — returns 404.
    So does an expired link. The two are deliberately indistinguishable.
 
-## Why it is safe to have an unauthenticated route
+## Wie de link mag openen
 
-`/reveal/<token>` is the only route that skips the operator gate, because
-its recipient has no Keycloak account. The 256-bit token is the credential.
-What keeps that honest:
+**Alleen een ingelogde Conduction-medewerker.** oauth2-proxy vraagt om een
+login met een adres uit `email_domains` voor élke route, ook `/reveal/`.
 
-- **Minting stays operator-gated.** No unauthenticated request can create
-  a token, so the only tokens that exist were deliberately handed out.
+Dat is een besluit van 2026-08-07 en het wijkt af van de oorspronkelijke
+opzet in de change: die ging uit van een product owner zonder account, met
+het token als enige poort. Die aanname is vervallen. Het token blijft
+eenmalig en kortlevend, maar het is nu een tweede slot achter de login in
+plaats van het enige slot.
+
+Praktisch gevolg: het wachtwoord bij een externe partij krijgen gaat via een
+kanaal buiten dit portaal. De link zelf werkt daar niet.
+
+De rest van deze paragraaf beschrijft waarom het token ook op zichzelf
+deugt — dat blijft gelden, en het is nu de tweede verdedigingslinie.
+
+## Waarom het token ook zonder die login zou houden
+
+Het token van 256 bits is op zichzelf al een credential. Wat dat eerlijk
+houdt:
+
+- **Minten is operator-gated.** Alleen een ingelogde operator kan een token
+  laten ontstaan, en dat kan één keer per omgeving.
 - **The store holds no secret material.** A ticket records
   `{tenant, expires_at, requested_by}` — the password is read from the
   cluster at claim time. Reading the store gives an attacker nothing.
