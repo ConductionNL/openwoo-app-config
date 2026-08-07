@@ -21,6 +21,11 @@ All notable changes to this repository are documented here.
   naamconventie `nc-<tenant>-tls-custom` is verworpen ten gunste van de
   bestaande host-afgeleide naam. Geen wijziging nodig in Nextcloud-base of
   react-base.
+- Taak 1.2 afgevinkt: `certswap` is werkende code (v0.3.0+) met een
+  Kubernetes-target en ArgoCD-bewuste in-place secret-swap. Het blijft een
+  **externe tool**, dus de runbook schrijft `kubectl create secret tls` als
+  volwaardig pad — de onboarding mag niet achter een externe release-cadans
+  komen te hangen.
 
 ### Gewijzigd — 2026-07-20 (release-administratie 0.5.0 — GitHub-port uitrolbaar)
 - `webgui/deploy/kustomization.yaml`: `newTag` 0.4.0 → 0.5.0. Het

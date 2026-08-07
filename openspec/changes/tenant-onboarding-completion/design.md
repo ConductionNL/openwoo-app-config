@@ -26,9 +26,9 @@ auditable).
 
 - **ESO** producing `nextcloud-secrets` per tenant namespace
   (`tenant-creation-pr-flow` task 1.3, still open) — gates `secret-reveal-once`.
-- **`certswap`** (`MWest2020/certswap`), for the ergonomic cert-import path.
-  Not required to ship: the runbook's `kubectl create secret tls` fallback works
-  today.
+- **`certswap`**, an external CLI, for the ergonomic cert-import path.
+  Verified 2026-08-07: working code at v0.3.0+. Not required to ship — the
+  runbook's `kubectl create secret tls` fallback works today.
 
 ## Goals / Non-Goals
 
@@ -56,18 +56,21 @@ PEM+key over an HTTP form and writing it to a cluster Secret would be a new,
 much larger privileged surface (arbitrary Secret write) for a feature that
 is needed rarely (custom domains are the exception, not the rule).
 
-Mark already scoped `certswap` for exactly this: polymorphic ingest (PFX,
-PEM, zip, PKCS#7) normalized to a `CertBundle`, with a `k8s-secret` driver.
-That's a purpose-built tool with its own (small) blast radius: it needs write
-access to one Secret, run by an operator from their own machine or a CI job,
-not embedded in a customer-facing web app.
+`certswap` already does exactly this: polymorphic ingest (PFX, PEM, separate
+files, PKCS#7, archives) normalized to one bundle, with a Kubernetes target
+that swaps a `kubernetes.io/tls` Secret in place and is ArgoCD-aware, plus an
+evidence trail per swap. That's a purpose-built tool with its own (small)
+blast radius: it needs write access to one Secret, run by an operator from
+their own machine or a CI job, not embedded in a customer-facing web app.
 
 **Decision:** the webgui only records *that* a tenant expects a custom cert
-(the `frontend.tls` block) in the tenant file. The actual bytes travel via
-`certswap k8s-secret <name> --namespace <ns> --in client-cert.pfx`, run by an
-operator, documented as a runbook step between "PR merged" and "tenant
-reachable on its custom domain". Until `certswap` exists the same runbook step
-is `kubectl create secret tls`. No new code in this repo does cert I/O.
+(the `frontend.tls` block) in the tenant file. The actual bytes travel
+out of band, run by an operator, as a runbook step between "PR merged" and
+"tenant reachable on its custom domain":
+`certswap plan k8s <bundle> --namespace <ns> --secret <name>` to preview, then
+`apply` with `--argocd-app nc-<tenant>` so the swap does not fight Argo. The
+fallback everyone can run without installing anything is `kubectl create
+secret tls`. No new code in this repo does cert I/O.
 
 ### Decision 2: Theme is a provisioner step, reusing the convergence pattern
 
@@ -144,10 +147,14 @@ one machine-checkable rule.
 
 ## Risks / Trade-offs
 
-- **`certswap` doesn't exist yet as running code** (only scoped/designed) and
-  it sits outside the hub work area. Not a blocker: the runbook ships with the
-  `kubectl create secret tls` fallback, and swapping in `certswap` later is a
-  docs-only change.
+- **`certswap` is an external tool, not a platform component.** It exists and
+  works (v0.3.0+, verified 2026-08-07), but it is not maintained inside this
+  organisation, so a production runbook must not depend on it exclusively —
+  that would put a customer-facing onboarding step behind a third party's
+  release cadence and availability. Mitigation, and the reason this is a
+  trade-off rather than a blocker: the runbook documents `kubectl create secret
+  tls` as a fully sufficient first-class path, with `certswap` as the
+  ergonomic option. Anyone can complete the onboarding without installing it.
 - **`issuer: none` means no auto-renewal.** A hand-seeded customer cert
   expires silently. The runbook must record the expiry date and the owner;
   monitoring already has `CertificateExpiringSoon`, which should be confirmed

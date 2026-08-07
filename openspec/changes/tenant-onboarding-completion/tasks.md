@@ -4,11 +4,14 @@
       status — hard dependency for section 4 (`secret-reveal-once`). Not a
       dependency for sections 2 (theme) or 3 (TLS rendering).
       **Status 2026-08-07: still unchecked on `main`.**
-- [ ] 1.2 Confirm whether `certswap` has any working code yet, or is still
-      design-only. **Blocked:** the repo lives at `~/projects/certswap`, outside
-      the hub work area — needs an explicit go before an agent reads it. Until
-      then section 3 ships the runbook with the `kubectl create secret tls`
-      fallback as the primary path.
+- [x] 1.2 Confirm whether `certswap` has any working code yet — **done
+      2026-08-07: yes.** Working CLI at v0.3.0+ with a Kubernetes target
+      (`certswap plan|apply k8s <bundle> --namespace <ns> --secret <name>`),
+      polymorphic ingest (PFX, PEM, separate files, PKCS#7, archives), an
+      ArgoCD-aware in-place secret swap, and an evidence trail per swap.
+      Caveat for section 3: it is an **external, non-ConductionNL tool** — the
+      runbook keeps `kubectl create secret tls` as a first-class fallback so
+      the platform is never blocked on it (see design.md Risks).
 - [ ] 1.3 Confirm the NL Design System Nextcloud app id
       (`ConductionNL/nldesign-theme-nextcloud`) and its OCS/`occ` enable path.
 
@@ -48,7 +51,7 @@
       issuer default.
 - [ ] 3.4 Write the operator runbook (`docs/custom-domain-cert.md`): merge
       order (PR merges → namespace exists → cert Secret seeded → Ingress picks
-      it up), the `certswap k8s-secret` path, the `kubectl create secret tls`
+      it up), the `certswap apply k8s` path, the `kubectl create secret tls`
       fallback, and recording the cert expiry + owner (no auto-renewal under
       `issuer: none`).
 - [ ] 3.5 Confirm monitoring's `CertificateExpiringSoon` rule fires for a
