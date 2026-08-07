@@ -19,7 +19,8 @@
 # Writes: standaard niets. Met --seed-cert schrijft het één TLS-Secret in de
 #   namespace van de wegwerptenant (zelfondertekend, 2 dagen geldig).
 # Idempotent: yes — elke stap kijkt eerst of hij al gedaan is.
-# Requires: kubectl, curl, openssl, python3, jq
+# Requires: kubectl, curl, openssl, python3, jq; gh voor de PR-controle
+#   (ontbreekt gh, dan slaat die stap over in plaats van te falen)
 #
 # Usage:
 #   ./scripts/dryrun.sh                                  # met de standaardwaarden
@@ -32,6 +33,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 readonly PORTAL_URL="${PORTAL_URL:-https://platform.commonground.nu}"
+readonly TENANTS_REPO="${TENANTS_REPO:-ConductionNL/Nextcloud-base}"
 readonly TENANT_WAIT="${TENANT_WAIT:-900}"     # seconden wachten op de namespace
 readonly POLL="${POLL:-15}"
 
@@ -53,6 +55,39 @@ pause_for() {
   ask "$1"
   printf '   Druk op Enter als dat gedaan is (Ctrl-C om te stoppen)… '
   read -r _
+}
+
+# Vóór het wachten: is er überhaupt iets aangevraagd? Zonder deze check staat
+# het script een kwartier te wachten op een namespace die nooit komt, terwijl
+# het antwoord ("het formulier heeft niets ingediend") binnen een seconde te
+# geven is. Precies dat gebeurde op 2026-08-07.
+check_tenant_pr() {
+  if ! command -v gh >/dev/null 2>&1; then
+    say "  (gh niet beschikbaar — PR-controle overgeslagen)"
+    return 0
+  fi
+  local state
+  state="$(gh pr list --repo "${TENANTS_REPO}" --state all --limit 5 \
+    --head "add-tenant/${tenant}" --json state --jq '.[0].state' 2>/dev/null || echo "")"
+  case "${state}" in
+    MERGED)
+      ok "aanvraag voor ${tenant} is gemerged"
+      return 0 ;;
+    OPEN)
+      bad "de aanvraag voor ${tenant} staat nog OPEN op ${TENANTS_REPO}"
+      say  "  Merge hem eerst; Argo maakt de namespace daarna vanzelf aan."
+      say  "  gh pr list --repo ${TENANTS_REPO} --head add-tenant/${tenant}"
+      return 1 ;;
+    CLOSED)
+      bad "de aanvraag voor ${tenant} is gesloten zonder merge"
+      return 1 ;;
+    *)
+      bad "er is geen aanvraag add-tenant/${tenant} op ${TENANTS_REPO}"
+      say  "  Het formulier heeft dus niets ingediend. Kijk wat er op de pagina"
+      say  "  stond toen je op 'Aanvraag indienen' drukte — een foutmelding daar"
+      say  "  is de bevinding, niet iets om omheen te werken."
+      return 1 ;;
+  esac
 }
 
 wait_for_namespace() {
@@ -143,6 +178,7 @@ main() {
      certificaat        : standaard laten
    Dien in en merge de PR op Nextcloud-base.
    (Dit moet via het formulier: dát is wat taak 6.1/6.2 test.)"
+    check_tenant_pr || return 1
     wait_for_namespace || return 1
   fi
 

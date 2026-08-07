@@ -4,6 +4,54 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (reveal-flow: token uit de logs, tonen in plaats van kopiëren)
+- **Het reveal-token stond in de gunicorn access-log.** `/reveal/<token>` draagt
+  de credential in het pad, en gunicorn logt elke request-regel integraal. Meestal
+  is het token op dat moment al verbrand, maar niet als het claimen halverwege
+  faalt: dan blijft het ticket geldig terwijl het token in een bestand staat dat
+  doorgaans wordt verzameld en bewaard. Nieuwe `webgui/weblog.py` schoont het pad;
+  de Dockerfile draait gunicorn met die logger. Het ontwerp legde vast dat de
+  wáárde nooit gelogd wordt — de sleutel tot die waarde stond er wel bij elke
+  aanroep in.
+- **"Wachtwoord tonen" opent nu direct een tabblad** en verbrandt de link meteen;
+  geen kopiëren voor wie het zelf wil zien. Daarnaast blijft "link" bestaan voor
+  het oorspronkelijke doel: een URL die je naar de product owner stuurt. Die mag
+  niet in het portaal geopend worden, want openen ís verbranden.
+- **Bevestiging met de tenantnaam** vóór het minten. De knop staat op elke
+  omgeving, ook productie; tijdens de dry-run toonde een klik op de verkeerde rij
+  het beheerderswachtwoord van een levende gemeente. De link zelf bleek wél
+  eenmalig — twee tokens gaven bij de tweede opvraging 404 — maar de knop maakte
+  onbeperkt nieuwe links zonder dat er iets werd gevraagd.
+
+### Gewijzigd — 2026-08-07 (twee bevindingen uit de dry-run)
+- **`verify-onboarding.sh` beoordeelde de verkeerde Ingress.** Een tenant-namespace
+  draagt er meerdere: de Nextcloud-backend op `*.commonground.nu` met zijn eigen
+  Let's Encrypt-cert, de frontend op de eigen host, en tijdens een ACME-challenge
+  een solver-ingress. Het script nam simpelweg de eerste en meldde daardoor
+  "cert-manager staat op de Ingress" over de frontend — een vals alarm dat op
+  élke custom-domain-tenant zou afgaan. Hij filtert nu op de host, en zegt het
+  als er geen Ingress voor die host bestaat.
+- **De declaration-lookup vuurde op elke toetsaanslag**, ook op een naam die de
+  server afwijst, en slikte de 400 stil in. Je typte iets ongeldigs en het
+  formulier zweeg tot je op indienen drukte. De client hanteert nu dezelfde
+  regel als `tenants.py::_ORG_RE` en zegt meteen wat er mis is — met de meest
+  voorkomende oorzaak erbij: een punt in de naam betekent dat je een domein
+  invulde, en dat hoort bij Eigen frontend-host.
+- Daarbij een `esc()`-helper in `tenant.html`: de ingetypte naam belandt in
+  `innerHTML`.
+
+### Gewijzigd — 2026-08-07 (dryrun.sh faalt snel als er niets is aangevraagd)
+- `scripts/dryrun.sh` controleert vóór het wachten of er een
+  `add-tenant/<tenant>`-PR bestaat op de tenants-repo, en onderscheidt vier
+  gevallen: gemerged (door), open (eerst mergen), gesloten zonder merge, of
+  helemaal geen aanvraag.
+- Aanleiding: op 2026-08-07 stond het script een kwartier te wachten op een
+  namespace die nooit zou komen, omdat het formulier niets had ingediend. Dat
+  antwoord was binnen een seconde te geven. Bij "geen aanvraag" wijst het
+  script nu naar het formulier — een foutmelding dáár is de bevinding, niet
+  iets om omheen te werken.
+- Zonder `gh` slaat de controle over in plaats van te falen.
+
 ### Gewijzigd — 2026-08-07 (frontend-versie bewerkbaar + eerlijkere melding)
 - `frontend.tag` toegevoegd aan wat het formulier modelleert (image-pin voor de
   frontend, in de vloot `latest` 15×, `dev` 8×, één vaste versie). Daarmee gaat
