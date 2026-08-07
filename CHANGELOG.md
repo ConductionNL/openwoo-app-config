@@ -4,6 +4,27 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (`scripts/cleanup-tenant.sh`)
+- Ruimt een wegwerptenant volledig op. Het tenantbestand uit git halen laat het
+  meeste staan: de ApplicationSet zet `preserveResourcesOnDeletion: true`, dus
+  Argo verwijdert alleen `nc-<tenant>` en laat namespace, PVC's en secrets
+  achter. Dat is een bewuste veiligheidsklep, en precies wat je na een dry-run
+  vergeet.
+- Vindt ook de `<tenant>-reactfront`-app. Die blijft bij handmatig opruimen
+  staan omdat hij niet naar het `nc-`-patroon heet.
+- Zonder `--execute` verandert het niets: dan is het een plan. Het plan wordt
+  ook bij `--execute` eerst getoond, en dezelfde functie voert het uit — wat je
+  leest is letterlijk wat er draait.
+- Vangnetten: bevestiging door de tenantnaam over te typen (`--yes` slaat dat
+  over), en een productie-achtige naam vereist een expliciete extra vlag.
+- Benoemt wat het níét kan opruimen: S3-data en DNS-records.
+- `scripts/dryrun.sh` draait sectie 6 van begin tot eind in één invocatie:
+  preflight, wachten tot Argo de tenant heeft uitgerold, de controles, optioneel
+  een zelfondertekend certificaat zaaien, en de eenmaligheid van de
+  wachtwoordlink verifiëren (200 gevolgd door 404). Het stopt alleen op de twee
+  momenten waar een browser echt nodig is: de tenant aanmaken in het formulier
+  — dát is wat 6.1/6.2 test, dus het bestand met de hand schrijven zou de test
+  leeg maken — en één keer op de knop wachtwoordlink drukken.
 ### Gewijzigd — 2026-08-07 (reveal-flow aangezet)
 - `REVEAL_ENABLED=true` in `webgui/deploy/deployment.yaml`. De vlag stond
   bewust uit tot de flow tegen een echte tenant kon draaien: `/reveal/<token>`
