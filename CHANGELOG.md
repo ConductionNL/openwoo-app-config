@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (dryrun.sh faalt snel als er niets is aangevraagd)
+- `scripts/dryrun.sh` controleert vóór het wachten of er een
+  `add-tenant/<tenant>`-PR bestaat op de tenants-repo, en onderscheidt vier
+  gevallen: gemerged (door), open (eerst mergen), gesloten zonder merge, of
+  helemaal geen aanvraag.
+- Aanleiding: op 2026-08-07 stond het script een kwartier te wachten op een
+  namespace die nooit zou komen, omdat het formulier niets had ingediend. Dat
+  antwoord was binnen een seconde te geven. Bij "geen aanvraag" wijst het
+  script nu naar het formulier — een foutmelding dáár is de bevinding, niet
+  iets om omheen te werken.
+- Zonder `gh` slaat de controle over in plaats van te falen.
+
 ### Gewijzigd — 2026-08-07 (frontend-versie bewerkbaar + eerlijkere melding)
 - `frontend.tag` toegevoegd aan wat het formulier modelleert (image-pin voor de
   frontend, in de vloot `latest` 15×, `dev` 8×, één vaste versie). Daarmee gaat
