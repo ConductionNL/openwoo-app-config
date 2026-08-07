@@ -4,6 +4,24 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (OpenSpec-change `tenant-onboarding-completion`)
+- `openspec/changes/tenant-onboarding-completion/` (proposal, design, tasks,
+  `.openspec.yaml`): de drie losse eindjes van `tenant-creation-pr-flow` —
+  custom-domain-cert, Nextcloud-theming als provisioner-stap, en een
+  self-hosted one-time reveal van het initiële adminwachtwoord. Alleen
+  specificatie; nog geen code.
+- Landt in déze repo omdat alle geraakte code hier staat (`webgui/tenants.py`,
+  `webgui/server.py`, `webgui/deploy/`, `scripts/provisionlib/steps.py`) en
+  `tenant-creation-pr-flow` hier al ligt.
+- Correctie t.o.v. het oorspronkelijke concept: de TLS-sectie is ingekrompen.
+  `frontend.tls.secretName`/`issuer` is géén nieuw veld — het contract is al
+  live (react-base `react-tenants.yaml` consumeert het inclusief `issuer:
+  none`; Nextcloud-base tenantbestanden op `main` dragen het al). Wat rest is
+  de webgui die het rendert plus een operator-runbook. De voorgestelde derde
+  naamconventie `nc-<tenant>-tls-custom` is verworpen ten gunste van de
+  bestaande host-afgeleide naam. Geen wijziging nodig in Nextcloud-base of
+  react-base.
+
 ### Gewijzigd — 2026-07-20 (release-administratie 0.5.0 — GitHub-port uitrolbaar)
 - `webgui/deploy/kustomization.yaml`: `newTag` 0.4.0 → 0.5.0. Het
   0.4.0-image bevatte nog de Forgejo-gitlib; gecombineerd met de al
