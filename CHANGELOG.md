@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (`scripts/cleanup-tenant.sh`)
+- Ruimt een wegwerptenant volledig op. Het tenantbestand uit git halen laat het
+  meeste staan: de ApplicationSet zet `preserveResourcesOnDeletion: true`, dus
+  Argo verwijdert alleen `nc-<tenant>` en laat namespace, PVC's en secrets
+  achter. Dat is een bewuste veiligheidsklep, en precies wat je na een dry-run
+  vergeet.
+- Vindt ook de `<tenant>-reactfront`-app. Die blijft bij handmatig opruimen
+  staan omdat hij niet naar het `nc-`-patroon heet.
+- Zonder `--execute` verandert het niets: dan is het een plan. Het plan wordt
+  ook bij `--execute` eerst getoond, en dezelfde functie voert het uit — wat je
+  leest is letterlijk wat er draait.
+- Vangnetten: bevestiging door de tenantnaam over te typen (`--yes` slaat dat
+  over), en een productie-achtige naam vereist een expliciete extra vlag.
+- Benoemt wat het níét kan opruimen: S3-data en DNS-records.
+
 ### Gewijzigd — 2026-08-07 (mergen is uitrollen; geen tag-ceremonie meer)
 - `.github/workflows/image.yml` bouwt bij een push naar `main` het image,
   verifieert dat de tag écht pullbaar is, schrijft die tag in

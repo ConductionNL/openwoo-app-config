@@ -149,8 +149,16 @@ van een link blijven handwerk: dat zijn cluster-mutaties en die staan in
 `docs/agents.md` als mens-vereist. Eén wegwerptenant dekt alle drie.
 
     ./scripts/verify-onboarding.sh --preflight
-    ./scripts/verify-onboarding.sh --tenant dryrun-test --theme dryrun-theme \
+    ./scripts/verify-onboarding.sh --tenant dryrun-accept --theme dryrun-theme \
       --host dryrun.example.org --ingress-ip <ip>
+
+Opruimen achteraf met `scripts/cleanup-tenant.sh`. Zonder `--execute` is dat
+een plan; het bestaan ervan is nodig omdat het tenantbestand weghalen het
+meeste laat staan (`preserveResourcesOnDeletion: true`), inclusief de
+`<tenant>-reactfront`-app die niet naar het `nc-`-patroon heet.
+
+    ./scripts/cleanup-tenant.sh --tenant dryrun-accept
+    ./scripts/cleanup-tenant.sh --tenant dryrun-accept --execute
 
 
 - [ ] 6.1 Branding: create a throwaway tenant with a `themeClassname` from the
