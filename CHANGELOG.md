@@ -4,6 +4,29 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (mergen is uitrollen; geen tag-ceremonie meer)
+- `.github/workflows/image.yml` bouwt bij een push naar `main` het image,
+  verifieert dat de tag écht pullbaar is, schrijft die tag in
+  `kustomization.yaml` en commit dat terug. Argo doet de rest. Geen releasetag
+  meer nodig, geen tweede PR om één regel te bumpen.
+- **Waarom weg:** de poort hoort op de pull request te zitten, en daar zit hij —
+  review plus `ci.yml`. Alles daarna was boekhouding, en die boekhouding had
+  precies één manier om fout te gaan: de bump mergen vóórdat het image bestond,
+  waarna Argo naar een niet-bestaande tag wees (`ImagePullBackOff`, vanmiddag
+  gezien). Volgorde is machinewerk; build en bump zitten nu in één job, in die
+  volgorde.
+- `v*`-tags blijven bestaan als **markering**, niet als uitrol: ze publiceren
+  een semver-image zodat een versie een naam heeft, maar veranderen niet wat er
+  draait. `main` rolt op zijn eigen `sha-`-tag.
+- De bump-commit draagt `[skip ci]`, dus hij triggert de workflow niet opnieuw.
+  Weigert branch protection die push, dan faalt de job ná het publiceren — het
+  image bestaat dan wel en alleen de uitrol hangt; de foutmelding zegt dat.
+- Bewust géén beweegbare tag (`:main`): dan verandert het manifest niet, rolt
+  Argo niet, en is "welke code draait er" niet meer te beantwoorden.
+- `scripts/verify-onboarding.sh` leest de verwachte tag nu uit
+  `kustomization.yaml` in plaats van uit een hardcoded default — die default was
+  een tweede plek om de versie te vergeten. `IMAGE_TAG=` blijft als override.
+
 ### Toegevoegd — 2026-08-07 (bestaande omgeving ophalen en bijwerken)
 - Het create-formulier deed géén bestaanscontrole: een bestaande organisatie +
   omgeving invullen leverde een mislukte git-aanroep op in plaats van "die

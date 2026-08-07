@@ -25,7 +25,7 @@
 #   ./scripts/verify-onboarding.sh --tenant dryrun-test --theme dryrun-theme
 #   ./scripts/verify-onboarding.sh --tenant dryrun-test --theme dryrun-theme \
 #     --host dryrun.example.org --ingress-ip 1.2.3.4
-#   IMAGE_TAG=0.6.0 ./scripts/verify-onboarding.sh --preflight
+#   IMAGE_TAG=sha-abc123 ./scripts/verify-onboarding.sh --preflight
 
 set -euo pipefail
 
@@ -41,7 +41,13 @@ readonly PORTAL_APP="${PORTAL_APP:-openwoo-provisioner}"
 readonly PORTAL_CONTAINER="${PORTAL_CONTAINER:-app}"
 readonly ARGO_NS="${ARGO_NS:-argocd}"
 readonly IMAGE_REPO="${IMAGE_REPO:-ghcr.io/conductionnl/openwoo-provisioner}"
-readonly IMAGE_TAG="${IMAGE_TAG:-0.6.0}"
+# De verwachte tag komt uit de kustomization, niet uit een default hier: die
+# wordt door de image-workflow bijgewerkt bij elke merge, en een tweede plek om
+# hem te onderhouden is een tweede plek om hem te vergeten. Env-override blijft.
+readonly KUSTOMIZATION="${KUSTOMIZATION:-webgui/deploy/kustomization.yaml}"
+IMAGE_TAG="${IMAGE_TAG:-$(sed -n -E 's/^[[:space:]]*newTag:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/p' \
+  "${KUSTOMIZATION}" 2>/dev/null | head -1)}"
+readonly IMAGE_TAG
 readonly THEME_ENV="${THEME_ENV:-GATSBY_NL_DESIGN_THEME_CLASSNAME}"
 readonly SECRET_NAME="${SECRET_NAME:-nextcloud-secrets}"
 readonly SECRET_KEY="${SECRET_KEY:-nextcloud-password}"
@@ -82,6 +88,12 @@ usage() {
 
 check_preflight() {
   section "Preflight"
+
+  if [[ -z "${IMAGE_TAG}" ]]; then
+    bad "kan geen newTag lezen uit ${KUSTOMIZATION}" \
+      "geef IMAGE_TAG=<tag> mee, of draai dit vanuit een repo-checkout"
+    return
+  fi
 
   if python3 scripts/check_image_on_registry.py "${IMAGE_REPO}:${IMAGE_TAG}" >/dev/null 2>&1; then
     ok "image ${IMAGE_TAG} staat op de registry en is anoniem pullbaar"
