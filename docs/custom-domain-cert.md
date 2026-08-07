@@ -69,29 +69,25 @@ and the namespace is created by the merge.
    Until step 3, the site answers with the wrong certificate — expected.
 2. **Get the bundle** from the organisation. It arrives in whatever format
    their CA produced: PFX, a PEM bundle, separate files, PKCS#7, a zip.
-3. **Plaats het certificaat.** Eerste route: het portaal, onder
-   **Branding → <omgeving> → Eigen certificaat plaatsen**. Upload het
-   certificaat (PEM, leaf eerst, keten mag erbij) en de onversleutelde
-   sleutel. Het portaal controleert of de sleutel bij het certificaat hoort,
-   of het de host dekt en hoe lang het nog geldig is, en schrijft het pas
-   daarna weg onder de uit de host afgeleide naam. De bytes gaan niet door
-   git en worden niet gelogd.
+3. **Plaats het certificaat.** Twee manieren, kies er één.
 
-   Werkt dat niet, of doe je het liever van de commandoregel, dan schrijf je
-   de Secret zelf in de tenant-namespace (de *kale* tenantnaam):
+   *Via het portaal* — **Branding → &lt;omgeving&gt; → Eigen certificaat
+   plaatsen**. Upload het certificaat (PEM, leaf eerst, keten mag erbij) en
+   de onversleutelde sleutel. Het portaal controleert of de sleutel bij het
+   certificaat hoort, of het de host dekt en hoe lang het nog geldig is, en
+   schrijft het pas daarna weg onder de uit de host afgeleide naam. De bytes
+   gaan niet door git en worden niet gelogd.
 
-       certswap plan  k8s <bundle> --namespace <tenant> --secret <name>
-       certswap apply k8s <bundle> --namespace <tenant> --secret <name> \
-         --argocd-app nc-<tenant>
-
-   `certswap` normalises the input formats, checks the chain, and does an
-   ArgoCD-aware in-place swap. It is an **external tool**, not a platform
-   component — so the dependency-free path is equally supported:
+   *Met kubectl* — als je liever op de commandoregel werkt, of het portaal
+   niet beschikbaar is. Gebruik de `secretName` uit het tenantbestand
+   letterlijk, in de tenant-namespace (de *kale* tenantnaam):
 
        kubectl create secret tls <name> \
          --namespace <tenant> --cert=fullchain.pem --key=privkey.pem
 
-   Use the `secretName` from the tenant file verbatim.
+   Let op: `kubectl` controleert niets. Hoort de sleutel niet bij het
+   certificaat, of dekt het de host niet, dan merk je dat pas bij stap 4.
+
 4. **Verify** the site serves the right certificate:
 
        openssl s_client -connect open.almere.nl:443 -servername open.almere.nl \
@@ -137,5 +133,14 @@ the Secret. Set `issuer: none`, merge, delete the `Certificate` object, and
 re-seed the customer certificate. This is the exact failure the default
 guards against.
 
-**`certswap` is not installed.** Use the `kubectl create secret tls`
-fallback in step 3. Nothing about this runbook depends on having it.
+**Het portaal weigert de upload.** Dat is de bedoeling: het controleert of
+de sleutel bij het certificaat hoort, of het de host dekt en of het niet
+bijna verlopen is. De melding zegt welke van de drie het is.
+
+## Voetnoot: bundels in een ander formaat
+
+Krijg je een PFX, PKCS#7 of een zip in plaats van PEM, dan moet je die eerst
+omzetten (`openssl pkcs12 -in ... -nodes` en vrienden). Er bestaat een CLI die
+dat normaliseert en de swap ArgoCD-bewust doet:
+[MWest2020/certswap](https://github.com/MWest2020/certswap). Geen
+platformcomponent en geen vereiste — puur gemak als je het vaker doet.
