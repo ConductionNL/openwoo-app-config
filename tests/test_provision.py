@@ -882,6 +882,124 @@ def test_delete_menu_raises_if_still_present():
         provision.provision_delete_menu(client)
 
 
+# --- theme ---
+
+
+def _ocs(data):
+    """Wrap a payload the way an OCS endpoint does."""
+    return {"ocs": {"meta": {"status": "ok"}, "data": data}}
+
+
+class FakeThemeClient:
+    """Appconfig + apps fake. GET reads what is stored, post_form/delete write,
+    so a re-GET reflects the change the way a real tenant would."""
+
+    def __init__(self, stored=None, enabled_apps=None):
+        self.stored = dict(stored or {})
+        self.enabled_apps = list(enabled_apps or [])
+        self.writes = []
+
+    @staticmethod
+    def _key(path):
+        return path.split("?")[0].rsplit("/", 1)[-1]
+
+    def get(self, path):
+        if path.startswith(provision.APPS_PATH):
+            return _ocs({"apps": list(self.enabled_apps)})
+        return _ocs({"data": self.stored.get(self._key(path), "")})
+
+    def post_form(self, path, fields):
+        base = path.split("?")[0]
+        if base.startswith(provision.APPS_PATH + "/"):
+            self.enabled_apps.append(self._key(path))
+            return _ocs([])
+        key = self._key(path)
+        self.stored[key] = fields["value"]
+        self.writes.append((key, fields["value"]))
+        return _ocs([])
+
+    def delete(self, path):
+        app_id = self._key(path)
+        self.enabled_apps = [a for a in self.enabled_apps if a != app_id]
+        return _ocs([])
+
+
+def test_ocs_data_unwraps_envelope_and_tolerates_junk():
+    assert provision.ocs_data(_ocs({"data": "x"})) == {"data": "x"}
+    assert provision.ocs_data({"no": "envelope"}) == {}
+    assert provision.ocs_data("not a dict") == {}
+
+
+def test_theme_writes_only_the_drifted_keys():
+    client = FakeThemeClient({"name": "Oude naam", "color": "#154273"})
+    n = provision.provision_theme(client, {"name": "Gemeente X", "color": "#154273"})
+    assert n == 1
+    assert client.writes == [("name", "Gemeente X")]   # colour already right
+
+
+def test_theme_is_a_noop_when_converged():
+    client = FakeThemeClient({"name": "Gemeente X", "slogan": "open"})
+    assert provision.provision_theme(client, {"name": "Gemeente X", "slogan": "open"}) == 0
+    assert client.writes == []
+
+
+def test_theme_sets_a_key_that_is_absent_on_the_tenant():
+    client = FakeThemeClient()
+    assert provision.provision_theme(client, {"slogan": "open data"}) == 1
+    assert client.stored["slogan"] == "open data"
+
+
+def test_theme_ignores_blank_and_none_values():
+    client = FakeThemeClient({"name": "Gemeente X"})
+    assert provision.provision_theme(client, {"name": None, "slogan": "", "color": "   "}) == 0
+    assert client.writes == []
+    assert client.stored == {"name": "Gemeente X"}     # nothing cleared
+
+
+def test_theme_rejects_an_unknown_key():
+    with pytest.raises(provision.ProvisionError, match="unknown theming key"):
+        provision.provision_theme(FakeThemeClient(), {"kleur": "#154273"})
+
+
+def test_theme_raises_when_a_write_does_not_reflect():
+    class DeafClient(FakeThemeClient):
+        def post_form(self, path, fields):    # accepts the write, stores nothing
+            return _ocs([])
+
+    with pytest.raises(provision.ProvisionError, match="did not reflect"):
+        provision.provision_theme(DeafClient(), {"name": "Gemeente X"})
+
+
+def test_theme_app_enables_when_missing():
+    client = FakeThemeClient(enabled_apps=["files"])
+    assert provision.provision_theme_app(client, "nldesign_theme") is True
+    assert "nldesign_theme" in client.enabled_apps
+
+
+def test_theme_app_is_idempotent_when_already_enabled():
+    client = FakeThemeClient(enabled_apps=["files", "nldesign_theme"])
+    assert provision.provision_theme_app(client, "nldesign_theme") is False
+
+
+def test_theme_app_disables_when_asked():
+    client = FakeThemeClient(enabled_apps=["files", "nldesign_theme"])
+    assert provision.provision_theme_app(client, "nldesign_theme", enabled=False) is True
+    assert client.enabled_apps == ["files"]
+
+
+def test_theme_app_without_an_id_is_a_noop():
+    assert provision.provision_theme_app(FakeThemeClient(), None) is False
+
+
+def test_theme_app_raises_when_the_call_does_not_take():
+    class DeafClient(FakeThemeClient):
+        def post_form(self, path, fields):
+            return _ocs([])
+
+    with pytest.raises(provision.ProvisionError, match="still disabled"):
+        provision.provision_theme_app(DeafClient(), "nldesign_theme")
+
+
 # --- all (orchestrator) ---
 
 
@@ -911,6 +1029,10 @@ def _patch_steps(monkeypatch, calls, verify_missing=None, dangling=None):
                         lambda c, d, **kw: calls.append("jobs") or 0)
     monkeypatch.setattr(provision.steps, "provision_sync_run",
                         lambda c, d, mode="run": calls.append(f"sync-run:{mode}"))
+    monkeypatch.setattr(provision.steps, "provision_theme",
+                        lambda c, t, **kw: calls.append("theme") or 0)
+    monkeypatch.setattr(provision.steps, "provision_theme_app",
+                        lambda c, a, **kw: calls.append(f"theme-app:{a}") or True)
 
 
 def test_provision_all_runs_steps_in_order(monkeypatch):
@@ -919,7 +1041,15 @@ def test_provision_all_runs_steps_in_order(monkeypatch):
     provision.provision_all(None, _doc(), settings={"organisation": {}, "multitenancy": {}})
     assert calls == ["settings", "oc-settings", "import", "verify",
                      "catalog", "delete-menu", "credentials", "sync-refs",
-                     "sync-check", "jobs"]
+                     "sync-check", "jobs", "theme"]
+
+
+def test_provision_all_runs_theme_app_only_when_asked(monkeypatch):
+    calls = []
+    _patch_steps(monkeypatch, calls)
+    provision.provision_all(None, _doc(), settings=None,
+                            theme={"name": "Gemeente X"}, theme_app="nldesign_theme")
+    assert calls[-2:] == ["theme", "theme-app:nldesign_theme"]
 
 
 def test_provision_all_skips_optional_steps(monkeypatch):
@@ -928,7 +1058,7 @@ def test_provision_all_skips_optional_steps(monkeypatch):
     provision.provision_all(None, _doc(), settings=None, oc_settings=False, do_import=False,
                             catalog=False, delete_menu=False, do_credentials=False,
                             run_syncs=True, sync_mode="test")
-    assert calls == ["verify", "sync-refs", "sync-check", "jobs", "sync-run:test"]
+    assert calls == ["verify", "sync-refs", "sync-check", "jobs", "theme", "sync-run:test"]
 
 
 def test_provision_all_stops_on_incomplete_import(monkeypatch):
@@ -968,8 +1098,19 @@ SUBCOMMAND_ARGS = {
     "objects": ["--register", "r", "--schema", "s", "--payload-file", "f"],
     "catalog": [],
     "delete-menu": [],
+    "theme": [],
     "all": [],
 }
+
+
+def test_theme_flags_map_onto_theming_keys():
+    args = provision.build_parser().parse_args(
+        ["theme", "--base", "https://t", "--theme-name", "Gemeente X",
+         "--theme-color", "#154273", "--theme-app", "nldesign_theme"])
+    theme = provision.cli._theme_from_args(args)
+    assert theme["name"] == "Gemeente X" and theme["color"] == "#154273"
+    assert all(k in provision.THEME_KEYS for k in theme)   # no flag invents a key
+    assert args.theme_app == "nldesign_theme" and args.disable_theme_app is False
 
 
 def test_build_parser_every_subcommand_dispatches():

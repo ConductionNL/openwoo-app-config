@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-07
 owner: info@conduction.nl
 ---
 
@@ -27,7 +27,8 @@ provision` to reuse the steps as a library.
 | `objects` | create one object in a register/schema | response carries an id/uuid |
 | `catalog` | point the OpenCatalogi catalog at the WOO register + all its schemas | registers/schemas reflect (slugs resolved to tenant ids) |
 | `delete-menu` | delete the OpenCatalogi default `User Menu` object (not part of the WOO config) | GET no longer lists it (idempotent — skips when absent) |
-| `all` | run the bring-up in order, gating each step | settings → verify-import → credentials → sync-check → (`--run-syncs`) |
+| `theme` | converge Nextcloud theming (name, slogan, colour, urls) and optionally enable a theme app | GET reflects each written key; the app appears in the enabled list |
+| `all` | run the bring-up in order, gating each step | settings → verify-import → credentials → sync-check → theme → (`--run-syncs`) |
 
 `verify-import` and `sync-check` exist because the import API returns
 HTTP 200 even when it silently drops rows: on a tenant that already holds
@@ -38,3 +39,43 @@ data the bulk row count can't see the gap, but a slug-level diff can.
 Connection flags are shared: `--base`, `--user`, and `--password` /
 `--password-env` (the env form keeps the secret out of argv). Steps that
 read the config also take `--config`.
+
+## Theming
+
+`theme` converges the Nextcloud `theming` app's settings the same way the
+other steps converge OpenRegister config: read what is there, write only
+what differs, read back and assert. Flags map one-to-one onto Nextcloud
+theming keys:
+
+| Flag | Theming key |
+|---|---|
+| `--theme-name` | `name` |
+| `--theme-slogan` | `slogan` |
+| `--theme-color` | `color` |
+| `--theme-url` | `url` |
+| `--theme-imprint-url` | `imprintUrl` |
+| `--theme-privacy-url` | `privacyUrl` |
+| `--theme-app` | (not a key — a Nextcloud app id to enable) |
+
+A flag you leave out is left untouched on the tenant, and a blank value
+is ignored rather than written: a half-filled form must not silently wipe
+a tenant's branding. Clearing a value is therefore a deliberate act in
+the Nextcloud admin UI, not a side effect of re-running the provisioner.
+
+Theming lives in the database (`oc_appconfig`), not in `config.php`, so it
+survives the pod restart that Nextcloud-base's
+[CONFIG-CHANGES.md](https://github.com/ConductionNL/Nextcloud-base/blob/main/docs/CONFIG-CHANGES.md)
+warns about for system config. These are the same settings
+`occ theming:config <key> <value>` writes, reached over the OCS app-config
+API so no `kubectl exec` is needed.
+
+**Logo, background and favicon are not covered.** Those are file uploads
+to the theming app's session- and CSRF-protected ajax route, not
+app-config values, so they cannot be set over the basic-auth API every
+other step uses. Upload them once in the tenant's admin UI, or track a
+follow-up if it needs automating.
+
+`--theme-app` enables (or, with `--disable-theme-app`, disables) one
+already-installed Nextcloud app — e.g. an NL Design System theme. It does
+**not** install an app from the app store; an unknown app id surfaces as
+an OCS error.

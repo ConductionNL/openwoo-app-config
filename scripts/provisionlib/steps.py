@@ -21,6 +21,7 @@ from .helpers import (
     find_by_slug,
     log,
     merge_header,
+    ocs_data,
     results_list,
     slug_to_id,
 )
@@ -277,13 +278,18 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
                   settings=None, oc_settings=True, do_import=True, force_import=False,
                   catalog=True, delete_menu=True, menu_name=USER_MENU_NAME,
                   do_credentials=True, job_user=None, run_syncs=False,
-                  sync_mode="test"):
+                  sync_mode="test", theme=None, theme_app=None,
+                  theme_app_enabled=True):
     """Run the full post-install bring-up in order, asserting each step.
 
     Order mirrors a real tenant bring-up: settings -> OpenCatalogi register/schema
     coupling -> import the config -> verify it landed -> point the catalog at the
-    WOO schemas -> source credentials -> synchronizations resolved -> optional
-    per-sync run. Raises ProvisionError on the first failed assertion. The
+    WOO schemas -> source credentials -> synchronizations resolved -> theming ->
+    optional per-sync run. Theming sits late because it is presentation, not
+    function: a failing brand colour should not abort a config bring-up that has
+    already succeeded. It is a no-op unless `theme` / `theme_app` are supplied,
+    so an existing caller's behaviour is unchanged.
+    Raises ProvisionError on the first failed assertion. The
     oc-settings / catalog steps need the OpenCatalogi base and the openregister
     schema API; skip them for a WOO-only tenant. Authorization flags
     (inheritFromPublic) import natively on OpenRegister 1.0.3+, so the
@@ -291,72 +297,78 @@ def provision_all(client, doc, apikey=None, source_url=None, interface_id=None,
     and job runs stay separate.
     """
     if settings is not None:
-        log("[1/11] settings")
+        log("[1/12] settings")
         provision_settings(client, settings["organisation"], settings["multitenancy"])
     else:
-        log("[1/11] settings — skipped")
+        log("[1/12] settings — skipped")
 
     if oc_settings:
-        log("[2/11] oc-settings")
+        log("[2/12] oc-settings")
         provision_oc_settings(client)
     else:
-        log("[2/11] oc-settings — skipped")
+        log("[2/12] oc-settings — skipped")
 
     if do_import:
-        log("[3/11] import")
+        log("[3/12] import")
         provision_import(client, doc, force=force_import)
     else:
-        log("[3/11] import — skipped")
+        log("[3/12] import — skipped")
 
-    log("[4/11] verify-import")
+    log("[4/12] verify-import")
     report = verify_import(client, doc)
     missing = {b: i["missing"] for b, i in report.items() if i["missing"]}
     if missing:
         raise ProvisionError(f"import incomplete, missing: {missing}")
 
     if catalog:
-        log("[5/11] catalog")
+        log("[5/12] catalog")
         provision_catalog(client, doc)
     else:
-        log("[5/11] catalog — skipped")
+        log("[5/12] catalog — skipped")
 
     if delete_menu:
-        log("[6/11] delete-menu")
+        log("[6/12] delete-menu")
         provision_delete_menu(client, name=menu_name)
     else:
-        log("[6/11] delete-menu — skipped")
+        log("[6/12] delete-menu — skipped")
 
     if do_credentials:
-        log("[7/11] credentials")
+        log("[7/12] credentials")
         provision_credentials(client, doc, apikey=apikey, source_url=source_url,
                               interface_id=interface_id)
     else:
-        log("[7/11] credentials — skipped (per-tenant source params set out-of-band)")
+        log("[7/12] credentials — skipped (per-tenant source params set out-of-band)")
 
     # Resolve the synchronizations' own slug references (sourceId / mapping / rules
     # / targetId) before the check + run — the import leaves forward references as
     # slugs on a fresh tenant (see provision_syncs).
-    log("[8/11] sync-refs")
+    log("[8/12] sync-refs")
     n = provision_syncs(client, doc)
     log(f"  sync-refs: {n} synchronization(s) resolved")
     nr = provision_rules(client, doc)
     log(f"  sync-refs: {nr} rule(s) resolved")
 
-    log("[9/11] sync-check")
+    log("[9/12] sync-check")
     chk = sync_check(client, doc)
     if chk["dangling"]:
         raise ProvisionError(f"{len(chk['dangling'])} synchronization(s) dangling: {chk['dangling']}")
 
-    log("[10/11] jobs")
+    log("[10/12] jobs")
     n = provision_jobs(client, doc, job_user=job_user)
     log(f"  jobs: {n} job(s) updated"
         f"{f' (userId={job_user})' if job_user else ''}")
 
+    log("[11/12] theme")
+    n = provision_theme(client, theme)
+    if theme_app:
+        provision_theme_app(client, theme_app, enabled=theme_app_enabled)
+    log(f"  theme: {n} setting(s) written")
+
     if run_syncs:
-        log(f"[11/11] sync-run ({sync_mode})")
+        log(f"[12/12] sync-run ({sync_mode})")
         provision_sync_run(client, doc, mode=sync_mode)
     else:
-        log("[11/11] sync-run — skipped (pass --run-syncs)")
+        log("[12/12] sync-run — skipped (pass --run-syncs)")
     return True
 
 
@@ -578,6 +590,100 @@ def provision_oc_settings(client, register="publication", object_types=None):
         raise ProvisionError(f"oc-settings did not reflect: {bad}")
     log(f"  oc-settings: {len(types)} object types coupled OK")
     return conf
+
+
+def _theme_values(client, keys, app=THEMING_APP):
+    """GET the current appconfig value of each theming key (absent -> "")."""
+    current = {}
+    for key in keys:
+        data = ocs_data(client.get(f"{APPCONFIG_PATH}/{app}/{key}?format=json"))
+        value = data.get("data") if isinstance(data, dict) else None
+        current[key] = "" if value is None else str(value)
+    return current
+
+
+def provision_theme(client, theme, app=THEMING_APP):
+    """Converge the tenant's Nextcloud theming to `theme` ({key: value}).
+
+    Same shape as every other step: GET what is there, compute the drift, write
+    only what differs, then GET again and assert it reflected. Keys are limited
+    to THEME_KEYS — an unknown key is a typo, and appconfig would happily store
+    it forever. Values are compared as strings because appconfig stores strings.
+
+    Blank/None values are dropped rather than written: "" would clear a setting,
+    and a half-filled form should not silently wipe a tenant's branding. Clearing
+    a value is therefore a deliberate act, not a side effect (pass the key with a
+    literal "-" is NOT supported — use the Nextcloud admin UI).
+
+    Returns the number of settings written (0 = already converged, or nothing
+    supplied). Raises ProvisionError on an unknown key or a failed assert.
+    """
+    desired = {}
+    for key, value in (theme or {}).items():
+        if value is None or str(value).strip() == "":
+            continue
+        desired[key] = str(value).strip()
+    unknown = sorted(k for k in desired if k not in THEME_KEYS)
+    if unknown:
+        raise ProvisionError(
+            f"theme: unknown theming key(s) {unknown}; known keys are {list(THEME_KEYS)}"
+        )
+    if not desired:
+        log("  theme: no theming values supplied — skipping")
+        return 0
+
+    current = _theme_values(client, desired, app=app)
+    drift = {k: v for k, v in desired.items() if current.get(k) != v}
+    if not drift:
+        log(f"  theme: {len(desired)} setting(s) already converged, skipping")
+        return 0
+    for key, value in drift.items():
+        log(f"  theme: {key} = {value!r} (was {current.get(key)!r})")
+        client.post_form(f"{APPCONFIG_PATH}/{app}/{key}?format=json", {"value": value})
+
+    after = _theme_values(client, drift, app=app)
+    bad = {k: after.get(k) for k, v in drift.items() if after.get(k) != v}
+    if bad:
+        raise ProvisionError(f"theme: setting(s) did not reflect: {bad}")
+    log(f"  theme: {len(drift)} setting(s) set OK")
+    return len(drift)
+
+
+def provision_theme_app(client, app_id, enabled=True):
+    """Enable (or disable) one Nextcloud app — e.g. a theme app — idempotently.
+
+    Reads the enabled-app list, does nothing when the app is already in the
+    wanted state, otherwise POSTs (enable) or DELETEs (disable) and re-reads to
+    assert. The app must already be *installed* on the tenant: this enables a
+    shipped app, it does not fetch one from the app store. A missing app surfaces
+    as the OCS error from the client.
+
+    Returns True when it changed something, False when it was already right.
+    """
+    if not app_id:
+        log("  theme-app: no app id supplied — skipping")
+        return False
+
+    def is_enabled():
+        data = ocs_data(client.get(f"{APPS_PATH}?format=json&filter=enabled"))
+        apps = data.get("apps") if isinstance(data, dict) else None
+        return app_id in (apps or [])
+
+    want = bool(enabled)
+    if is_enabled() == want:
+        log(f"  theme-app '{app_id}': already {'enabled' if want else 'disabled'}, skipping")
+        return False
+    log(f"  theme-app '{app_id}': {'enabling' if want else 'disabling'}")
+    if want:
+        client.post_form(f"{APPS_PATH}/{app_id}?format=json", {})
+    else:
+        client.delete(f"{APPS_PATH}/{app_id}?format=json")
+    if is_enabled() != want:
+        raise ProvisionError(
+            f"theme-app '{app_id}': still {'disabled' if want else 'enabled'} after the call"
+        )
+    log(f"  theme-app '{app_id}': {'enabled' if want else 'disabled'} OK")
+    return True
 
 
 def provision_settings(client, organisation, multitenancy):

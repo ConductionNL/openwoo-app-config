@@ -17,17 +17,24 @@
 
 ## 2. Theme provisioner step
 
-- [ ] 2.1 `scripts/provisionlib/steps.py::theme`: GET current theming
-      (name/slogan/color/logo via OCS `theming` API), diff against desired
-      config, PUT only what's drifted. Idempotent, same pattern as existing
-      OpenRegister steps.
-- [ ] 2.2 Optional NL Design System app enable/disable as its own idempotent
-      sub-step (GET app list, enable if desired-and-missing).
-- [ ] 2.3 Wire into `provision.py all` and expose standalone
-      `provision.py theme --base ...`. Document in
+- [x] 2.1 `scripts/provisionlib/steps.py::provision_theme`: GET current theming
+      via the OCS app-config API, diff against desired, write only what's
+      drifted, re-GET and assert. Idempotent, same pattern as existing
+      OpenRegister steps. **Scope correction:** logo/background/favicon are file
+      uploads to the theming app's session+CSRF ajax route, not app-config
+      values, so they are not settable over the basic-auth API the provisioner
+      uses — documented as a gap, not silently dropped.
+- [x] 2.2 `provision_theme_app`: idempotent enable/disable of an
+      already-installed theme app (GET enabled list, act only on drift, re-GET
+      and assert). App id stays a parameter — task 1.3 has not confirmed the NL
+      Design System id, so nothing is hardcoded.
+- [x] 2.3 Wired into `provision.py all` as step `[11/12]` (before `sync-run`)
+      and exposed standalone as `provision.py theme`. Documented in
       `docs/provisioner-commands.md`.
-- [ ] 2.4 `tests/test_provision.py`: unit tests for drift-detection and
-      no-op-on-converged, mocked HTTP — no live Nextcloud needed.
+- [x] 2.4 `tests/test_provision.py`: 14 unit tests (drift, no-op on converged,
+      absent key, blank values ignored, unknown key rejected, write that does
+      not reflect, app enable/disable/idempotent/missing-id, CLI flag mapping).
+      Mocked HTTP — no live Nextcloud needed.
 - [ ] 2.5 Add the NL Design System theme to `webgui/tenants.py::KNOWN_APPS`
       only if it should be selectable from the create-tenant form later (not
       required for MVP — operator can run the provisioner step directly first).

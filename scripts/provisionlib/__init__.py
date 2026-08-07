@@ -17,6 +17,8 @@ import urllib.request
 from .client import Client, ProvisionError
 from .constants import (
     API_KEY_HEADER,
+    APPCONFIG_PATH,
+    APPS_PATH,
     AUTH_FLAG_KEYS,
     CATALOG_REGISTER,
     CATALOG_SCHEMA,
@@ -41,6 +43,8 @@ from .constants import (
     SETTINGS_RETENTION_PATH,
     SOURCES_PATH,
     SYNCS_PATH,
+    THEME_KEYS,
+    THEMING_APP,
     USER_MENU_NAME,
     VERIFY_BUCKETS,
 )
@@ -53,6 +57,7 @@ from .helpers import (
     load_config,
     log,
     merge_header,
+    ocs_data,
     results_list,
     slug_to_id,
 )
@@ -71,6 +76,8 @@ from .steps import (
     provision_settings,
     provision_sync_run,
     provision_syncs,
+    provision_theme,
+    provision_theme_app,
     put_settings_reflected,
     sync_check,
     target_schema_resolved,

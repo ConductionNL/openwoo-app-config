@@ -96,3 +96,32 @@ OC_OBJECT_TYPES = ["catalog", "listing", "organization", "theme", "page", "menu"
 
 
 INTERFACE_ID_HEADER = "headers.API-Interface-ID"
+
+
+# --- Nextcloud theming (core `theming` app) ---
+# Theming is *app* config: it lives in the database (oc_appconfig), not in
+# config.php, so it is not subject to the "config.php is regenerated on every
+# pod start" rule that Nextcloud-base/docs/CONFIG-CHANGES.md warns about. These
+# OCS endpoints are what `occ theming:config <key> <value>` writes underneath,
+# which is why the step can converge a live tenant idempotently.
+# `?format=json` is appended per call: OCS defaults to XML and we only parse JSON.
+THEMING_APP = "theming"
+APPCONFIG_PATH = "/ocs/v2.php/apps/provisioning_api/api/v1/config/apps"
+APPS_PATH = "/ocs/v2.php/cloud/apps"
+
+# Theming keys the `theme` step is allowed to set. Deliberately a closed list:
+# an unknown key is a typo, and silently writing it to appconfig would leave
+# dead state on the tenant that nothing ever cleans up.
+# NOT included: logo / background / favicon. Those are *file uploads* to the
+# theming app's session+CSRF-protected ajax route, not appconfig values, so they
+# cannot be set over basic auth the way every other step works. See
+# docs/provisioner-commands.md.
+THEME_KEYS = (
+    "name",
+    "url",
+    "slogan",
+    "color",
+    "imprintUrl",
+    "privacyUrl",
+    "disable-user-theming",
+)
