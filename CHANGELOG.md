@@ -4,6 +4,32 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (huisstijl bij tenant-creatie — sectie 2, herzien)
+- `webgui/tenants.py`: `from_org()` en `render()` dragen nu het hele
+  brandingblok — `themeClassname`, `jumbotronImageUrl`, `faviconUrl` naast het
+  bestaande `organisationName`. Drie optionele velden in
+  `webgui/templates/tenant.html`, doorgegeven door `server.py::tenant_create`.
+  Een via het formulier aangemaakte tenant hoeft daardoor niet meer met de hand
+  bijgewerkt te worden om op zijn eigen thema te starten.
+- Leeg thema blijft bewust leeg: de `react-tenants`-ApplicationSet valt dan
+  terug op `conduction-theme`, dat in de gebundelde thema's zit en gegarandeerd
+  rendert. Zelf `<org>-theme` afleiden is precies de bug die react-base op
+  2026-06-30 repareerde, waarbij tenants zónder thema renderden. Vastgelegd in
+  de docstring van `render()`.
+- Bestaande tenants zijn hiermee niet geholpen: de appset ignore-difft de
+  branding-env (`^(GATSBY_|NL_DESIGN_)`), dus een waarde die later aan een
+  tenantbestand wordt toegevoegd bereikt een draaiende frontend niet. Creatie
+  is het moment dat telt; het overige is een aparte change.
+- 8 nieuwe tests.
+
+### Teruggedraaid — 2026-08-07 (Nextcloud-interface-theming)
+- De eerder vandaag toegevoegde `theme`-provisionerstap en de bijbehorende
+  formulier-velden zijn teruggedraaid. De premisse klopte niet: het voorstel
+  ging uit van "branding is één string", terwijl `frontend.branding` al vier
+  sleutels draagt die de react-appset omzet in `GATSBY_`-env. Wat gebouwd was
+  raakte een ander oppervlak — de Nextcloud-beheerinterface — en dat was niet
+  de vraag.
+
 ### Toegevoegd — 2026-08-07 (OpenSpec-change `tenant-onboarding-completion`)
 - `openspec/changes/tenant-onboarding-completion/` (proposal, design, tasks,
   `.openspec.yaml`): de drie losse eindjes van `tenant-creation-pr-flow` —
@@ -21,6 +47,11 @@ All notable changes to this repository are documented here.
   naamconventie `nc-<tenant>-tls-custom` is verworpen ten gunste van de
   bestaande host-afgeleide naam. Geen wijziging nodig in Nextcloud-base of
   react-base.
+- Taak 1.2 afgevinkt: `certswap` is werkende code (v0.3.0+) met een
+  Kubernetes-target en ArgoCD-bewuste in-place secret-swap. Het blijft een
+  **externe tool**, dus de runbook schrijft `kubectl create secret tls` als
+  volwaardig pad — de onboarding mag niet achter een externe release-cadans
+  komen te hangen.
 
 ### Gewijzigd — 2026-07-20 (release-administratie 0.5.0 — GitHub-port uitrolbaar)
 - `webgui/deploy/kustomization.yaml`: `newTag` 0.4.0 → 0.5.0. Het

@@ -4,30 +4,54 @@
       status — hard dependency for section 4 (`secret-reveal-once`). Not a
       dependency for sections 2 (theme) or 3 (TLS rendering).
       **Status 2026-08-07: still unchecked on `main`.**
-- [ ] 1.2 Confirm whether `certswap` has any working code yet, or is still
-      design-only. **Blocked:** the repo lives at `~/projects/certswap`, outside
-      the hub work area — needs an explicit go before an agent reads it. Until
-      then section 3 ships the runbook with the `kubectl create secret tls`
-      fallback as the primary path.
-- [ ] 1.3 Confirm the NL Design System Nextcloud app id
-      (`ConductionNL/nldesign-theme-nextcloud`) and its OCS/`occ` enable path.
+- [x] 1.2 Confirm whether `certswap` has any working code yet — **done
+      2026-08-07: yes.** Working CLI at v0.3.0+ with a Kubernetes target
+      (`certswap plan|apply k8s <bundle> --namespace <ns> --secret <name>`),
+      polymorphic ingest (PFX, PEM, separate files, PKCS#7, archives), an
+      ArgoCD-aware in-place secret swap, and an evidence trail per swap.
+      Caveat for section 3: it is an **external, non-ConductionNL tool** — the
+      runbook keeps `kubectl create secret tls` as a first-class fallback so
+      the platform is never blocked on it (see design.md Risks).
+- [x] 1.3 Confirm what "the NL Design System theme" is — **done 2026-08-07: it
+      is the react frontend's theme classname, not a Nextcloud app.**
+      `frontend.branding.themeClassname` → `GATSBY_NL_DESIGN_THEME_CLASSNAME`
+      (`react-tenants.yaml:111,175`), baseline `conduction-theme`. No Nextcloud
+      app id to confirm; the app-enable path was a false lead.
 
-## 2. Theme provisioner step
+## 2. Branding at tenant creation
 
-- [ ] 2.1 `scripts/provisionlib/steps.py::theme`: GET current theming
-      (name/slogan/color/logo via OCS `theming` API), diff against desired
-      config, PUT only what's drifted. Idempotent, same pattern as existing
-      OpenRegister steps.
-- [ ] 2.2 Optional NL Design System app enable/disable as its own idempotent
-      sub-step (GET app list, enable if desired-and-missing).
-- [ ] 2.3 Wire into `provision.py all` and expose standalone
-      `provision.py theme --base ...`. Document in
-      `docs/provisioner-commands.md`.
-- [ ] 2.4 `tests/test_provision.py`: unit tests for drift-detection and
-      no-op-on-converged, mocked HTTP — no live Nextcloud needed.
-- [ ] 2.5 Add the NL Design System theme to `webgui/tenants.py::KNOWN_APPS`
-      only if it should be selectable from the create-tenant form later (not
-      required for MVP — operator can run the provisioner step directly first).
+**Premise correction (2026-08-07).** The proposal said branding is one string
+(`frontend.branding.organisationName`) and that theming needed a new provisioner
+step. Both were wrong. `frontend.branding` already carries `organisationName`,
+`themeClassname`, `jumbotronImageUrl` and `faviconUrl`; the `react-tenants`
+ApplicationSet turns each into a `GATSBY_` env var; 24 of 78 tenant files
+already use `themeClassname` (`tenant-tubbergen-accept.yaml:22-25`). A
+Nextcloud-back-office theming step was built and reverted — it addressed a
+different surface that nobody asked for.
+
+The real gap was narrow: `webgui/tenants.py::render()` emitted only
+`organisationName`, so a tenant created from the form landed on the
+`conduction-theme` baseline and someone had to hand-edit the tenant file
+afterwards — the manual devops step this change exists to remove.
+
+- [x] 2.1 `webgui/tenants.py`: `from_org()` accepts theme/jumbotron/favicon and
+      `render()` emits them under `frontend.branding`, in the shape the
+      ApplicationSet reads. Blank values are omitted, never emitted empty.
+- [x] 2.2 Blank theme stays blank on purpose: the ApplicationSet falls back to
+      `conduction-theme`, which ships with the bundled themes and renders.
+      Deriving `<org>-theme` is the 2026-06-30 bug where onboarded tenants
+      rendered with no theme at all. Recorded in `render()`'s docstring.
+- [x] 2.3 `webgui/templates/tenant.html` + `server.py::tenant_create`: three
+      optional fields under the advanced section, with the "leave blank unless
+      the organisation ships its own theme" hint.
+- [x] 2.4 `tests/test_tenants.py` + `tests/test_webgui.py`: rendering, blank
+      omission, extras without `organisationName`, pass-through in `from_org`,
+      and the fields reaching the proposed PR content.
+- [ ] 2.5 (follow-up, not in this change) Existing tenants are unaffected: the
+      appset ignore-diffs the branding env (`^(GATSBY_|NL_DESIGN_)`), so a value
+      added to a live tenant file does not reach a running frontend. If existing
+      tenants need their branding brought under git, that is its own change with
+      its own rollout — creation is the only moment this path covers.
 
 ## 3. Custom-domain TLS rendering
 
@@ -48,7 +72,7 @@
       issuer default.
 - [ ] 3.4 Write the operator runbook (`docs/custom-domain-cert.md`): merge
       order (PR merges → namespace exists → cert Secret seeded → Ingress picks
-      it up), the `certswap k8s-secret` path, the `kubectl create secret tls`
+      it up), the `certswap apply k8s` path, the `kubectl create secret tls`
       fallback, and recording the cert expiry + owner (no auto-renewal under
       `issuer: none`).
 - [ ] 3.5 Confirm monitoring's `CertificateExpiringSoon` rule fires for a
@@ -87,8 +111,9 @@
 
 ## 6. Dry-run + done criteria
 
-- [ ] 6.1 Theme step: run against a throwaway tenant, confirm idempotent
-      re-run is a no-op.
+- [ ] 6.1 Branding: create a throwaway tenant with a `themeClassname` from the
+      form, confirm the PR carries the branding block and that the frontend
+      comes up on that theme (not on `conduction-theme`).
 - [ ] 6.2 TLS rendering: create a throwaway custom-domain tenant, confirm the
       PR carries a `frontend.tls` block identical in shape to the live examples
       and that Nextcloud-base CI accepts it.

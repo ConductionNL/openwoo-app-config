@@ -60,10 +60,14 @@ def validate_org(org, environment):
     return errs
 
 
-def from_org(org, environment, dbType=None, display=None, host=None):
+def from_org(org, environment, dbType=None, display=None, host=None,
+             theme=None, jumbotron=None, favicon=None):
     """Build the full fields dict from the minimal input. Everything not given is
     derived: name=`<org>-<env>`, all three apps, branding 'Gemeente <Org>',
-    db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu)."""
+    db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu).
+
+    The branding extras (theme/jumbotron/favicon) default to blank on purpose —
+    see render() for why a blank theme is the safe value."""
     org = (org or "").strip().lower()
     env = (environment or "").strip()
     disp = (display or "").strip() or (org_display(org) if org else "")
@@ -75,6 +79,9 @@ def from_org(org, environment, dbType=None, display=None, host=None):
         "apps": list(KNOWN_APPS),
         "frontend_org": disp,
         "frontend_host": (host or "").strip(),
+        "frontend_theme": (theme or "").strip(),
+        "frontend_jumbotron": (jumbotron or "").strip(),
+        "frontend_favicon": (favicon or "").strip(),
     }
 
 
@@ -124,8 +131,24 @@ def render(fields):
     """Render the tenant YAML as text. Assumes `validate(fields)` passed.
 
     Emits the minimal tenant block (name/environment/wave/dbType/apps) and an
-    optional `frontend` block (host and/or branding.organisationName) only when
-    those fields are supplied — everything else is derived by the platform."""
+    optional `frontend` block (host and/or branding) only when those fields are
+    supplied — everything else is derived by the platform.
+
+    Branding note. `frontend.branding` is read by react-base's `react-tenants`
+    ApplicationSet, which turns each key into a `GATSBY_` env var on the
+    frontend. `themeClassname` deserves care:
+
+    - Blank is the safe value. The ApplicationSet falls back to
+      `conduction-theme`, which ships with the bundled themes and renders out of
+      the box. Deriving `<org>-theme` here would point at a theme that usually
+      does not exist — exactly the bug react-base fixed on 2026-06-30, where
+      onboarded tenants rendered without any theme.
+    - Only set it when the tenant genuinely has its own bundled NL Design theme.
+    - Creation is the moment that counts: the appset ignore-diffs the branding
+      env (`^(GATSBY_|NL_DESIGN_)`) so devs can edit it live, which also means a
+      value added to an *existing* tenant file does not reach a running
+      frontend. A new tenant's frontend is created fresh, so what is declared
+      here is what it starts with."""
     name = fields["name"].strip()
     env = fields["environment"].strip()
     wave = str(fields.get("wave") or "1").strip()
@@ -134,6 +157,15 @@ def render(fields):
 
     host = (fields.get("frontend_host") or "").strip()
     org = (fields.get("frontend_org") or "").strip()
+    # Branding keys the react-tenants ApplicationSet turns into GATSBY_ env on the
+    # frontend. Emitted only when supplied — see the branding note in render()'s
+    # docstring for why a blank theme is the correct default.
+    branding_extra = [
+        ("themeClassname", (fields.get("frontend_theme") or "").strip()),
+        ("jumbotronImageUrl", (fields.get("frontend_jumbotron") or "").strip()),
+        ("faviconUrl", (fields.get("frontend_favicon") or "").strip()),
+    ]
+    extras = [(k, v) for k, v in branding_extra if v]
 
     lines = ["---", "tenant:", f"  name: {name}", f"  environment: {env}",
              f"  wave: {_q(wave)}", f"  dbType: {db}",
@@ -143,11 +175,14 @@ def render(fields):
              "  apps:", "    enabled:"]
     lines += [f"      - {a}" for a in apps]
 
-    if host or org:
+    if host or org or extras:
         lines.append("  frontend:")
         if host:
             lines.append(f"    host: {host}")
-        if org:
-            lines += ["    branding:", f"      organisationName: {_q(org)}"]
+        if org or extras:
+            lines.append("    branding:")
+            if org:
+                lines.append(f"      organisationName: {_q(org)}")
+            lines += [f"      {key}: {_q(value)}" for key, value in extras]
 
     return "\n".join(lines) + "\n"

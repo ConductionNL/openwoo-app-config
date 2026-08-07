@@ -35,8 +35,9 @@ Nextcloud" end to end:
     following the naming already used in live tenant files (host-derived, e.g.
     `acceptatie-open-oude-ijsselstreek-nl-tls`) — no new naming convention,
   - documents the operator runbook for landing the actual cert into that Secret:
-    `certswap`'s `k8s-secret` driver once it exists, `kubectl create secret tls`
-    until then. Either way out of band from git and from the webgui — the PR
+    `certswap apply k8s` for the ergonomic path, `kubectl create secret tls` as
+    the dependency-free one. Either way out of band from git and from the
+    webgui — the PR
     only ever references the secret *name*, never its contents.
   This change does **not** add cert-upload code to the webgui.
 - **Theme as a provisioner step, not a form field.** Theming (name, color,
@@ -64,7 +65,8 @@ Nextcloud" end to end:
 - `tenant-tls-custom-domain`: a tenant with a non-platform `frontend.host` gets
   its `frontend.tls` block written by the webgui (not hand-edited afterwards)
   and a documented, git-free path for the cert bytes via `certswap`'s
-  `k8s-secret` driver, with a `kubectl` fallback.
+  Kubernetes target, with an equally documented `kubectl` path for anyone who
+  does not have it installed.
 - `tenant-theme-branding`: an operator (or later, the create-tenant form)
   can converge a tenant's Nextcloud theming (name/color/logo, optional NL
   Design System theme app) the same idempotent way OpenRegister config is
@@ -87,8 +89,8 @@ Nextcloud" end to end:
 - `byo-cert-renewal`: renewal of a hand-seeded customer cert is flagged as an
   open item in react-base's change and stays there.
 - `certswap-implementation`: building/hardening `certswap` itself is tracked
-  in its own repo/OpenSpec; this change only *consumes* its `k8s-secret`
-  driver via a documented runbook.
+  in its own repo/OpenSpec; this change only *consumes* its Kubernetes target
+  via a documented runbook.
 - `nextcloud-provisioner-rename`: renaming `openwoo-provisioner` →
   `nextcloud-provisioner` touches ~20 manifests, the Keycloak client id, the
   image name, and the namespace — real work, explicitly **not** bundled here.
@@ -108,10 +110,10 @@ Nextcloud" end to end:
   `webgui/server.py` gains `/tenant/<name>/secret-link` + `/reveal/<token>`;
   new stdlib-only burn-store module.
   Zero-third-party-dependency posture preserved.
-- **certswap repo**: no code change required for this proposal to ship; its
-  `k8s-secret` driver becomes a documented dependency of this platform's
-  onboarding runbook. If `certswap` isn't built yet, the runbook's `kubectl
-  create secret tls` fallback carries the flow.
+- **certswap**: no code change required for this proposal to ship; its
+  Kubernetes target becomes a documented, *optional* step in this platform's
+  onboarding runbook. Because it is an external tool, the runbook's `kubectl
+  create secret tls` path is written to be sufficient on its own.
 - **Cluster**: the webgui's RBAC needs a narrow addition — read (not list)
   of one Secret (`nextcloud-secrets` in the tenant namespace) scoped to the
   reveal flow, and write of one ephemeral Secret/ConfigMap per reveal token.
