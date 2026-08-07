@@ -67,6 +67,8 @@
       <input type="text" name="frontend_jumbotron" placeholder="https://raw.githubusercontent.com/…/jumbotron.jpg">
       <label>Favicon <span class="hint">(URL; leeg = platformstandaard)</span></label>
       <input type="text" name="frontend_favicon" placeholder="https://…/favicon.ico">
+      <label>Frontend-versie <span class="hint">(image-tag; leeg = platformstandaard. In gebruik: latest, dev)</span></label>
+      <input type="text" name="frontend_tag" placeholder="latest">
     </details>
 
     <!-- Buiten de vouw, en alleen zichtbaar bij een eigen host: op een eigen
@@ -144,16 +146,33 @@
       declared.hidden = false;
       if (d.editable) {
         editing = true;
-        setFields(d.fields || {});
-        adv.open = true;
+        const v = d.fields || {};
+        setFields(v);
         submitBtn.textContent = 'Wijziging indienen';
         declared.className = 'declared';
+
+        // Benoem wat er ís, in plaats van te beloven dat er iets staat. Een
+        // tenantbestand mag alleen naam/omgeving/apps bevatten (canary-accept
+        // is precies dat), en dan is "de huidige waarden staan ingevuld" een
+        // loze mededeling boven lege velden.
+        const labels = {
+          frontend_org: 'weergavenaam', frontend_host: 'eigen host',
+          frontend_theme: 'thema', frontend_jumbotron: 'jumbotron',
+          frontend_favicon: 'favicon', frontend_tag: 'frontend-versie',
+        };
+        const filled = Object.keys(labels).filter(k => (v[k] || '').trim());
+        adv.open = filled.length > 0;   // niets te zien = niet openklappen
+
+        const heeft = filled.length
+          ? `Ingevuld vanuit het tenantbestand: ${filled.map(k => labels[k]).join(', ')}. ` +
+            `Wat je aanpast wordt als wijziging ingediend.`
+          : `Er staat nog geen huisstijl of eigen host in het tenantbestand — alleen ` +
+            `naam, omgeving, database en apps. Wat je hieronder invult wordt toegevoegd.`;
         declared.innerHTML =
-          `Deze omgeving <strong>bestaat al</strong>. De huidige waarden staan hieronder ingevuld; ` +
-          `wat je aanpast wordt als wijziging ingediend.<br>` +
+          `Deze omgeving <strong>bestaat al</strong>. ${heeft}<br>` +
           `<span class="hint">Let op: huisstijl (thema, naam, jumbotron, favicon) wordt op een ` +
-          `draaiende frontend niet toegepast — die env is ignore-diffed. Host, certificaat en ` +
-          `apps gelden wél direct.</span>`;
+          `draaiende frontend niet toegepast — die env is ignore-diffed. Host, certificaat, ` +
+          `frontend-versie en apps gelden wél direct.</span>`;
       } else {
         declared.className = 'declared warn';
         declared.innerHTML =

@@ -196,15 +196,37 @@ def test_rendered_file_has_no_unknown_keys():
     assert tenants.unknown_keys(doc) == []
 
 
+def test_render_frontend_tag():
+    out = tenants.render(_base(frontend_tag="dev"))
+    assert "  frontend:" in out and '    tag: "dev"' in out
+    # zonder tag geen frontend-blok als er verder niets is
+    assert "frontend:" not in tenants.render(_base())
+
+
+def test_frontend_tag_roundtrips():
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(tenants.render(_base(frontend_tag="latest",
+                                              frontend_org="Gemeente Almere")))
+    assert tenants.unknown_keys(doc) == []
+    assert tenants.from_declaration(doc)["frontend_tag"] == "latest"
+
+
+def test_frontend_tag_is_no_longer_unknown():
+    """De helft van de vloot pinde een frontend-versie; die bestanden waren
+    daardoor niet bewerkbaar via de portal."""
+    doc = {"tenant": {"name": "a-accept", "frontend": {"tag": "dev"}}}
+    assert tenants.unknown_keys(doc) == []
+
+
 def test_unknown_keys_flags_hand_written_fields():
     """The live fleet carries keys the form does not model; those files must not
     be re-rendered by the portal."""
     doc = {"tenant": {"name": "almere-accept", "environment": "accept",
                       "hostnameOverride": True,
-                      "frontend": {"tag": "dev", "host": "open.almere.nl"}},
+                      "frontend": {"env": {"X": "1"}, "host": "open.almere.nl"}},
            "resources": {"limits": {}}}
     assert tenants.unknown_keys(doc) == [
-        "resources", "tenant.frontend.tag", "tenant.hostnameOverride"]
+        "resources", "tenant.frontend.env", "tenant.hostnameOverride"]
 
 
 def test_unknown_keys_on_junk_input():
