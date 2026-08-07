@@ -25,6 +25,8 @@ loaded into a tenant. See the repo README for the quick overview.
   subcommand, what it does and what it asserts (reference).
 - [Functional import test](functional-test.md) — the local layer-2 test
   against an ephemeral Nextcloud (how-to).
+- [Branding van een omgeving](branding.md) — wat de WOO-website toont:
+  naam, thema, jumbotron, favicon, eigen host en certificaat (how-to).
 - [A tenant on its own domain: the certificate](custom-domain-cert.md) —
   what the form writes, why the certificate never travels through git, and
   how to land and renew a bring-your-own certificate (how-to).

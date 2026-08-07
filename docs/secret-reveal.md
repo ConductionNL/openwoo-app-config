@@ -6,25 +6,27 @@ owner: info@conduction.nl
 # Handing over a tenant's initial admin password
 
 A newly created tenant has a generated Nextcloud admin password sitting in
-its `nextcloud-secrets` Secret. Getting it to the product owner used to
-mean a devops person running `kubectl get secret … | base64 -d` and pasting
-the result into chat or email — the exact dependency the tenant lifecycle
-is meant to remove, and a copy of a municipal admin password left behind in
-someone's message history.
+its `nextcloud-secrets` Secret. Eraan komen betekende een devops-persoon die
+`kubectl get secret … | base64 -d` draaide en het resultaat in een chat of
+mail plakte — precies de afhankelijkheid die deze levenscyclus wil weghalen,
+plus een kopie van een gemeentelijk adminwachtwoord in iemands berichten.
 
 The portal replaces that with a link that works exactly once.
 
 ## The flow
 
-1. An **operator** (authenticated through oauth2-proxy/Keycloak) mints a
-   link: `POST /tenant/<name>/secret-link`. The response contains the URL
-   and nothing else — the password is not in it.
-2. The operator sends that URL to the product owner over whatever channel
-   they already use. This change does not send anything itself.
-3. The **product owner** opens it: `GET /reveal/<token>`. The password is
-   shown once, on a plain page with no JavaScript.
-4. Any second open — by anyone, including the same person — returns 404.
-   So does an expired link. The two are deliberately indistinguishable.
+1. Een **operator** klikt **wachtwoord inzien** bij de omgeving op het
+   dashboard. Dat kan **één keer per omgeving, ooit**: daarna staat er
+   "wachtwoord ingezien" en wijst een tweede poging af met 409, inclusief
+   wie hem eerder maakte en wanneer.
+2. De link verschijnt klikbaar én kopieerbaar. Zelf openen kan, doorsturen
+   ook — het portaal verstuurt niets.
+3. Openen toont het wachtwoord één keer, op een pagina zonder JavaScript.
+4. Elke tweede opvraging — ook door dezelfde persoon — geeft 404.
+
+Kwijtgeraakt vóór gebruik? Dan leest een operator het secret met `kubectl`.
+Bewust omslachtiger dan opnieuw kunnen delen. Een verlopen link geeft
+hetzelfde 404 als een gebruikte: die twee zijn expres niet te onderscheiden.
 
 ## Wie de link mag openen
 
@@ -87,6 +89,10 @@ therefore wider than the feature needs. **The code is the boundary:**
 `burnstore.read_admin_password()` returns exactly one key. Narrowing the
 grant further would require Nextcloud-base to split the admin password into
 its own Secret.
+
+Sinds de certificaat-upload heeft het portaal daarnaast `create`/`update` op
+Secrets, en dát is niet op naam te beperken — zie
+[custom-domain-cert.md](custom-domain-cert.md) en `deploy/rbac-secrets.yaml`.
 
 ## Configuration
 

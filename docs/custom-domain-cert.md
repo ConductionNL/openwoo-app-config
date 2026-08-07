@@ -69,7 +69,16 @@ and the namespace is created by the merge.
    Until step 3, the site answers with the wrong certificate — expected.
 2. **Get the bundle** from the organisation. It arrives in whatever format
    their CA produced: PFX, a PEM bundle, separate files, PKCS#7, a zip.
-3. **Write the Secret** into the tenant namespace (the *bare* tenant name):
+3. **Plaats het certificaat.** Eerste route: het portaal, onder
+   **Branding → <omgeving> → Eigen certificaat plaatsen**. Upload het
+   certificaat (PEM, leaf eerst, keten mag erbij) en de onversleutelde
+   sleutel. Het portaal controleert of de sleutel bij het certificaat hoort,
+   of het de host dekt en hoe lang het nog geldig is, en schrijft het pas
+   daarna weg onder de uit de host afgeleide naam. De bytes gaan niet door
+   git en worden niet gelogd.
+
+   Werkt dat niet, of doe je het liever van de commandoregel, dan schrijf je
+   de Secret zelf in de tenant-namespace (de *kale* tenantnaam):
 
        certswap plan  k8s <bundle> --namespace <tenant> --secret <name>
        certswap apply k8s <bundle> --namespace <tenant> --secret <name> \
