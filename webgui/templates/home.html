@@ -124,24 +124,20 @@
                 ? `<span class="muted" title="een wachtwoordlink wordt één keer per omgeving gemaakt">wachtwoord gedeeld</span> &middot; `
                 : `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoord delen</a> &middot; `;
             return `<tr><td>${esc(t.tenant)}</td><td>${badge(c,l)}</td>`+
-                   `<td>${reveal}<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
+                   `<td>${reveal}<a href="/tenant/${encodeURIComponent(t.tenant)}/edit">aanpassen</a> &middot; `+
+                   `<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
         : '<tr><td colspan="3" class="muted">nog geen omgevingen</td></tr>';
       document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';
 
       document.getElementById('dash-err').textContent = (d.errors && d.errors.length) ? ('⚠ ' + d.errors.join(' · ')) : '';
     }
 
-    // Eenmalige wachtwoordlink, twee wegen:
-    //   "wachtwoord tonen" — voor de operator zelf: mint, open direct in een
-    //      tabblad en verbrand hem meteen. Geen kopiëren, geen link die blijft
-    //      slingeren.
-    //   "link" — voor de product owner: toont de URL om te versturen. Die mag
-    //      niet hier geopend worden, want openen ís verbranden.
+    // Eén wachtwoordlink per omgeving, ooit. De link is klikbaar én
+    // kopieerbaar: zelf openen en doorsturen kan met dezelfde actie.
     //
-    // Elke klik mint een NIEUWE link. De vorige is dan al verbrand of verloopt
-    // vanzelf, maar minten op een productie-tenant is geen bijzaak — vandaar de
-    // bevestiging met de naam erin (een misklik op de verkeerde rij toonde
-    // tijdens de dry-run het wachtwoord van een levende gemeente).
+    // Bevestiging met de naam erin, want de knop staat ook op productie-
+    // omgevingen — tijdens de dry-run toonde een misklik op de verkeerde rij
+    // het wachtwoord van een levende gemeente.
     async function mint(tenant) {
       const r = await fetch(`/tenant/${encodeURIComponent(tenant)}/secret-link`, { method: 'POST' });
       const d = await r.json();

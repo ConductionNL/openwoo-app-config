@@ -30,6 +30,18 @@ All notable changes to this repository are documented here.
   schrijven. De begrenzing zit in de code, niet in de RBAC. Dat staat ook in
   `rbac-secrets.yaml`, zodat wie het toepast het ziet.
   Nieuwe dependency: `cryptography` (X.509 parsen kan niet met de stdlib).
+- **Correctie op dezelfde dag:** de `skip_auth_routes` hierboven is teruggedraaid.
+  Besluit: een adminwachtwoord wordt alleen aan Conduction-medewerkers getoond, dus
+  `/reveal/` blijft achter de login — de proxy zat goed. Daarmee vervalt de aanname
+  in `design.md` dat de ontvanger geen account heeft; het token blijft eenmalig en
+  kortlevend, maar is nu een tweede slot achter de login in plaats van het enige.
+  `docs/secret-reveal.md` en `_require_operator` zijn meegegaan, zodat beide poorten
+  hetzelfde zeggen.
+- **Aanmaken en bewerken gesplitst.** Een bestaande omgeving wijzigen onder de kop
+  "Nieuwe WOO-omgeving" was verwarrend. `/tenant` maakt aan en verwijst naar
+  `/tenant/<naam>/edit` als de omgeving al bestaat; die pagina toont de huidige
+  waarden, weigert handgeschreven bestanden, en draagt de certificaat-upload.
+  Het dashboard krijgt per omgeving een link **aanpassen**.
 
 ### Gewijzigd — 2026-08-07 (reveal-flow: token uit de logs, tonen in plaats van kopiëren)
 - **Het reveal-token stond in de gunicorn access-log.** `/reveal/<token>` draagt

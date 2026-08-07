@@ -431,16 +431,16 @@ def test_reveal_of_an_unknown_token_is_404(client, reveal_on):
     assert client.get("/reveal/ditbestaatniet").status_code == 404
 
 
-def test_reveal_needs_no_operator_identity(monkeypatch, reveal_on):
-    """The PO has no Keycloak account: /reveal must pass the auth gate, while
-    minting must not."""
+def test_reveal_also_requires_an_operator_identity(monkeypatch, reveal_on):
+    """Besluit 2026-08-07: een adminwachtwoord wordt alleen aan
+    Conduction-medewerkers getoond. Beide routes zitten dus achter de login;
+    oauth2-proxy heeft bewust geen skip_auth_routes, en deze test houdt de
+    app-kant daarmee in de pas."""
     monkeypatch.setattr(server, "REQUIRE_AUTH", True)
     server.app.config["TESTING"] = True
     c = server.app.test_client()
-    # minting without an operator identity is refused
     assert c.post("/tenant/almere-accept/secret-link").status_code == 403
-    # revealing is not (404 = no such ticket, i.e. it got past the gate)
-    assert c.get("/reveal/whatever").status_code == 404
+    assert c.get("/reveal/whatever").status_code == 403
 
 
 def test_secret_link_refuses_a_tenant_without_a_password(client, reveal_on):
@@ -580,9 +580,19 @@ def test_second_mint_for_a_tenant_is_refused(client, reveal_on, monkeypatch):
     assert "al een wachtwoordlink" in j["errors"][0]
 
 
-def test_existing_tenant_is_updated_not_created(client, monkeypatch):
-    """A second submit for the same tenant must UPDATE the file. Creating would
-    fail on the API with a far less useful message."""
+def test_create_route_refuses_an_existing_tenant(client, monkeypatch):
+    """Aanmaken en bewerken zijn gescheiden schermen. Het aanmaakformulier
+    verwijst naar de bewerkpagina in plaats van stilletjes te wijzigen."""
+    _declared(monkeypatch, _PORTAL_FILE)
+    monkeypatch.setattr(server.gitlib, "propose_update",
+                        lambda **kw: pytest.fail("create-route wijzigde stilletjes"))
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    assert resp.status_code == 409
+    assert resp.get_json()["edit_url"] == "/tenant/almere-accept/edit"
+
+
+def test_edit_route_updates_the_file(client, monkeypatch):
+    """De bewerkroute haalt de naam uit de URL, niet uit het formulier."""
     _declared(monkeypatch, _PORTAL_FILE)
     seen = {}
     monkeypatch.setattr(server.gitlib, "propose_update",
@@ -590,11 +600,27 @@ def test_existing_tenant_is_updated_not_created(client, monkeypatch):
     monkeypatch.setattr(server.gitlib, "propose_file",
                         lambda **kw: pytest.fail("create gebruikt terwijl de tenant bestaat"))
 
-    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    resp = client.post("/tenant/almere-accept/edit", data={"frontend_theme": "nieuw-theme"})
     assert resp.status_code == 201 and resp.get_json()["updated"] is True
     assert seen["branch"] == "edit-tenant/almere-accept"
+    assert 'themeClassname: "nieuw-theme"' in seen["content"]
     # de PR moet de ignore-diff-val benoemen
     assert "ignore-difft" in seen["pr_body"]
+
+
+def test_edit_page_renders_current_values(client, monkeypatch):
+    _declared(monkeypatch, _PORTAL_FILE)
+    body = client.get("/tenant/almere-accept/edit").get_data(as_text=True)
+    assert "almere-accept aanpassen" in body
+    assert 'value="almere-theme"' in body          # huidige waarde ingevuld
+    assert 'name="cert"' in body and 'name="key"' in body   # certificaat-upload
+
+
+def test_edit_page_refuses_a_hand_edited_file(client, monkeypatch):
+    _declared(monkeypatch, _HAND_EDITED_FILE)
+    body = client.get("/tenant/almere-accept/edit").get_data(as_text=True)
+    assert "met de hand aangepast" in body
+    assert 'name="frontend_theme"' not in body    # geen formulier aangeboden
 
 
 def test_hand_edited_tenant_is_refused(client, monkeypatch):

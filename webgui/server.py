@@ -95,11 +95,13 @@ def _require_operator():
     probe needs an authenticated operator. The header is only trustworthy
     because oauth2-proxy is the sole ingress — see the module docstring.
 
-    `/reveal/<token>` is the one deliberate exception. Its recipient is a product
-    owner with no Keycloak identity; the unguessable 256-bit token IS the
-    credential, and the ticket is burned on first use. Minting a token stays
-    operator-gated, so no unauthenticated request can ever create one."""
-    if request.path == "/healthz" or request.path.startswith("/reveal/"):
+    Ook `/reveal/<token>` valt hieronder. Besluit 2026-08-07: een adminwachtwoord
+    wordt alleen aan Conduction-medewerkers getoond. De oorspronkelijke opzet
+    (een product owner zonder account, met het token als enige poort) is
+    daarmee vervallen — het token blijft eenmalig en kortlevend, maar is nu een
+    tweede slot achter de login in plaats van het enige. oauth2-proxy heeft
+    bewust geen skip_auth_routes, dus beide poorten zeggen hetzelfde."""
+    if request.path == "/healthz":
         return None
     if REQUIRE_AUTH and current_user() == "-":
         return Response("forbidden: no authenticated operator — this app must be "
@@ -181,18 +183,50 @@ def provision():
 
 @app.get("/tenant")
 def tenant_form():
+    """Aanmaken. Bewerken zit op /tenant/<naam>/edit — één scherm, één taak:
+    'Nieuwe WOO-omgeving' die ook bestaande omgevingen bewerkte was verwarrend."""
     return render_template("tenant.html")
+
+
+@app.get("/tenant/<name>/edit")
+def tenant_edit_form(name):
+    """Bewerken van een bestaande omgeving. Weigert wat de portal niet beheert."""
+    if not _TENANT_RE.fullmatch(name):
+        return Response("ongeldige naam\n", status=400, mimetype="text/plain")
+    try:
+        declared = _declaration(name)
+    except gitlib.GitlibError as exc:
+        return Response(f"kan de omgeving niet ophalen: {exc.detail}\n",
+                        status=502, mimetype="text/plain")
+    return render_template("edit.html", tenant=name, declared=declared)
 
 
 @app.post("/tenant")
 def tenant_create():
+    """Aanmaken. Bestaat de omgeving al, dan verwijst dit naar de bewerkpagina."""
+    return _tenant_write(request.form, is_edit=False)
+
+
+@app.post("/tenant/<name>/edit")
+def tenant_update(name):
+    """Bewerken van een bestaande omgeving. De naam komt uit de URL, niet uit het
+    formulier — zo kan een bewerkscherm nooit per ongeluk iets anders raken."""
+    if not _TENANT_RE.fullmatch(name):
+        return {"errors": ["invalid tenant name"]}, 400
+    org, _, env_suffix = name.rpartition("-")
+    form = request.form.copy()
+    form["org"], form["environment"] = org, tenants.env_for_suffix(env_suffix)
+    return _tenant_write(form, is_edit=True)
+
+
+def _tenant_write(form, is_edit):
     """Validate the form, render tenant-<name>.yaml, and open a PR on the tenants
     repo as the token's identity. The operator (oauth2-proxy) is stamped as
     requested-by; the merge stays a human gate. Returns JSON {pr_url, pr_number}.
 
     The portal NEVER creates secrets or touches the cluster — tenant secrets are
     generated in-cluster (ESO). Its only privileged action is opening this PR."""
-    form = request.form
+    _is_edit = is_edit
     # Minimal operator input: bare org + environment. Everything else is derived
     # (name=<org>-<env>, all 3 apps, branding 'Gemeente <Org>', db=postgres,
     # host blank => platform derives the hostname). Advanced overrides optional.
@@ -238,6 +272,11 @@ def tenant_create():
             f"tenant-{name}.yaml is met de hand aangepast en wordt niet door de "
             f"portal beheerd: {', '.join(declared['unknown'])}. Wijzig het bestand "
             f"rechtstreeks in Nextcloud-base."]}, 409
+    # Aanmaken en bewerken zijn nu gescheiden schermen. Deze route maakt aan;
+    # bestaat de omgeving al, dan hoort de bewerkpagina erbij en zegt dat.
+    if declared["exists"] and not _is_edit:
+        return {"errors": [f"{name} bestaat al — pas hem aan via /tenant/{name}/edit"],
+                "edit_url": f"/tenant/{name}/edit"}, 409
 
     updating = declared["exists"]
     verb, branch = ("update", f"edit-tenant/{name}") if updating else ("add", f"add-tenant/{name}")

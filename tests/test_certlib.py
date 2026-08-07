@@ -124,3 +124,49 @@ def test_existing_secret_is_replaced(monkeypatch):
                         lambda m, p, b=None: {"metadata": {}} if m == "GET" else {"ok": True})
     cert, key, _ = _pair()
     assert certlib.write_secret("a-accept", "n-tls", cert, key) == "replaced"
+
+
+def _chain(host="open.gouda.nl", extra_sans=("www.gouda.nl",)):
+    """Leaf ondertekend door een intermediate, zoals een Sectigo-bundel."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_name = x509.Name([
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Sectigo Limited"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "Sectigo RSA DV Secure Server CA")])
+    ca = (x509.CertificateBuilder().subject_name(ca_name).issuer_name(ca_name)
+          .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
+          .not_valid_before(now - datetime.timedelta(days=1))
+          .not_valid_after(now + datetime.timedelta(days=3650))
+          .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+          .sign(ca_key, hashes.SHA256()))
+    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf = (x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
+            .issuer_name(ca_name).public_key(leaf_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=397))
+            .add_extension(x509.SubjectAlternativeName(
+                [x509.DNSName(h) for h in (host, *extra_sans)]), critical=False)
+            .sign(ca_key, hashes.SHA256()))
+    bundle = (leaf.public_bytes(serialization.Encoding.PEM)
+              + ca.public_bytes(serialization.Encoding.PEM))
+    return bundle, leaf_key.private_bytes(serialization.Encoding.PEM,
+                                          serialization.PrivateFormat.PKCS8,
+                                          serialization.NoEncryption())
+
+
+def test_ca_issued_chain_is_accepted():
+    """Wat een echte uitgifte oplevert: leaf + intermediate in één bestand, met
+    meerdere SAN-namen. De leaf is de eerste; de keten mag erbij."""
+    bundle, key = _chain()
+    got = certlib.validate(bundle, key, "open.gouda.nl")
+    assert got["chain_length"] == 2
+    assert got["hosts"] == ["open.gouda.nl", "www.gouda.nl"]
+    assert "Sectigo" in got["issuer"]
+    assert got["days_remaining"] > 300
+
+
+def test_chain_also_covers_the_second_san():
+    bundle, key = _chain()
+    assert certlib.validate(bundle, key, "www.gouda.nl")

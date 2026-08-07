@@ -54,6 +54,15 @@ _ORG_RE = re.compile(r"^([a-z][a-z0-9-]*[a-z0-9]|[a-z])$")
 _RESERVED_SUFFIX = re.compile(r"-(accept|test|demo|prod)$")
 
 
+def env_for_suffix(suffix):
+    """De omgeving die bij een naamsuffix hoort ('test'/'demo' tellen als accept).
+
+    De bewerkroute kent alleen de tenantnaam en moet daaruit dezelfde
+    environment afleiden die validate() verwacht.
+    """
+    return _SUFFIX_ENV.get((suffix or "").strip(), "")
+
+
 def is_custom_frontend_host(host):
     """True when `host` needs its own certificate.
 
