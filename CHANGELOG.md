@@ -25,6 +25,16 @@ All notable changes to this repository are documented here.
   momenten waar een browser echt nodig is: de tenant aanmaken in het formulier
   — dát is wat 6.1/6.2 test, dus het bestand met de hand schrijven zou de test
   leeg maken — en één keer op de knop wachtwoordlink drukken.
+### Gewijzigd — 2026-08-07 (reveal-flow aangezet)
+- `REVEAL_ENABLED=true` in `webgui/deploy/deployment.yaml`. De vlag stond
+  bewust uit tot de flow tegen een echte tenant kon draaien: `/reveal/<token>`
+  is de enige route buiten de operator-gate, en de mint-route leest een
+  tenant-Secret. Aangezet voor de dry-run van taak 6.3.
+- De TTL blijft op de standaard van 24 uur. Hem hier op 60 seconden zetten om
+  de verlooptest live na te spelen zou een productiewaarde verbouwen voor iets
+  wat de unit tests al dekken.
+- Zichtbaar gevolg: op het dashboard verschijnt per omgeving de knop
+  **wachtwoordlink**.
 
 ### Gewijzigd — 2026-08-07 (mergen is uitrollen; geen tag-ceremonie meer)
 - `.github/workflows/image.yml` bouwt bij een push naar `main` het image,
