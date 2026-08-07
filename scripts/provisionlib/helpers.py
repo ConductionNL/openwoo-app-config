@@ -42,21 +42,6 @@ def results_list(payload):
     return payload if isinstance(payload, list) else []
 
 
-def ocs_data(payload):
-    """Unwrap an OCS envelope: {"ocs": {"meta": {...}, "data": X}} -> X.
-
-    Returns {} for anything that is not an OCS envelope, so a surprise shape
-    reads as "nothing set" and the caller's drift check treats it as drift
-    (and then fails loudly on the post-write assert) instead of crashing.
-    """
-    if not isinstance(payload, dict):
-        return {}
-    ocs = payload.get("ocs")
-    if not isinstance(ocs, dict):
-        return {}
-    return ocs.get("data", {})
-
-
 def find_by_slug(items, slug):
     """First item whose slug (or, as a fallback, name) matches; else None."""
     for item in items:

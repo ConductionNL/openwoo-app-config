@@ -134,8 +134,7 @@ def logout():
 def provision():
     form = request.form
     values = {k: form.get(k, "") for k in
-              ("base", "user", "password", "source_url", "api_interface_id", "apikey", "job_user",
-               "theme_name", "theme_slogan", "theme_color", "theme_url", "theme_app")}
+              ("base", "user", "password", "source_url", "api_interface_id", "apikey", "job_user")}
     values["force_import"] = bool(form.get("force_import"))
     values["run_syncs"] = bool(form.get("run_syncs"))
     values["dry_run"] = bool(form.get("dry_run"))

@@ -48,40 +48,6 @@ def test_build_command_job_user_optional():
     assert "--job-user" not in argv
 
 
-def test_build_command_theme_flags_passed_through():
-    argv, _ = provision_gui.build_command({
-        "base": "https://k.accept.commonground.nu", "user": "admin",
-        "theme_name": "gemeente Voorbeeld", "theme_color": "#154273",
-        "theme_url": "https://www.voorbeeld.nl", "theme_app": "nldesign_theme",
-    })
-    assert argv[argv.index("--theme-name") + 1] == "gemeente Voorbeeld"
-    assert argv[argv.index("--theme-color") + 1] == "#154273"
-    assert argv[argv.index("--theme-url") + 1] == "https://www.voorbeeld.nl"
-    assert argv[argv.index("--theme-app") + 1] == "nldesign_theme"
-
-
-def test_build_command_blank_theme_fields_are_omitted():
-    """A blank field must not reach provision.py: the step would then have to
-    decide what "" means, and clearing a tenant's branding by leaving a form
-    field empty is exactly the accident this guards against."""
-    argv, _ = provision_gui.build_command({
-        "base": "https://k.accept.commonground.nu", "user": "admin",
-        "theme_name": "  ", "theme_slogan": "", "theme_color": "",
-        "theme_url": "", "theme_app": "",
-    })
-    for flag in ("--theme-name", "--theme-slogan", "--theme-color",
-                 "--theme-url", "--theme-app"):
-        assert flag not in argv
-
-
-def test_gui_fields_and_passthrough_flags_stay_in_sync():
-    """Every passthrough flag has a form field, so a flag can't be added to the
-    web form and silently forgotten in the Tkinter one (or the other way round)."""
-    field_keys = {key for key, _label, _secret, _default in provision_gui.FIELDS}
-    for key, _flag in provision_gui.PASSTHROUGH_FLAGS:
-        assert key in field_keys, key
-
-
 def test_build_command_force_import():
     base = {"base": "https://k.accept.commonground.nu", "user": "admin"}
     argv, _ = provision_gui.build_command({**base, "force_import": True})

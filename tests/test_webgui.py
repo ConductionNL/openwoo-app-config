@@ -88,42 +88,6 @@ def test_provision_streams_subprocess_output(client, monkeypatch):
     assert "s3cret" in (captured["env"] or {}).get("GUI_PROVISION_PASSWORD", "")
 
 
-def test_provision_passes_theme_fields_through(client, monkeypatch):
-    """The huisstijl fields on the form reach provision.py as --theme-* flags;
-    an empty field is left out entirely so the tenant keeps what it has."""
-    captured = {}
-
-    class FakePopen:
-        def __init__(self, argv, env=None, cwd=None, **kw):
-            captured["argv"] = argv
-            self.stdout = iter(["ok\n"])
-            self.returncode = 0
-
-        def wait(self):
-            return 0
-
-    monkeypatch.setattr(server.subprocess, "Popen", FakePopen)
-
-    resp = client.post("/provision", data={
-        "base": "https://canary.accept.commonground.nu", "user": "admin",
-        "theme_name": "gemeente Voorbeeld", "theme_color": "#154273",
-        "theme_slogan": "", "theme_app": "nldesign_theme",
-    })
-    assert "exit code 0" in resp.get_data(as_text=True)
-    argv = captured["argv"]
-    assert argv[argv.index("--theme-name") + 1] == "gemeente Voorbeeld"
-    assert argv[argv.index("--theme-color") + 1] == "#154273"
-    assert argv[argv.index("--theme-app") + 1] == "nldesign_theme"
-    assert "--theme-slogan" not in argv          # blank = leave as-is
-    assert "--theme-url" not in argv             # not submitted at all
-
-
-def test_provision_config_form_offers_the_theme_fields(client):
-    body = client.get("/provision-config").get_data(as_text=True)
-    for field in ("theme_name", "theme_slogan", "theme_color", "theme_url", "theme_app"):
-        assert f'name="{field}"' in body
-
-
 def test_provision_in_cluster_targets_internal_service(client, monkeypatch):
     """The in_cluster checkbox rewrites --base to the tenant's cluster-local
     Service and adds --host-header with the public host."""

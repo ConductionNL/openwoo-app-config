@@ -4,50 +4,6 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
-### Toegevoegd — 2026-08-07 (huisstijl in het inricht-formulier — taak 2.5)
-- `webgui/templates/index.html`: fieldset **Huisstijl** (naam, slogan, kleur,
-  weblink, thema-app) op het formulier achter de knop "Omgeving inrichten".
-  Zonder dit bereikte de knop de theme-stap wel, maar sloeg die altijd over.
-- `webgui/server.py`: de vijf velden toegevoegd aan de whitelist van
-  `/provision`.
-- `scripts/provision_gui.py`: `PASSTHROUGH_FLAGS` mapt elk optioneel veld op
-  zijn vlag (`--theme-name`, `--theme-color`, …); de bestaande
-  `--source-url`/`--api-interface-id`/`--job-user`-takken zijn erin opgegaan.
-  Een leeg veld belandt niet op argv, dus "laat staan wat er op de omgeving
-  staat" blijft de standaard — een half ingevuld formulier wist geen branding.
-  Dezelfde velden staan nu ook in de Tkinter-GUI, met een test die de twee
-  lijsten gelijk houdt.
-- 5 nieuwe tests: de argv-mapping en de sync tussen web- en Tkinter-formulier in
-  `tests/test_provision_gui.py`, de veldenlijst van de route en het template in
-  `tests/test_webgui.py`. Suite: 210 passed, 0 skipped.
-
-### Toegevoegd — 2026-08-07 (provisioner-stap `theme` — sectie 2 van `tenant-onboarding-completion`)
-- `scripts/provisionlib/steps.py`: `provision_theme()` en
-  `provision_theme_app()`. Zelfde convergentiepatroon als de bestaande
-  stappen: GET wat er staat, alleen schrijven wat afwijkt, opnieuw GET'en en
-  asserten. Theming staat in de database (`oc_appconfig`), niet in
-  `config.php`, dus het overleeft een podrestart — de OCS-app-config-API
-  schrijft precies wat `occ theming:config` schrijft, zonder `kubectl exec`.
-- `provision_all()` draait `theme` als stap `[11/12]`, vlak vóór `sync-run`:
-  presentatie hoort niet een functioneel geslaagde bring-up te laten falen.
-  De stap is een no-op zonder `--theme-*`-vlaggen, dus bestaand gedrag is
-  ongewijzigd. `sync-run` schuift op naar `[12/12]`.
-- Nieuw subcommando `provision.py theme`, en dezelfde `--theme-*`-vlaggen op
-  `provision.py all`. Elke vlag mapt 1-op-1 op een theming-sleutel; een lege
-  waarde wordt genegeerd in plaats van geschreven, zodat een half ingevuld
-  formulier de branding van een tenant niet stilletjes wist.
-- `scripts/provisionlib/client.py`: `post_form()` — de OCS-endpoints lezen
-  form-parameters, geen JSON-body zoals de OpenRegister-API's.
-  `helpers.ocs_data()` pakt de OCS-envelop uit.
-- Bewust niet gedekt: logo, achtergrond en favicon. Dat zijn file-uploads naar
-  de sessie- en CSRF-beveiligde ajax-route van de theming-app, geen
-  app-config-waarden; die zijn niet te zetten over de basic-auth-API die alle
-  andere stappen gebruiken. Staat gedocumenteerd in
-  `docs/provisioner-commands.md`.
-- 14 nieuwe unit tests (drift, no-op, onbekende sleutel, lege waarden,
-  niet-reflecterende write, app enable/disable/idempotent, CLI-mapping).
-  Geen live tenant nodig; de dry-run tegen een wegwerptenant is taak 6.1.
-
 ### Toegevoegd — 2026-08-07 (OpenSpec-change `tenant-onboarding-completion`)
 - `openspec/changes/tenant-onboarding-completion/` (proposal, design, tasks,
   `.openspec.yaml`): de drie losse eindjes van `tenant-creation-pr-flow` —

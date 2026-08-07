@@ -12,7 +12,6 @@ import base64
 import json
 import socket
 import urllib.error
-import urllib.parse
 import urllib.request
 
 from .helpers import log
@@ -99,41 +98,6 @@ class Client:
 
     def delete(self, path):
         return self._request("DELETE", path)
-
-    def post_form(self, path, fields):
-        """POST application/x-www-form-urlencoded, JSON out.
-
-        The Nextcloud OCS endpoints (provisioning_api: app config, app
-        enable/disable) read their parameters as form fields, not as a JSON
-        body — unlike the OpenRegister/OpenConnector APIs every other step
-        uses. Same auth, headers and error mapping as _request; only the body
-        encoding differs.
-        """
-        url = f"{self.base}{path}"
-        data = urllib.parse.urlencode(fields).encode()
-        req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Authorization", self.auth_header)
-        req.add_header("OCS-APIREQUEST", "true")
-        req.add_header("Accept", "application/json")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        if self.host_header:
-            req.add_header("Host", self.host_header)
-        try:
-            with urllib.request.urlopen(req) as resp:
-                raw = resp.read().decode()
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")[:300]
-            raise ProvisionError(f"POST {path} (form) -> HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise ProvisionError(f"POST {path} (form) -> {_urlerror_detail(exc)}") from exc
-        if not raw.strip():
-            return {}
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            raise ProvisionError(
-                f"POST {path} (form) -> non-JSON response (auth refused?): {raw[:120]}"
-            )
 
     def post_file(self, path, filename, content):
         """Multipart file upload (for the @NoCSRFRequired config import). Returns text."""

@@ -29,8 +29,6 @@ from .steps import (
     provision_settings,
     provision_sync_run,
     provision_syncs,
-    provision_theme,
-    provision_theme_app,
     sync_check,
     verify_import,
 )
@@ -164,33 +162,6 @@ def _settings_from_args(args):
     return {"organisation": organisation, "multitenancy": multitenancy}
 
 
-def _theme_from_args(args):
-    """Collect the theming values the operator supplied; {} when none were.
-
-    Flags map 1:1 onto Nextcloud theming appconfig keys. Anything left out stays
-    untouched on the tenant — this step never clears a value it was not given.
-    """
-    return {
-        "name": getattr(args, "theme_name", None),
-        "slogan": getattr(args, "theme_slogan", None),
-        "color": getattr(args, "theme_color", None),
-        "url": getattr(args, "theme_url", None),
-        "imprintUrl": getattr(args, "theme_imprint_url", None),
-        "privacyUrl": getattr(args, "theme_privacy_url", None),
-    }
-
-
-def cmd_theme(args):
-    client = make_client(args)
-    log(f"converging theming on {args.base}")
-    n = provision_theme(client, _theme_from_args(args))
-    changed = provision_theme_app(client, args.theme_app,
-                                  enabled=not args.disable_theme_app) if args.theme_app else False
-    log(f"THEME OK ({n} setting(s) written"
-        f"{', theme app changed' if changed else ''})")
-    return 0
-
-
 def cmd_all(args):
     doc = load_config(args.config)
     client = make_client(args)
@@ -212,9 +183,6 @@ def cmd_all(args):
         job_user=args.job_user or client.user,
         run_syncs=args.run_syncs,
         sync_mode="test" if args.test else "run",
-        theme=_theme_from_args(args),
-        theme_app=args.theme_app,
-        theme_app_enabled=not args.disable_theme_app,
     )
     log("FULL PROVISIONING OK")
     return 0
@@ -343,20 +311,6 @@ def cmd_sync_check(args):
         )
     log(f"SYNC CHECK OK ({result['total']} syncs, all targets resolved)")
     return 0
-
-
-def _add_theme_args(p):
-    """Shared theming flags. Every one is optional; omitted = leave as-is."""
-    p.add_argument("--theme-name", default=None, help="theming name (the instance name shown in the UI)")
-    p.add_argument("--theme-slogan", default=None, help="theming slogan")
-    p.add_argument("--theme-color", default=None, help="theming primary colour, e.g. '#154273'")
-    p.add_argument("--theme-url", default=None, help="theming web link (organisation homepage)")
-    p.add_argument("--theme-imprint-url", default=None, help="theming imprint/legal notice URL")
-    p.add_argument("--theme-privacy-url", default=None, help="theming privacy policy URL")
-    p.add_argument("--theme-app", default=None,
-                   help="Nextcloud app id of a theme app to enable (must already be installed on the tenant)")
-    p.add_argument("--disable-theme-app", action="store_true",
-                   help="with --theme-app: disable that app instead of enabling it")
 
 
 def _add_connection_args(p, with_config=True):
@@ -525,17 +479,9 @@ def build_parser():
                     help="menu object name/title/slug to match and delete (default: %(default)s)")
     dm.set_defaults(func=cmd_delete_menu)
 
-    th = sub.add_parser(
-        "theme",
-        help="converge Nextcloud theming (name/slogan/colour/urls) and optionally enable a theme app",
-    )
-    _add_connection_args(th, with_config=False)
-    _add_theme_args(th)
-    th.set_defaults(func=cmd_theme)
-
     al = sub.add_parser(
         "all",
-        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> delete-menu -> credentials -> sync-refs -> sync-check -> jobs -> theme [-> sync-run]",
+        help="full bring-up: settings -> oc-settings -> import -> verify-import -> catalog -> delete-menu -> credentials -> sync-refs -> sync-check -> jobs [-> sync-run]",
     )
     _add_connection_args(al)
     al.add_argument("--apikey", default=None, help="real API key for the source (omit for dummy)")
@@ -554,7 +500,6 @@ def build_parser():
     al.add_argument("--skip-credentials", action="store_true", help="skip source credentials (per-tenant source params set out-of-band, e.g. base-config-only Argo runs)")
     al.add_argument("--job-user", default=None,
                     help="job userId to set on every job (default: the admin --user; workaround for Anonymous job runs)")
-    _add_theme_args(al)
     al.add_argument("--run-syncs", action="store_true", help="also run each synchronization at the end")
     al.add_argument("--test", action="store_true", help="with --run-syncs, use the /test dry-run endpoint")
     al.set_defaults(func=cmd_all)
