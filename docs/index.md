@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-07
 owner: info@conduction.nl
 ---
 
@@ -25,6 +25,9 @@ loaded into a tenant. See the repo README for the quick overview.
   subcommand, what it does and what it asserts (reference).
 - [Functional import test](functional-test.md) — the local layer-2 test
   against an ephemeral Nextcloud (how-to).
+- [Handing over the initial admin password](secret-reveal.md) — the
+  single-use reveal link: who can mint one, why the reveal route is
+  deliberately unauthenticated, and what it reads (how-to + explanation).
 
 ## Working notes (`notes/`)
 

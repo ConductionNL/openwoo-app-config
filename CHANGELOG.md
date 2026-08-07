@@ -4,6 +4,40 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (eenmalige reveal-link voor het adminwachtwoord — sectie 4)
+- `webgui/burnstore.py`: eenmalige, verlopende tickets plus
+  `read_admin_password()`. `POST /tenant/<naam>/secret-link` (operator-gated)
+  levert een URL; `GET /reveal/<token>` toont het wachtwoord één keer op een
+  JS-vrije pagina en is daarna weg. Tweede keer openen geeft 404, net als een
+  verlopen link — die twee zijn bewust niet te onderscheiden.
+- **Afwijking van design.md, bewust:** de store bewaart géén wachtwoord, ook
+  niet versleuteld. De stdlib heeft geen authenticated cipher en zelf iets in
+  elkaar zetten is erger dan het probleem; "staat er nooit" is bovendien
+  sterker dan "versleuteld met een sleutel in dezelfde pod". Opgeslagen wordt
+  alleen `sha256(token)` plus tenant, aanvrager en vervaltijd. Het wachtwoord
+  wordt pas bij het claimen uit het cluster gelezen.
+- Het ticket wordt verbrand vóór het ophalen: een crash halverwege kan niet
+  tot een tweede onthulling leiden.
+- `/reveal/` is de enige route buiten de operator-gate — de ontvanger heeft
+  geen Keycloak-account, het token ís de sleutel. Minten blijft wél gated, dus
+  een ongeauthenticeerd verzoek kan nooit een token laten ontstaan.
+- `webgui/deploy/rbac-secrets.yaml`: ClusterRole met `get` op Secrets, beperkt
+  via `resourceNames: [nextcloud-secrets]`, zonder `list`/`watch`; plus een
+  namespaced Role voor de ticket-ConfigMap. Eerlijke grens gedocumenteerd: dat
+  Secret bevat ook S3-, DB- en Redis-credentials en RBAC kan niet per sleutel
+  autoriseren, dus `read_admin_password()` is de werkelijke begrenzing.
+- `REVEAL_ENABLED` staat standaard **uit**; beide routes geven dan 404.
+  TTL (24h), ticket-cap en tokengrootte zijn env-tunable.
+- Premisse gecorrigeerd: ESO is géén afhankelijkheid. Volgens Nextcloud-base
+  `docs/SECRETS.md` krijgt élke tenant een `nextcloud-secrets`, alleen het
+  mechanisme verschilt (script voor bestaande tenants, ESO voor managed). Uit
+  diezelfde pagina: de namespace is de kále tenantnaam — `nc-<tenant>` is de
+  Argo-applicatie — en de sleutel heet `nextcloud-password`, niet
+  `admin-password`.
+- `docs/secret-reveal.md` toegevoegd en gelinkt vanuit `docs/index.md`.
+- 24 nieuwe tests, waaronder een die vastlegt dat het wachtwoord nooit in de
+  logs belandt terwijl het mint- en claim-feit wél geaudit wordt.
+
 ### Toegevoegd — 2026-08-07 (huisstijl bij tenant-creatie — sectie 2, herzien)
 - `webgui/tenants.py`: `from_org()` en `render()` dragen nu het hele
   brandingblok — `themeClassname`, `jumbotronImageUrl`, `faviconUrl` naast het

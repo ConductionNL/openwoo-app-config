@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<!-- Deliberately JS-free: this page must render the password even with scripts
+     blocked, and nothing here may re-request the (already burned) link. -->
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="no-referrer">
+  <title>Eenmalig wachtwoord</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.3rem; }
+    .warn { border-left: 4px solid #c40; background: #fff6f0; padding: .8rem 1rem; margin: 1.2rem 0; }
+    .pw { font-family: ui-monospace, monospace; font-size: 1.15rem; background: #111; color: #eee;
+          padding: 1rem; border-radius: 6px; word-break: break-all; user-select: all; }
+    .hint { color: #666; font-size: .88rem; }
+    dt { font-weight: 600; margin-top: .6rem; }
+  </style>
+</head>
+<body>
+  <h1>Beheerderswachtwoord voor {{ tenant }}</h1>
+
+  <div class="warn">
+    <strong>Deze pagina is nu al verlopen.</strong> De link werkte eenmalig en is
+    zojuist ongeldig geworden. Ververs deze pagina niet — hij is dan leeg.
+    Sla het wachtwoord nu op in je wachtwoordbeheerder.
+  </div>
+
+  <p class="hint">Gebruikersnaam: <code>admin</code></p>
+  <p class="pw">{{ password }}</p>
+
+  <dl class="hint">
+    <dt>Wat nu?</dt>
+    <dd>Log in op de omgeving en wijzig dit wachtwoord meteen. Het is bij het
+        aanmaken automatisch gegenereerd en bedoeld als eerste toegang.</dd>
+    <dt>Werkt de link niet meer?</dt>
+    <dd>Vraag degene die hem stuurde om een nieuwe. Een link kan niet twee keer
+        gebruikt worden — ook niet door jou.</dd>
+  </dl>
+</body>
+</html>

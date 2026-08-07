@@ -56,6 +56,7 @@ import gitlib    # noqa: E402
 import tenants   # noqa: E402
 import argolib   # noqa: E402  — read-only Argo Application status (post-merge rollout check)
 import assistant  # noqa: E402 — handboek-gegronde assistent (v1 strikt lezend)
+import burnstore  # noqa: E402 — eenmalige reveal-tickets (geen secret at rest)
 import hashlib   # noqa: E402
 import json      # noqa: E402
 import re        # noqa: E402
@@ -85,8 +86,13 @@ def current_user():
 def _require_operator():
     """Defence in depth: with REQUIRE_AUTH on, every route except the health
     probe needs an authenticated operator. The header is only trustworthy
-    because oauth2-proxy is the sole ingress — see the module docstring."""
-    if request.path == "/healthz":
+    because oauth2-proxy is the sole ingress — see the module docstring.
+
+    `/reveal/<token>` is the one deliberate exception. Its recipient is a product
+    owner with no Keycloak identity; the unguessable 256-bit token IS the
+    credential, and the ticket is burned on first use. Minting a token stays
+    operator-gated, so no unauthenticated request can ever create one."""
+    if request.path == "/healthz" or request.path.startswith("/reveal/"):
         return None
     if REQUIRE_AUTH and current_user() == "-":
         return Response("forbidden: no authenticated operator — this app must be "
@@ -275,6 +281,78 @@ def tenant_batch_create():
         return {"errors": [exc.detail]}, status
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
             "count": len(names), "tenants": names}, 201
+
+
+_TENANT_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?")
+
+# Gate for the reveal flow. Off by default: the route reads a tenant Secret, so
+# it stays dark until an operator deliberately turns it on for this deployment.
+REVEAL_ENABLED = os.environ.get("REVEAL_ENABLED", "false").strip().lower() in (
+    "true", "1", "yes", "on")
+
+
+@app.post("/tenant/<name>/secret-link")
+def secret_link(name):
+    """Mint a single-use link that shows `name`'s initial admin password once.
+
+    Operator-gated like every other mutating route. Returns the URL; the
+    operator passes it to the product owner over whatever channel they already
+    use. The password itself never passes through this response, and is never
+    logged — only the fact that a link was minted, by whom, for which tenant."""
+    if not REVEAL_ENABLED:
+        return {"errors": ["reveal flow disabled (set REVEAL_ENABLED=true)"]}, 404
+    if not _TENANT_RE.fullmatch(name):
+        return {"errors": ["invalid tenant name"]}, 400
+    user = current_user()
+    try:
+        # Fail before minting if there is nothing to reveal, so the operator
+        # learns now instead of the product owner learning at the link.
+        if burnstore.read_admin_password(name) is None:
+            return {"errors": [f"no nextcloud-password in secret 'nextcloud-secrets' "
+                               f"for namespace '{name}'"]}, 404
+        token = burnstore.mint(name, user)
+    except burnstore.BurnstoreError as exc:
+        app.logger.warning("secret-link failed: user=%s tenant=%s err=%s", user, name, exc)
+        return {"errors": [str(exc)]}, 502
+    app.logger.info("secret-link minted: user=%s tenant=%s ttl=%ss",
+                    user, name, burnstore.TTL_SECONDS)
+    return {"reveal_url": f"{request.host_url.rstrip('/')}/reveal/{token}",
+            "tenant": name, "ttl_seconds": burnstore.TTL_SECONDS}, 201
+
+
+@app.get("/reveal/<token>")
+def reveal(token):
+    """Show a tenant's initial admin password exactly once. NOT operator-gated.
+
+    The token is the credential (see _require_operator). The ticket is burned
+    before the password is fetched, so a failure here cannot be retried into a
+    second read. Expired and already-used are the same 404 on purpose: a probe
+    must not be able to tell them apart."""
+    if not REVEAL_ENABLED:
+        return Response("Deze link werkt niet.\n", status=404, mimetype="text/plain")
+    try:
+        entry = burnstore.claim(token)
+    except burnstore.BurnstoreError:
+        # Never leak store internals to an unauthenticated caller.
+        app.logger.warning("reveal failed: store unavailable")
+        return Response("Deze link werkt nu niet. Probeer het later opnieuw.\n",
+                        status=503, mimetype="text/plain")
+    if entry is None:
+        return Response("Deze link is niet (meer) geldig. Hij werkt eenmalig en "
+                        "verloopt vanzelf.\n", status=404, mimetype="text/plain")
+
+    tenant = entry.get("tenant", "")
+    try:
+        password = burnstore.read_admin_password(tenant)
+    except burnstore.BurnstoreError:
+        password = None
+    # Audit WHAT happened, never the value.
+    app.logger.info("reveal claimed: tenant=%s minted_by=%s found=%s",
+                    tenant, entry.get("requested_by", "-"), password is not None)
+    if password is None:
+        return Response("Het wachtwoord is niet meer op te halen. Vraag om een "
+                        "nieuwe link.\n", status=404, mimetype="text/plain")
+    return render_template("reveal.html", tenant=tenant, password=password), 200
 
 
 @app.get("/tenant/delete")
