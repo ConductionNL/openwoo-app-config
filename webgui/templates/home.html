@@ -117,13 +117,32 @@
       const tb = document.getElementById('t-body');
       tb.innerHTML = (d.tenants && d.tenants.length)
         ? d.tenants.map(t => { const [c,l] = omgevingStatus(t);
+            const reveal = d.reveal_enabled
+              ? `<a href="#" data-reveal="${esc(t.tenant)}">wachtwoordlink</a> &middot; ` : '';
             return `<tr><td>${esc(t.tenant)}</td><td>${badge(c,l)}</td>`+
-                   `<td><a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
+                   `<td>${reveal}<a href="/tenant/delete?tenant=${encodeURIComponent(t.tenant)}">verwijderen</a></td></tr>`; }).join('')
         : '<tr><td colspan="3" class="muted">nog geen omgevingen</td></tr>';
       document.getElementById('t-meta').textContent = d.tenants ? `(${d.tenants.length})` : '';
 
       document.getElementById('dash-err').textContent = (d.errors && d.errors.length) ? ('⚠ ' + d.errors.join(' · ')) : '';
     }
+
+    // Eenmalige wachtwoordlink. De link wordt getoond, niet verstuurd: de
+    // operator kiest zelf het kanaal naar de product owner. Hij werkt één keer,
+    // dus hem hier openen verbrandt hem — daarom alleen kopiëren.
+    document.addEventListener('click', async (e) => {
+      const a = e.target.closest('[data-reveal]');
+      if (!a) return;
+      e.preventDefault();
+      const tenant = a.getAttribute('data-reveal');
+      a.textContent = 'bezig…';
+      let r, d;
+      try { r = await fetch(`/tenant/${encodeURIComponent(tenant)}/secret-link`, { method: 'POST' });
+            d = await r.json(); } catch (err) { a.textContent = 'mislukt'; return; }
+      if (!r.ok) { a.textContent = 'mislukt'; alert((d.errors || ['onbekende fout']).join('\n')); return; }
+      a.outerHTML = `<input type="text" readonly value="${d.reveal_url}" style="width:22rem" ` +
+                    `onclick="this.select()" title="werkt één keer, verloopt vanzelf">`;
+    });
     loadDash(); setInterval(loadDash, 15000);
   </script>
 </body>

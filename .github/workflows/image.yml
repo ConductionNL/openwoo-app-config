@@ -1,48 +1,40 @@
 # SPDX-License-Identifier: EUPL-1.2
 #
-# Build and publish the control-plane image to ghcr.io.
+# Build the control-plane image and roll main onto it.
 #
 # Why ghcr and not Docker Hub: the Docker Pro PAT expired 2026-08-03 and is not
 # being renewed, so the fleet pulls Docker Hub anonymously and sits under the
 # 100-pulls/6h limit again (cluster-config/docs/mirror.md). That document also
 # sets the convention: Conduction's own images are *published* to
-# ghcr.io/conductionnl from their own build pipeline — the `mirror/` prefix is
-# only for mirrored upstream images, and own images are deliberately not
-# mirrored (that would create a second source of truth).
+# ghcr.io/conductionnl from their own build pipeline, deliberately not mirrored,
+# so there is one source of truth per tag.
 #
-# Why a workflow and not `make release` on a laptop: three pushes have failed
-# silently on auth/permissions while the operator believed they had landed, and
-# Argo then rolled to a tag that did not exist (ImagePullBackOff, 2026-07-14).
-# The registry check below is the same guard `make push` runs; here it runs on
-# every build, on a machine whose credentials are not somebody's docker login.
+# THE GATE IS THE PULL REQUEST, NOT THE ROLLOUT.
+# An earlier version of this workflow made a human tag a release and then open a
+# second PR to bump `newTag`. That added no safety — the review already happened
+# on the PR — and it added an ordering mistake to make: bump merged before the
+# image existed gives Argo a tag it cannot pull (ImagePullBackOff, seen
+# 2026-08-07). Ordering is a machine's job, so build and bump now happen in one
+# job, in that order:
 #
-# What this workflow deliberately does NOT do:
-#   * override the Dockerfile's HUB_SHA pin — a stale pin must fail the build,
-#     because bumping the handbook content in the image is a conscious act
-#     (Dockerfile comment + CHANGELOG entry), not a build-time side effect;
-#   * touch webgui/deploy/kustomization.yaml — bumping `newTag` there is the
-#     human gate in front of Argo. Build first, merge the tag bump after.
+#   push to main -> build `sha-<short>` -> verify it is pullable -> write that
+#                   tag into webgui/deploy/kustomization.yaml -> commit to main
+#                   -> Argo rolls.
 #
-# After the FIRST successful push: set the package to public. ghcr defaults new
-# packages to private, and a private package means every namespace needs a pull
-# secret again — exactly the cost this move avoids.
+#   tag `v*` /   -> build and publish `<version>`. A marker for humans; it does
+#   dispatch        NOT change what is deployed. Use it to name a release.
+#
+# The bump commit carries [skip ci] so it does not retrigger this workflow.
+#
+# Deliberately NOT a moving tag (`:main`): the manifest would never change, so
+# Argo would not roll, and "which code is live" stops being answerable. The
+# refuse-to-overwrite step below exists for the same reason.
+#
+# After the FIRST push to a new package: set it public. ghcr defaults new
+# packages to private, and private means every namespace needs a pull secret —
+# exactly the cost this move avoids.
 name: image
 
-# Two kinds of build, on purpose:
-#
-#   push to main  -> `sha-<short>`, an immutable per-commit artifact. This is
-#                    the canary for "does main still build at all". The HUB_SHA
-#                    pin goes stale on its own schedule (hub moves, this repo
-#                    does not), and without a build on every merge nobody finds
-#                    out until the next release — which is exactly how it went
-#                    on 2026-08-07.
-#   tag `v*` /    -> `<version>`, the tag a human puts in
-#   dispatch         webgui/deploy/kustomization.yaml. Deliberate, reviewable.
-#
-# A merge deliberately does NOT publish the deployed tag. Argo follows
-# `newTag`, so building it automatically on merge would let Argo see the tag
-# before the image exists. Build first, merge the bump after — the sha builds
-# give you the confidence without moving that gate.
 on:
   push:
     branches: [main]
@@ -50,12 +42,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to publish (e.g. 0.6.0)"
+        description: "Image tag to publish (e.g. 0.7.0)"
         required: true
         type: string
 
 permissions:
-  contents: read
+  contents: write        # de bump-commit naar main
   packages: write
 
 env:
@@ -72,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            tag="${GITHUB_REF_NAME#v}"          # v0.6.0 -> 0.6.0
+            tag="${GITHUB_REF_NAME#v}"          # v0.7.0 -> 0.7.0
             release=true
           elif [[ -n "${{ inputs.tag }}" ]]; then
             tag="${{ inputs.tag }}"
@@ -121,14 +113,45 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Verify the tag really landed
-        # Anonymous check, so it only proves anything once the package is
-        # public. While it is still private this reports "probably private" and
-        # fails — which is itself the reminder to flip it.
+        # Anonymous check, so it only proves anything once the package is public.
+        # While it is still private this reports "probably private" and fails —
+        # which is itself the reminder to flip it. Nothing is rolled before this
+        # passes, so Argo can never be pointed at an image that is not there.
         run: python3 scripts/check_image_on_registry.py "${{ steps.meta.outputs.ref }}"
 
-      - name: Next steps
+      - name: Roll main onto this image
+        if: steps.meta.outputs.release == 'false'
+        run: |
+          set -euo pipefail
+          file=webgui/deploy/kustomization.yaml
+          want="${{ steps.meta.outputs.tag }}"
+          current="$(sed -n -E 's/^[[:space:]]*newTag:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/p' "${file}" | head -1)"
+          if [[ "${current}" == "${want}" ]]; then
+            echo "newTag staat al op ${want}; niets te doen"
+            exit 0
+          fi
+          sed -i -E 's|^([[:space:]]*newTag:[[:space:]]*).*|\1"'"${want}"'"|' "${file}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${file}"
+          git commit -F - <<EOF
+          chore(deploy): rol naar ${want}
+
+          Was ${current}. Het image is in dezelfde job gebouwd en geverifieerd,
+          dus Argo wijst nooit naar een tag die nog niet bestaat.
+
+          Automatisch gezet door de image-workflow. De review zat op de PR die
+          deze code op main bracht; dit is de uitrol daarvan, geen nieuwe code.
+
+          [skip ci]
+          EOF
+          if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            echo "::error::kan de bump niet naar ${GITHUB_REF_NAME} pushen. Het image ${want} STAAT er wel — Argo rolt alleen nog niet. Staat branch protection een push door github-actions toe?" >&2
+            exit 1
+          fi
+
+      - name: Release tag published
         if: steps.meta.outputs.release == 'true'
         run: |
-          echo "Published ${{ steps.meta.outputs.ref }}"
-          echo "Now bump newTag in webgui/deploy/kustomization.yaml to ${{ steps.meta.outputs.tag }} and merge."
-          echo "If this was the first push: set the ghcr package to public."
+          echo "Published ${{ steps.meta.outputs.ref }} as a release marker."
+          echo "Dit verandert NIET wat er draait — main rolt op zijn eigen sha-tag."

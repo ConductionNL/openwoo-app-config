@@ -60,6 +60,10 @@ import burnstore  # noqa: E402 — eenmalige reveal-tickets (geen secret at rest
 import hashlib   # noqa: E402
 import json      # noqa: E402
 import re        # noqa: E402
+# Parsing a declared tenant file needs a YAML reader. tenants.py stays
+# dependency-free by design (it only *emits* text), so the parse lives here —
+# PyYAML is already a webgui dependency for the handbook content layer.
+import yaml      # noqa: E402
 
 TENANTS_DIR = "nextcloud-platform/values/tenants"
 
@@ -211,22 +215,52 @@ def tenant_create():
 
     user = current_user()
     name = fields["name"].strip()
-    path = f"nextcloud-platform/values/tenants/{tenants.filename(name)}"
+    path = f"{TENANTS_DIR}/{tenants.filename(name)}"
     content = tenants.render(fields)
-    branch = f"add-tenant/{name}"
-    commit_msg = (f"add tenant: {name}\n\n"
+
+    # Does it already exist? That decides create-vs-update, and it is also the
+    # guard: the portal may only rewrite a file it could have written itself.
+    try:
+        declared = _declaration(name)
+    except gitlib.GitlibError as exc:
+        # Cannot tell create from update: refuse rather than guess. Guessing
+        # "create" against an existing file fails on the API anyway, with a far
+        # less helpful message than this one.
+        app.logger.warning("tenant declaration lookup failed: name=%s detail=%s",
+                           name, exc.detail)
+        return {"errors": [f"kan tenant-status niet ophalen: {exc.detail}"]}, 502
+    if declared["exists"] and not declared["editable"]:
+        return {"errors": [
+            f"tenant-{name}.yaml is met de hand aangepast en wordt niet door de "
+            f"portal beheerd: {', '.join(declared['unknown'])}. Wijzig het bestand "
+            f"rechtstreeks in Nextcloud-base."]}, 409
+
+    updating = declared["exists"]
+    verb, branch = ("update", f"edit-tenant/{name}") if updating else ("add", f"add-tenant/{name}")
+    commit_msg = (f"{verb} tenant: {name}\n\n"
                   f"Opened from the OpenWoo provisioning portal.\n"
                   f"requested-by: {user}\n")
-    pr_body = (f"Adds tenant `{name}` via the OpenWoo provisioning portal.\n\n"
+    pr_body = (f"{'Updates' if updating else 'Adds'} tenant `{name}` via the OpenWoo "
+               f"provisioning portal.\n\n"
                f"- requested-by: `{user}`\n"
                f"- machine-authored: review before merge.\n")
+    if updating:
+        # Branding env is ignore-diffed on the frontend Deployment, so a change
+        # here does NOT reach a running frontend. Saying so in the PR beats
+        # someone discovering it after the merge.
+        pr_body += ("- ⚠️ Branding (`themeClassname`, `organisationName`, jumbotron, "
+                    "favicon) wordt op een **draaiende** frontend niet toegepast: de "
+                    "ApplicationSet ignore-difft die env. `frontend.tls`, `host` en "
+                    "`apps` gelden wél direct.\n")
 
-    app.logger.info("tenant PR requested: user=%s name=%s env=%s db=%s",
-                    user, name, fields["environment"], fields["dbType"])
+    app.logger.info("tenant PR requested: user=%s name=%s env=%s db=%s update=%s",
+                    user, name, fields["environment"], fields["dbType"], updating)
     try:
-        result = gitlib.propose_file(
+        propose = gitlib.propose_update if updating else gitlib.propose_file
+        result = propose(
             branch=branch, path=path, content=content,
-            commit_message=commit_msg, pr_title=f"add tenant: {name}", pr_body=pr_body)
+            commit_message=commit_msg,
+            pr_title=f"{verb} tenant: {name}", pr_body=pr_body)
     except gitlib.GitlibError as exc:
         # 409 = branch/file already exists (tenant in flight); 0 = misconfig/unreachable.
         status = 409 if exc.status == 409 else (502 if exc.status in (0, 500, 502, 503) else 400)
@@ -234,9 +268,48 @@ def tenant_create():
                             user, name, exc.status, exc.detail)
         return {"errors": [exc.detail]}, status
 
-    app.logger.info("tenant PR opened: user=%s name=%s pr=%s", user, name, result.get("number"))
+    app.logger.info("tenant PR opened: user=%s name=%s pr=%s update=%s",
+                    user, name, result.get("number"), updating)
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
-            "tenant": name}, 201
+            "tenant": name, "updated": updating}, 201
+
+
+def _declaration(name):
+    """What the tenants repo says about `name` right now.
+
+    Returns {exists, editable, unknown, fields}. `editable` is False when the
+    file carries anything render() would not emit — re-rendering would drop it,
+    so the portal shows it instead of touching it.
+    """
+    out = {"exists": False, "editable": False, "unknown": [], "fields": None}
+    try:
+        raw, _sha = gitlib.get_file(f"{TENANTS_DIR}/{tenants.filename(name)}")
+    except gitlib.GitlibError as exc:
+        if exc.status == 404:
+            return out                                   # not declared yet
+        raise
+    out["exists"] = True
+    try:
+        doc = yaml.safe_load(raw) or {}
+    except yaml.YAMLError as exc:
+        out["unknown"] = [f"<onleesbare YAML: {str(exc)[:80]}>"]
+        return out
+    out["unknown"] = tenants.unknown_keys(doc)
+    out["editable"] = not out["unknown"]
+    out["fields"] = tenants.from_declaration(doc)
+    return out
+
+
+@app.get("/tenant/<name>/declaration")
+def tenant_declaration(name):
+    """Current declared values for `name`, so the form can show what is there
+    instead of pretending every tenant is new. Read-only."""
+    if not _TENANT_RE.fullmatch(name):
+        return {"errors": ["invalid tenant name"]}, 400
+    try:
+        return _declaration(name), 200
+    except gitlib.GitlibError as exc:
+        return {"errors": [exc.detail]}, 502
 
 
 @app.get("/tenant/batch")
@@ -419,7 +492,9 @@ def tenant_argo_status():
 def dashboard_data():
     """Landing-page overview: tenant Argo apps (nc-*) + recent tenant PRs. Each
     source fails independently (partial errors reported) so the page still loads."""
-    out = {"tenants": [], "prs": [], "errors": []}
+    # reveal_enabled stuurt de UI: zonder vlag heeft een knop die 404 geeft
+    # geen zin, en met vlag moet hij vindbaar zijn zonder curl.
+    out = {"tenants": [], "prs": [], "errors": [], "reveal_enabled": REVEAL_ENABLED}
     try:
         out["tenants"] = argolib.list_apps()
     except argolib.ArgoError as exc:

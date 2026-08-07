@@ -222,6 +222,51 @@ def get_file_sha(path, ref=None):
     return sha
 
 
+def get_file(path, ref=None):
+    """Contents of a file on `ref` (default base) as (text, sha).
+
+    The contents API returns the body base64-encoded in the same response that
+    carries the sha, so reading costs no extra call over get_file_sha().
+    Raises GitlibError(404) when the path does not exist — which is how the
+    caller learns a tenant has not been declared yet.
+    """
+    _api, _token, repo, base = _cfg()
+    data = _request("GET", f"/repos/{repo}/contents/{path}?ref={ref or base}", None)
+    if not isinstance(data, dict) or "content" not in data:
+        raise GitlibError(404, f"file not found: {path}")
+    raw = base64.b64decode(data["content"]).decode("utf-8")
+    return raw, data.get("sha")
+
+
+def update_file(branch, path, content, sha, message, author_name=None, author_email=None):
+    """Replace an EXISTING file. Same as put_file but carries the blob sha, which
+    is what turns a create into an update — without it GitHub refuses (422)."""
+    _api, _token, repo, _base = _cfg()
+    payload = {
+        "branch": branch,
+        "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        "message": message,
+        "sha": sha,
+    }
+    if author_name and author_email:
+        ident = {"name": author_name, "email": author_email}
+        payload["author"] = ident
+        payload["committer"] = ident
+    return _request("PUT", f"/repos/{repo}/contents/{path}", payload)
+
+
+def propose_update(branch, path, content, commit_message, pr_title, pr_body,
+                   author_name=None, author_email=None):
+    """Orchestrate branch -> update file -> PR, for a file that already exists.
+    Returns {number, html_url}. Raises GitlibError(404) when the file is absent
+    (then it is a create, not an update)."""
+    sha = get_file_sha(path)                       # from base; branch == base at creation
+    create_branch(branch)
+    update_file(branch, path, content, sha, commit_message, author_name, author_email)
+    pr = open_pr(branch, pr_title, pr_body)
+    return {"number": pr.get("number"), "html_url": pr.get("html_url")}
+
+
 def propose_deletion(branch, path, commit_message, pr_title, pr_body,
                      author_name=None, author_email=None):
     """Open a PR that DELETES `path`. Returns {number, html_url}. Raises

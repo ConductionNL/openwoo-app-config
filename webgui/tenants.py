@@ -129,6 +129,79 @@ def from_org(org, environment, dbType=None, display=None, host=None,
     }
 
 
+# Exactly what render() emits, nothing else. The portal may only rewrite a file
+# it could have written itself: re-rendering a file that carries anything outside
+# this set would silently drop that key. Measured on the live fleet (2026-08-07),
+# hand-written tenant files carry `frontend.tag` (24×), `hostname`/
+# `hostnameOverride` (7/6), `namespace` (6) and more — none of which the form
+# models. Those files are hand-managed and stay that way.
+RENDERED_TOP_KEYS = frozenset({"tenant"})
+RENDERED_TENANT_KEYS = frozenset({"name", "environment", "wave", "dbType",
+                                  "secrets", "apps", "frontend"})
+RENDERED_FRONTEND_KEYS = frozenset({"host", "tls", "branding"})
+RENDERED_BRANDING_KEYS = frozenset({"organisationName", "themeClassname",
+                                    "jumbotronImageUrl", "faviconUrl"})
+RENDERED_TLS_KEYS = frozenset({"secretName", "issuer"})
+
+
+def unknown_keys(doc):
+    """Keys in a parsed tenant file that render() would not emit.
+
+    Empty list == the portal wrote this file (or could have), so re-rendering it
+    is lossless and it is safe to offer as editable. A non-empty list means
+    somebody hand-edited it; the portal must then show it read-only rather than
+    quietly discard their work. Returns dotted paths, sorted, for display.
+    """
+    if not isinstance(doc, dict):
+        return ["<geen geldig tenantbestand>"]
+    found = []
+
+    def check(mapping, allowed, prefix):
+        if not isinstance(mapping, dict):
+            return
+        found.extend(f"{prefix}{k}" for k in mapping if k not in allowed)
+
+    check(doc, RENDERED_TOP_KEYS, "")
+    tenant = doc.get("tenant") or {}
+    check(tenant, RENDERED_TENANT_KEYS, "tenant.")
+    frontend = tenant.get("frontend") or {}
+    check(frontend, RENDERED_FRONTEND_KEYS, "tenant.frontend.")
+    check(frontend.get("branding") or {}, RENDERED_BRANDING_KEYS, "tenant.frontend.branding.")
+    check(frontend.get("tls") or {}, RENDERED_TLS_KEYS, "tenant.frontend.tls.")
+    # `secrets` is emitted as exactly {managed: true}; anything else is not ours.
+    secrets = tenant.get("secrets")
+    if isinstance(secrets, dict):
+        check(secrets, frozenset({"managed"}), "tenant.secrets.")
+    return sorted(found)
+
+
+def from_declaration(doc):
+    """Turn a parsed tenant file back into the form's fields dict.
+
+    The inverse of render() for the subset the form owns. Caller parses the
+    YAML (this module stays dependency-free on purpose) and should check
+    unknown_keys() first — this function ignores anything it does not model,
+    which is exactly what makes that check necessary.
+    """
+    tenant = (doc or {}).get("tenant") or {}
+    frontend = tenant.get("frontend") or {}
+    branding = frontend.get("branding") or {}
+    tls = frontend.get("tls") or {}
+    return {
+        "name": str(tenant.get("name") or ""),
+        "environment": str(tenant.get("environment") or ""),
+        "wave": str(tenant.get("wave") or "1"),
+        "dbType": str(tenant.get("dbType") or "postgres"),
+        "apps": list(tenant.get("apps", {}).get("enabled") or []),
+        "frontend_host": str(frontend.get("host") or ""),
+        "frontend_org": str(branding.get("organisationName") or ""),
+        "frontend_theme": str(branding.get("themeClassname") or ""),
+        "frontend_jumbotron": str(branding.get("jumbotronImageUrl") or ""),
+        "frontend_favicon": str(branding.get("faviconUrl") or ""),
+        "frontend_tls_issuer": str(tls.get("issuer") or DEFAULT_TLS_ISSUER),
+    }
+
+
 def validate(fields):
     """Return a list of human-readable error strings ([] == valid).
 

@@ -59,20 +59,30 @@ the fleet pulls Docker Hub anonymously under the 100-pulls/6h limit again
 Conduction's own images are published to `ghcr.io/conductionnl` from their own
 pipeline, deliberately *not* mirrored, so there is one source of truth per tag.
 
-**Preferred: the workflow.** `.github/workflows/image.yml` builds and pushes on a
-`v*` tag, or on manual dispatch with a tag input. It refuses to overwrite an
-existing tag, and verifies afterwards that the tag really landed — three pushes
-have failed silently on auth while the operator believed they had landed, after
-which Argo rolled to a nonexistent tag (ImagePullBackOff, 2026-07-14).
+**Merging is deploying.** `.github/workflows/image.yml` runs on every push to
+`main`: it builds `sha-<short>`, verifies the tag is really pullable, writes
+that tag into `kustomization.yaml` and commits it back. Argo takes it from
+there. Nothing to tag, nothing to bump, no second PR.
 
-**Fallback: by hand.** Same guards, minus the clean credentials:
+The gate is the pull request. Review happens there, `.github/workflows/ci.yml`
+runs the same hooks you run locally, and once it is merged the rollout is
+bookkeeping — which is a machine's job. An earlier version of this made a human
+tag a release and open a follow-up PR for the bump; that added no safety and one
+ordering mistake to make (bump merged before the image existed → Argo pointed at
+a tag it could not pull). Build and bump now happen in one job, in that order.
+
+**Release tags are markers, not deploys.** Pushing `v0.7.0` (or dispatching the
+workflow with a tag) publishes `0.7.0` so a version has a name. It does not
+change what is running: `main` rolls on its own `sha-` tag.
+
+**By hand**, if the workflow is unavailable:
 
 ```bash
 make release IMAGE=ghcr.io/conductionnl/openwoo-provisioner:<tag>   # build + push + verify
 ```
 
-Then bump `newTag` in `kustomization.yaml` and merge. **That order is not
-optional:** merging first points Argo at a tag that does not exist yet.
+Then set `newTag` in `kustomization.yaml` yourself. **Build first:** setting it
+before the image exists points Argo at a tag it cannot pull.
 
 Two things that will bite you once each:
 
@@ -86,6 +96,20 @@ Two things that will bite you once each:
   secret again, which is exactly the cost this move removes. The registry check
   reports a 401 as "probably still private" rather than "tag missing", because
   the fix is completely different.
+- **The bump commit needs to reach `main`.** It is made by
+  `github-actions[bot]` and carries `[skip ci]` so it does not retrigger the
+  workflow. If branch protection refuses that push, the job fails *after* the
+  image is published — so the image exists and only the rollout is stuck. The
+  error says exactly that.
+
+To see what is deployed versus what is running:
+
+```bash
+./scripts/verify-onboarding.sh --preflight
+```
+
+It reads the expected tag from `kustomization.yaml`, so it follows the workflow
+automatically instead of carrying its own copy of the version.
 
 ## Apply
 
