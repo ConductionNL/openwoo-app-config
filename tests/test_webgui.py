@@ -457,3 +457,34 @@ def test_reveal_page_warns_it_is_single_use(client, reveal_on):
     text = page.get_data(as_text=True)
     assert "eenmalig" in text.lower()
     assert "noindex" in text            # never indexed by a crawler
+
+
+# --- custom-domain TLS (sectie 3) ---
+
+
+def test_tenant_custom_host_gets_a_tls_block(client, monkeypatch):
+    """A custom-domain tenant arrives with its cert Secret NAME declared; the
+    bytes never pass through the portal or through git."""
+    captured = {}
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: captured.update(kw) or {"number": 10, "html_url": "u/10"})
+    client.post("/tenant", data={"org": "almere", "environment": "accept",
+                                 "frontend_host": "open.almere.nl"})
+    c = captured["content"]
+    assert "secretName: open-almere-nl-tls" in c
+    assert "issuer: none" in c
+
+
+def test_tenant_platform_host_gets_no_tls_block(client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: captured.update(kw) or {"number": 11, "html_url": "u/11"})
+    client.post("/tenant", data={"org": "almere", "environment": "accept",
+                                 "frontend_host": "almere.accept.openwoo.app"})
+    assert "secretName" not in captured["content"]
+
+
+def test_tenant_form_offers_the_certificate_choice(client):
+    body = client.get("/tenant").get_data(as_text=True)
+    assert 'name="frontend_tls_issuer"' in body
+    assert "letsencrypt" in body

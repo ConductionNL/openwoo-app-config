@@ -68,22 +68,35 @@ afterwards — the manual devops step this change exists to remove.
       cert-manager annotation). Live example on Nextcloud-base `main`:
       `nextcloud-platform/values/tenants/tenant-oudeijsselstreek-accept.yaml`.
       No Nextcloud-base or react-base change needed.
-- [ ] 3.2 `webgui/tenants.py`: render the `frontend.tls` block when
-      `frontend.host` is a custom (non-platform) host. Secret name derived from
-      the host the way live tenant files do it (dots → dashes, `-tls` suffix);
-      `issuer` defaults per design.md Open Question. Update `render()` /
-      `validate()`.
-- [ ] 3.3 `tests/test_tenants.py`: cover the host→secret-name derivation, the
-      platform-host exclusion (no `tls` block for `*.openwoo.app`), and the
-      issuer default.
-- [ ] 3.4 Write the operator runbook (`docs/custom-domain-cert.md`): merge
-      order (PR merges → namespace exists → cert Secret seeded → Ingress picks
-      it up), the `certswap apply k8s` path, the `kubectl create secret tls`
-      fallback, and recording the cert expiry + owner (no auto-renewal under
-      `issuer: none`).
-- [ ] 3.5 Confirm monitoring's `CertificateExpiringSoon` rule fires for a
-      hand-seeded Secret with no backing `Certificate` object; if not, note it
-      as a follow-up for the monitoring repo (do not fix here).
+- [x] 3.2 `webgui/tenants.py`: `is_custom_frontend_host()` +
+      `tls_secret_name()`; `render()` emits the `frontend.tls` block only for a
+      host outside `openwoo.app`, and `validate()` rejects an unknown issuer (a
+      typo would otherwise become a cert-manager annotation nobody resolves).
+      Secret name derived from the host exactly as the fleet does it.
+- [x] 3.3 `tests/test_tenants.py` + `tests/test_webgui.py`: derivation
+      (including case, trailing dot, and a lookalike domain like
+      `evilopenwoo.app`), the platform-host exclusion, both issuer values, the
+      default, validation, and the block reaching the proposed PR.
+- [x] 3.4 `docs/custom-domain-cert.md`, linked from `docs/index.md`: why the
+      certificate is not in git, what the form writes, merge order, the
+      `certswap` path with the `kubectl create secret tls` fallback, verifying
+      with `openssl s_client`, recording expiry + owner, and troubleshooting
+      (including the "Let's Encrypt overwrote a paid cert" case).
+- [x] 3.5 Confirmed — **the alert does NOT cover a hand-seeded Secret.**
+      `CertificateExpiringSoon` fires on
+      `certmanager_certificate_expiration_timestamp_seconds`, which cert-manager
+      only produces for a `Certificate` object; `issuer: none` creates none.
+      Recorded as a gap in the runbook and left as a follow-up for the
+      monitoring repo, not fixed here. A fix would need a probe reading the
+      Secret or the live endpoint.
+
+**Issuer default decided (2026-08-07): `none`.** The failure modes are not
+symmetric. A missing certificate is loud — the browser complains and it gets
+fixed. A wrongly-issued one is quiet: Let's Encrypt overwrites a paid
+certificate and nobody notices until the customer does. That is precisely the
+bug Nextcloud-base's `fix/klantcertificaten-issuer-none` branch exists to
+repair. Both values are live in the fleet, so the form offers the choice;
+only the default is opinionated.
 
 ## 4. One-time secret reveal
 

@@ -4,6 +4,34 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-07 (certificaat voor een eigen domein — sectie 3)
+- `webgui/tenants.py`: bij een frontend-host buiten `openwoo.app` rendert het
+  formulier nu een `frontend.tls`-blok. De secretnaam wordt afgeleid van de
+  host (punten worden streepjes, `-tls` erachter) — dezelfde conventie die de
+  fleet al gebruikt, geen nieuwe. Op `*.openwoo.app` blijft het blok wég: daar
+  dekt het wildcard-certificaat het al, en een eigen blok zou de Ingress naar
+  een secret wijzen dat niemand heeft aangemaakt.
+- **Standaard `issuer: none`.** De faalmodi zijn niet symmetrisch: een ontbrekend
+  certificaat is luid (de browser klaagt, iemand lost het op), een verkeerd
+  uitgegeven certificaat is stil (Let's Encrypt overschrijft een betaald cert en
+  niemand merkt het tot de klant belt). Dat is precies de bug waarvoor in
+  Nextcloud-base de branch `fix/klantcertificaten-issuer-none` bestaat. Beide
+  waarden komen live voor, dus het formulier biedt de keuze; alleen de standaard
+  is stellig.
+- `validate()` weigert een onbekende issuer — een typefout zou anders een
+  cert-manager-annotatie worden die niemand oplost.
+- `docs/custom-domain-cert.md` (gelinkt vanuit `docs/index.md`): waarom het
+  certificaat niet in git zit, de merge-volgorde, `certswap` mét
+  `kubectl create secret tls` als volwaardig alternatief, verifiëren met
+  `openssl s_client`, en het vastleggen van vervaldatum en eigenaar.
+- **Bevinding, niet opgelost:** `CertificateExpiringSoon` dekt deze certificaten
+  níét. Die alert draait op `certmanager_certificate_expiration_timestamp_seconds`,
+  een metric die cert-manager alleen produceert bij een `Certificate`-object — en
+  `issuer: none` maakt er geen. Een handgezaaid certificaat verloopt dus zonder
+  waarschuwing. Staat in de runbook; de fix hoort in de monitoring-repo.
+- 11 nieuwe tests, waaronder een lookalike-domein (`evilopenwoo.app` telt níét
+  als platformdomein).
+
 ### Gewijzigd — 2026-08-07 (image bouwt naar ghcr.io, via een workflow)
 - `.github/workflows/image.yml` (eerste CI in deze repo): bouwt en pusht naar
   `ghcr.io/conductionnl/openwoo-provisioner` op een `v*`-tag of handmatige

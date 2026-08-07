@@ -57,6 +57,16 @@
       <input type="text" name="frontend_org" id="dispOverride" placeholder="Gemeente Almere">
       <label>Eigen frontend-host <span class="hint">(standaard: afgeleid &lt;org&gt;.&lt;omg&gt;.openwoo.app)</span></label>
       <input type="text" name="frontend_host" placeholder="open.almere.nl">
+      <label>Certificaat <span class="hint">(alleen van toepassing bij een eigen host; op openwoo.app dekt het wildcard-certificaat het al)</span></label>
+      <select name="frontend_tls_issuer">
+        <option value="none">de organisatie levert zelf een certificaat (standaard)</option>
+        <option value="letsencrypt-prod">Let's Encrypt automatisch aanvragen</option>
+      </select>
+      <p class="hint">Bij een eigen certificaat plaatst een beheerder het ná de merge in het
+         cluster — het bestand gaat nooit door dit formulier of door git. Zie
+         <a href="https://github.com/ConductionNL/openwoo-app-config/blob/main/docs/custom-domain-cert.md">de
+         runbook</a>. Let op: zo'n certificaat verloopt zonder waarschuwing, want er is geen
+         cert-manager die het bewaakt.</p>
       <label>NL Design-thema <span class="hint">(leeg laten tenzij de organisatie een eigen thema meelevert — leeg = conduction-theme, dat gegarandeerd rendert)</span></label>
       <input type="text" name="frontend_theme" placeholder="almere-theme">
       <label>Jumbotron-afbeelding <span class="hint">(URL; leeg = geen)</span></label>
