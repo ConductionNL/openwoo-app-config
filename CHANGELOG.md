@@ -4,6 +4,25 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (reveal-flow: token uit de logs, tonen in plaats van kopiëren)
+- **Het reveal-token stond in de gunicorn access-log.** `/reveal/<token>` draagt
+  de credential in het pad, en gunicorn logt elke request-regel integraal. Meestal
+  is het token op dat moment al verbrand, maar niet als het claimen halverwege
+  faalt: dan blijft het ticket geldig terwijl het token in een bestand staat dat
+  doorgaans wordt verzameld en bewaard. Nieuwe `webgui/weblog.py` schoont het pad;
+  de Dockerfile draait gunicorn met die logger. Het ontwerp legde vast dat de
+  wáárde nooit gelogd wordt — de sleutel tot die waarde stond er wel bij elke
+  aanroep in.
+- **"Wachtwoord tonen" opent nu direct een tabblad** en verbrandt de link meteen;
+  geen kopiëren voor wie het zelf wil zien. Daarnaast blijft "link" bestaan voor
+  het oorspronkelijke doel: een URL die je naar de product owner stuurt. Die mag
+  niet in het portaal geopend worden, want openen ís verbranden.
+- **Bevestiging met de tenantnaam** vóór het minten. De knop staat op elke
+  omgeving, ook productie; tijdens de dry-run toonde een klik op de verkeerde rij
+  het beheerderswachtwoord van een levende gemeente. De link zelf bleek wél
+  eenmalig — twee tokens gaven bij de tweede opvraging 404 — maar de knop maakte
+  onbeperkt nieuwe links zonder dat er iets werd gevraagd.
+
 ### Gewijzigd — 2026-08-07 (twee bevindingen uit de dry-run)
 - **`verify-onboarding.sh` beoordeelde de verkeerde Ingress.** Een tenant-namespace
   draagt er meerdere: de Nextcloud-backend op `*.commonground.nu` met zijn eigen

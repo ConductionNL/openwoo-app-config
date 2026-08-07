@@ -58,6 +58,9 @@ EXPOSE 8081
 # not cut short. Bind localhost only — oauth2-proxy is the sole network ingress.
 CMD ["gunicorn", "--chdir", "/app/webgui", \
      "--bind", "127.0.0.1:8081", \
+     # /reveal/<token> draagt de credential in het pad; zonder deze logger
+     # schrijft gunicorn dat token in elke access-log-regel (weblog.py).
+     "--logger-class", "weblog.RedactingLogger", \
      "--worker-class", "gthread", "--workers", "1", "--threads", "8", \
      "--timeout", "3600", "--graceful-timeout", "30", \
      "--access-logfile", "-", "--error-logfile", "-", \

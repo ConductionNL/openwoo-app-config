@@ -644,3 +644,29 @@ def test_org_pattern_is_mirrored_in_the_form(client):
     body = client.get("/tenant").get_data(as_text=True)
     assert "const ORG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;" in body
     assert "function esc(" in body          # gebruikersinvoer gaat door innerHTML
+
+
+def test_dashboard_offers_show_and_copy(client, monkeypatch):
+    """Twee wegen: 'wachtwoord tonen' opent en verbrandt meteen (voor de
+    operator), 'link' geeft de URL om te versturen (voor de product owner)."""
+    monkeypatch.setattr(server.argolib, "list_apps", lambda: [])
+    monkeypatch.setattr(server.gitlib, "list_prs", lambda: [])
+    body = client.get("/").get_data(as_text=True)
+    assert "data-reveal=" in body and "data-reveal-copy=" in body
+    assert "confirm(" in body                 # misklik op productie afvangen
+
+
+def test_reveal_token_is_redacted_in_access_logs():
+    """Het token IS de credential. Zonder deze logger schrijft gunicorn hem in
+    elke access-log-regel (gevonden in de dry-run van 2026-08-07)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "weblog_probe", str(REPO_ROOT / "webgui" / "weblog.py"))
+    # gunicorn is geen testdependency; alleen de pure functie is interessant.
+    import re
+    src = (REPO_ROOT / "webgui" / "weblog.py").read_text()
+    assert 'r"(/reveal/)[^/\\s?]+"' in src or "(/reveal/)" in src
+    pat = re.compile(r"(/reveal/)[^/\s?]+")
+    line = 'GET /reveal/KnXWWYN6ispnj3Q8l__YX HTTP/1.1'
+    assert pat.sub(r"\1<token>", line) == "GET /reveal/<token> HTTP/1.1"
+    assert spec is not None
