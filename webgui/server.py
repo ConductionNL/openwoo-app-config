@@ -57,9 +57,12 @@ import tenants   # noqa: E402
 import argolib   # noqa: E402  — read-only Argo Application status (post-merge rollout check)
 import assistant  # noqa: E402 — handboek-gegronde assistent (v1 strikt lezend)
 import burnstore  # noqa: E402 — eenmalige reveal-tickets (geen secret at rest)
+import certlib   # noqa: E402 — validatie + plaatsing van een klantcertificaat
 import hashlib   # noqa: E402
 import json      # noqa: E402
 import re        # noqa: E402
+import time      # noqa: E402 — venster voor de rate limit op /reveal
+import datetime  # noqa: E402 — tijdstempel bij "al gedeeld"
 # Parsing a declared tenant file needs a YAML reader. tenants.py stays
 # dependency-free by design (it only *emits* text), so the parse lives here —
 # PyYAML is already a webgui dependency for the handbook content layer.
@@ -386,6 +389,17 @@ def secret_link(name):
             return {"errors": [f"no nextcloud-password in secret 'nextcloud-secrets' "
                                f"for namespace '{name}'"]}, 404
         token = burnstore.mint(name, user)
+    except burnstore.AlreadyMintedError as exc:
+        # Eén overdracht per omgeving. Zeg wie en wanneer — dat is bruikbaarder
+        # dan een kale weigering, en het is precies wat een audit wil zien.
+        when = exc.record.get("minted_at")
+        stamp = (datetime.datetime.fromtimestamp(when, datetime.timezone.utc)
+                 .strftime("%Y-%m-%d %H:%M UTC")) if when else "eerder"
+        app.logger.info("secret-link refused (already minted): user=%s tenant=%s", user, name)
+        return {"errors": [f"voor {name} is al een wachtwoordlink gemaakt "
+                           f"({stamp}, door {exc.record.get('requested_by', 'onbekend')}). "
+                           f"Dat gebeurt één keer per omgeving."],
+                "already_minted": True}, 409
     except burnstore.BurnstoreError as exc:
         app.logger.warning("secret-link failed: user=%s tenant=%s err=%s", user, name, exc)
         return {"errors": [str(exc)]}, 502
@@ -393,6 +407,31 @@ def secret_link(name):
                     user, name, burnstore.TTL_SECONDS)
     return {"reveal_url": f"{request.host_url.rstrip('/')}/reveal/{token}",
             "tenant": name, "ttl_seconds": burnstore.TTL_SECONDS}, 201
+
+
+# Rate limit op de reveal-route. design.md beloofde dit; het stond er niet.
+# Met een token van 256 bits is brute force geen realistisch pad — dit is de
+# formaliteit die voorkomt dat iemand het pad überhaupt probeert, en dat een
+# scanner de log volschrijft. Env-tunable, zoals elke limiet hier.
+REVEAL_RATE_MAX = int(os.environ.get("REVEAL_RATE_MAX", "20"))
+REVEAL_RATE_WINDOW = int(os.environ.get("REVEAL_RATE_WINDOW", "300"))
+_reveal_hits = {}
+
+
+def _rate_limited(ip, now=None):
+    """True als dit IP zijn budget in het venster op heeft.
+
+    Bewust in-memory: bij één replica is dat genoeg, en een gedeelde teller zou
+    een datastore introduceren voor een limiet die alleen scanners raakt.
+    """
+    now = time.time() if now is None else now
+    hits = [t for t in _reveal_hits.get(ip, []) if now - t < REVEAL_RATE_WINDOW]
+    hits.append(now)
+    _reveal_hits[ip] = hits
+    if len(_reveal_hits) > 1000:          # geen onbegrensde groei door spoofing
+        for k in [k for k, v in _reveal_hits.items() if not v or now - v[-1] > REVEAL_RATE_WINDOW]:
+            _reveal_hits.pop(k, None)
+    return len(hits) > REVEAL_RATE_MAX
 
 
 @app.get("/reveal/<token>")
@@ -405,6 +444,14 @@ def reveal(token):
     must not be able to tell them apart."""
     if not REVEAL_ENABLED:
         return Response("Deze link werkt niet.\n", status=404, mimetype="text/plain")
+    # Deze route staat als enige buiten de proxy-login (skip_auth_routes), dus
+    # de rem zit hier. Nooit het token loggen — dat is de credential.
+    client_ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                 or request.remote_addr or "-")
+    if _rate_limited(client_ip):
+        app.logger.warning("reveal rate-limited: ip=%s", client_ip)
+        return Response("Te veel pogingen. Probeer het later opnieuw.\n",
+                        status=429, mimetype="text/plain")
     try:
         entry = burnstore.claim(token)
     except burnstore.BurnstoreError:
@@ -428,6 +475,46 @@ def reveal(token):
         return Response("Het wachtwoord is niet meer op te halen. Vraag om een "
                         "nieuwe link.\n", status=404, mimetype="text/plain")
     return render_template("reveal.html", tenant=tenant, password=password), 200
+
+
+@app.post("/tenant/<name>/certificate")
+def tenant_certificate(name):
+    """Neem een door de klant geleverd TLS-paar aan, valideer het en schrijf het
+    als Secret in de namespace van de tenant.
+
+    Dit is `certswap` in het portaal. De handeling is dezelfde, de blootstelling
+    niet: sleutelmateriaal gaat nu door dit proces. Daarom valideren we vóór het
+    schrijven, loggen we nooit de inhoud, en is de secretnaam AFGELEID van de
+    host — nooit overgenomen uit het verzoek, zodat een upload geen ander
+    secret kan overschrijven."""
+    if not _TENANT_RE.fullmatch(name):
+        return {"errors": ["invalid tenant name"]}, 400
+    host = (request.form.get("host") or "").strip().lower()
+    if not tenants.is_custom_frontend_host(host):
+        return {"errors": ["geef de eigen frontend-host op; op het platformdomein "
+                           "dekt het wildcard-certificaat het al"]}, 400
+
+    cert_file, key_file = request.files.get("cert"), request.files.get("key")
+    if not cert_file or not key_file:
+        return {"errors": ["lever zowel het certificaat als de sleutel aan"]}, 400
+    cert_pem, key_pem = cert_file.read(), key_file.read()
+
+    user = current_user()
+    try:
+        summary = certlib.validate(cert_pem, key_pem, host)
+        secret_name = tenants.tls_secret_name(host)
+        action = certlib.write_secret(name, secret_name, cert_pem, key_pem)
+    except certlib.CertError as exc:
+        # De melding beschrijft wat er mis is, nooit wat erin stond.
+        app.logger.warning("certificate rejected: user=%s tenant=%s reason=%s",
+                           user, name, exc)
+        return {"errors": [str(exc)]}, 400
+    finally:
+        del cert_pem, key_pem
+
+    app.logger.info("certificate %s: user=%s tenant=%s secret=%s expires=%s",
+                    action, user, name, secret_name, summary["not_after"])
+    return {"secret": secret_name, "action": action, **summary}, 201
 
 
 @app.get("/tenant/delete")
@@ -495,7 +582,15 @@ def dashboard_data():
     source fails independently (partial errors reported) so the page still loads."""
     # reveal_enabled stuurt de UI: zonder vlag heeft een knop die 404 geeft
     # geen zin, en met vlag moet hij vindbaar zijn zonder curl.
-    out = {"tenants": [], "prs": [], "errors": [], "reveal_enabled": REVEAL_ENABLED}
+    # `minted` zegt welke omgevingen hun wachtwoordlink al gehad hebben; die
+    # krijgen geen knop meer, want dat gebeurt één keer per omgeving.
+    out = {"tenants": [], "prs": [], "errors": [],
+           "reveal_enabled": REVEAL_ENABLED, "minted": []}
+    if REVEAL_ENABLED:
+        try:
+            out["minted"] = burnstore.minted_tenants()
+        except burnstore.BurnstoreError as exc:
+            out["errors"].append(f"reveal-status: {exc}")
     try:
         out["tenants"] = argolib.list_apps()
     except argolib.ArgoError as exc:

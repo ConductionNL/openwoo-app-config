@@ -559,10 +559,25 @@ def test_certificate_block_sits_outside_the_advanced_fold(client):
 def test_dashboard_exposes_the_reveal_flag(client, monkeypatch):
     monkeypatch.setattr(server.argolib, "list_apps", lambda: [])
     monkeypatch.setattr(server.gitlib, "list_prs", lambda: [])
+    monkeypatch.setattr(server.burnstore, "minted_tenants", lambda: ["gouda-accept"])
     monkeypatch.setattr(server, "REVEAL_ENABLED", False)
-    assert client.get("/dashboard.json").get_json()["reveal_enabled"] is False
+    body = client.get("/dashboard.json").get_json()
+    assert body["reveal_enabled"] is False and body["minted"] == []
     monkeypatch.setattr(server, "REVEAL_ENABLED", True)
-    assert client.get("/dashboard.json").get_json()["reveal_enabled"] is True
+    body = client.get("/dashboard.json").get_json()
+    assert body["reveal_enabled"] is True
+    assert body["minted"] == ["gouda-accept"]   # die krijgt geen knop meer
+
+
+def test_second_mint_for_a_tenant_is_refused(client, reveal_on, monkeypatch):
+    """Eén overdracht per omgeving, ook door een andere operator."""
+    _resp, body = _mint(client)
+    assert _resp.status_code == 201 and body["reveal_url"]
+    again = client.post("/tenant/almere-accept/secret-link")
+    assert again.status_code == 409
+    j = again.get_json()
+    assert j["already_minted"] is True
+    assert "al een wachtwoordlink" in j["errors"][0]
 
 
 def test_existing_tenant_is_updated_not_created(client, monkeypatch):
@@ -646,14 +661,17 @@ def test_org_pattern_is_mirrored_in_the_form(client):
     assert "function esc(" in body          # gebruikersinvoer gaat door innerHTML
 
 
-def test_dashboard_offers_show_and_copy(client, monkeypatch):
-    """Twee wegen: 'wachtwoord tonen' opent en verbrandt meteen (voor de
-    operator), 'link' geeft de URL om te versturen (voor de product owner)."""
+def test_dashboard_offers_exactly_one_reveal_action(client, monkeypatch):
+    """Eén actie per omgeving. Twee knoppen die allebei onbeperkt nieuwe links
+    maakten was precies de klacht; de link is klikbaar én kopieerbaar, zodat
+    zelf openen en doorsturen met dezelfde actie kunnen."""
     monkeypatch.setattr(server.argolib, "list_apps", lambda: [])
     monkeypatch.setattr(server.gitlib, "list_prs", lambda: [])
     body = client.get("/").get_data(as_text=True)
-    assert "data-reveal=" in body and "data-reveal-copy=" in body
+    assert "data-reveal=" in body
+    assert "data-reveal-copy" not in body     # de tweede knop is weg
     assert "confirm(" in body                 # misklik op productie afvangen
+    assert "wachtwoord gedeeld" in body       # reeds-gedeelde omgevingen
 
 
 def test_reveal_token_is_redacted_in_access_logs():
@@ -670,3 +688,13 @@ def test_reveal_token_is_redacted_in_access_logs():
     line = 'GET /reveal/KnXWWYN6ispnj3Q8l__YX HTTP/1.1'
     assert pat.sub(r"\1<token>", line) == "GET /reveal/<token> HTTP/1.1"
     assert spec is not None
+
+
+def test_reveal_is_rate_limited(client, reveal_on, monkeypatch):
+    """De reveal-route staat als enige buiten de proxy-login, dus de rem zit in
+    de app. design.md beloofde dit; het stond er niet."""
+    monkeypatch.setattr(server, "REVEAL_RATE_MAX", 3)
+    server._reveal_hits.clear()
+    codes = [client.get("/reveal/nietbestaand").status_code for _ in range(5)]
+    assert codes[:3] == [404, 404, 404]       # binnen budget: normaal antwoord
+    assert codes[-1] == 429                   # daarna afgeknepen

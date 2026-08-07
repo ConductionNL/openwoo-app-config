@@ -4,6 +4,33 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (reveal-route bereikbaar, één link per omgeving, certificaat-upload)
+- **De reveal-link werkte niet voor wie hem nodig heeft.** `oauth2-proxy` had geen
+  `skip_auth_routes`, dus élke aanvraag — ook `/reveal/<token>` — moest langs
+  Keycloak met een `@conduction.nl`-adres. Een product owner bij een gemeente
+  heeft dat niet en werd geweigerd. Dat de dry-run leek te slagen kwam doordat de
+  operator zelf al een sessie had. De Flask-kant was wel vrijgesteld, de proxy
+  ervóór niet — en die is de echte poort.
+- **Rate limit op `/reveal/`**, per IP en env-tunable. `design.md` beloofde die;
+  hij stond er niet. Nu die route echt open staat, telt dat.
+- **Eén wachtwoordlink per omgeving, ooit.** Er stonden twee knoppen die allebei
+  onbeperkt nieuwe links maakten: vier stuks in een minuut tijdens de dry-run,
+  waarvan twee voor een productie-tenant. De link zelf was wél eenmalig; de knop
+  niet. Nu is er één actie, die na gebruik verdwijnt en een tweede poging met 409
+  afwijst — inclusief wie hem eerder maakte en wanneer. De link is klikbaar én
+  kopieerbaar, dus zelf openen en doorsturen kan met dezelfde actie. Kwijt? Dan
+  leest een operator het secret met `kubectl`; dat is bewust omslachtiger.
+- **Certificaat-upload** (`POST /tenant/<naam>/certificate`, `webgui/certlib.py`):
+  valideert dat de sleutel bij het certificaat hoort, dat het de host dekt en dat
+  het niet (bijna) verlopen is, en schrijft het dan als `kubernetes.io/tls`-Secret
+  onder de uit de host afgeleide naam. Dit doet in het portaal wat `certswap`
+  erbuiten deed.
+  **Prijs, expliciet:** het portaal krijgt hiermee `create`/`update` op Secrets, en
+  dat is niet op naam te beperken — effectief mag het elk Secret in elke namespace
+  schrijven. De begrenzing zit in de code, niet in de RBAC. Dat staat ook in
+  `rbac-secrets.yaml`, zodat wie het toepast het ziet.
+  Nieuwe dependency: `cryptography` (X.509 parsen kan niet met de stdlib).
+
 ### Gewijzigd — 2026-08-07 (reveal-flow: token uit de logs, tonen in plaats van kopiëren)
 - **Het reveal-token stond in de gunicorn access-log.** `/reveal/<token>` draagt
   de credential in het pad, en gunicorn logt elke request-regel integraal. Meestal
