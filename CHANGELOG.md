@@ -4,6 +4,67 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-07 (image bouwt naar ghcr.io, via een workflow)
+- `.github/workflows/image.yml` (eerste CI in deze repo): bouwt en pusht naar
+  `ghcr.io/conductionnl/openwoo-provisioner` op een `v*`-tag of handmatige
+  dispatch. Auth via de ingebouwde `GITHUB_TOKEN` met `packages: write`; geen
+  PAT nodig. Weigert een bestaande tag te overschrijven — een tag is een
+  audit-anker, en stilletjes andere bytes onder dezelfde tag publiceren maakt
+  "welke code draait er" onbeantwoordbaar. Verifieert na afloop dat de tag écht
+  op de registry staat.
+- Waarom ghcr: de Docker Pro-PAT is 2026-08-03 verlopen en wordt niet
+  vernieuwd, dus de fleet pullt Docker Hub weer anoniem onder de limiet
+  (`cluster-config/docs/mirror.md`). Datzelfde document zet de conventie: eigen
+  images worden vanuit hun eigen pipeline naar `ghcr.io/conductionnl`
+  gepubliceerd en bewust *niet* gespiegeld, zodat er één bron per tag is.
+- `scripts/check_image_on_registry.py` kent nu ghcr naast Docker Hub (anoniem
+  token + manifest-HEAD, het recept uit `mirror.md`). Een 401 wordt gemeld als
+  "package staat waarschijnlijk nog op privé", niet als "tag bestaat niet" — de
+  fix verschilt volledig.
+- `webgui/deploy/kustomization.yaml`: `newName` naar ghcr, `newTag` 0.6.0.
+- **Dockerfile: `HUB_SHA` gebumpt** van `9f6aed88` naar `4945cf97` (6 commits).
+  Inhoud: docs-mcp leest de lokale werkkopie als bron en geeft een herkomst-veld
+  terug, publieke en interne componentenlijst ontkoppeld, en `clone_all.sh`
+  kloont van GitHub. Bewuste bump — zonder deze faalt élke build, want hub-main
+  is voorbij de oude pin.
+- Nog te doen bij de eerste push: de ghcr-package op **public** zetten. ghcr zet
+  nieuwe packages standaard op privé, en privé betekent dat elke namespace
+  alsnog een pull-secret nodig heeft.
+
+### Toegevoegd — 2026-08-07 (eenmalige reveal-link voor het adminwachtwoord — sectie 4)
+- `webgui/burnstore.py`: eenmalige, verlopende tickets plus
+  `read_admin_password()`. `POST /tenant/<naam>/secret-link` (operator-gated)
+  levert een URL; `GET /reveal/<token>` toont het wachtwoord één keer op een
+  JS-vrije pagina en is daarna weg. Tweede keer openen geeft 404, net als een
+  verlopen link — die twee zijn bewust niet te onderscheiden.
+- **Afwijking van design.md, bewust:** de store bewaart géén wachtwoord, ook
+  niet versleuteld. De stdlib heeft geen authenticated cipher en zelf iets in
+  elkaar zetten is erger dan het probleem; "staat er nooit" is bovendien
+  sterker dan "versleuteld met een sleutel in dezelfde pod". Opgeslagen wordt
+  alleen `sha256(token)` plus tenant, aanvrager en vervaltijd. Het wachtwoord
+  wordt pas bij het claimen uit het cluster gelezen.
+- Het ticket wordt verbrand vóór het ophalen: een crash halverwege kan niet
+  tot een tweede onthulling leiden.
+- `/reveal/` is de enige route buiten de operator-gate — de ontvanger heeft
+  geen Keycloak-account, het token ís de sleutel. Minten blijft wél gated, dus
+  een ongeauthenticeerd verzoek kan nooit een token laten ontstaan.
+- `webgui/deploy/rbac-secrets.yaml`: ClusterRole met `get` op Secrets, beperkt
+  via `resourceNames: [nextcloud-secrets]`, zonder `list`/`watch`; plus een
+  namespaced Role voor de ticket-ConfigMap. Eerlijke grens gedocumenteerd: dat
+  Secret bevat ook S3-, DB- en Redis-credentials en RBAC kan niet per sleutel
+  autoriseren, dus `read_admin_password()` is de werkelijke begrenzing.
+- `REVEAL_ENABLED` staat standaard **uit**; beide routes geven dan 404.
+  TTL (24h), ticket-cap en tokengrootte zijn env-tunable.
+- Premisse gecorrigeerd: ESO is géén afhankelijkheid. Volgens Nextcloud-base
+  `docs/SECRETS.md` krijgt élke tenant een `nextcloud-secrets`, alleen het
+  mechanisme verschilt (script voor bestaande tenants, ESO voor managed). Uit
+  diezelfde pagina: de namespace is de kále tenantnaam — `nc-<tenant>` is de
+  Argo-applicatie — en de sleutel heet `nextcloud-password`, niet
+  `admin-password`.
+- `docs/secret-reveal.md` toegevoegd en gelinkt vanuit `docs/index.md`.
+- 24 nieuwe tests, waaronder een die vastlegt dat het wachtwoord nooit in de
+  logs belandt terwijl het mint- en claim-feit wél geaudit wordt.
+
 ### Toegevoegd — 2026-08-07 (huisstijl bij tenant-creatie — sectie 2, herzien)
 - `webgui/tenants.py`: `from_org()` en `render()` dragen nu het hele
   brandingblok — `themeClassname`, `jumbotronImageUrl`, `faviconUrl` naast het

@@ -1,0 +1,100 @@
+---
+last_reviewed: 2026-08-07
+owner: info@conduction.nl
+---
+
+# Handing over a tenant's initial admin password
+
+A newly created tenant has a generated Nextcloud admin password sitting in
+its `nextcloud-secrets` Secret. Getting it to the product owner used to
+mean a devops person running `kubectl get secret … | base64 -d` and pasting
+the result into chat or email — the exact dependency the tenant lifecycle
+is meant to remove, and a copy of a municipal admin password left behind in
+someone's message history.
+
+The portal replaces that with a link that works exactly once.
+
+## The flow
+
+1. An **operator** (authenticated through oauth2-proxy/Keycloak) mints a
+   link: `POST /tenant/<name>/secret-link`. The response contains the URL
+   and nothing else — the password is not in it.
+2. The operator sends that URL to the product owner over whatever channel
+   they already use. This change does not send anything itself.
+3. The **product owner** opens it: `GET /reveal/<token>`. The password is
+   shown once, on a plain page with no JavaScript.
+4. Any second open — by anyone, including the same person — returns 404.
+   So does an expired link. The two are deliberately indistinguishable.
+
+## Why it is safe to have an unauthenticated route
+
+`/reveal/<token>` is the only route that skips the operator gate, because
+its recipient has no Keycloak account. The 256-bit token is the credential.
+What keeps that honest:
+
+- **Minting stays operator-gated.** No unauthenticated request can create
+  a token, so the only tokens that exist were deliberately handed out.
+- **The store holds no secret material.** A ticket records
+  `{tenant, expires_at, requested_by}` — the password is read from the
+  cluster at claim time. Reading the store gives an attacker nothing.
+- **Only `sha256(token)` is stored,** never the token, so the stored form
+  cannot be replayed as a link.
+- **The ticket is burned before the password is fetched.** A crash or a
+  failed read still consumes the link; it can never be retried into a
+  second disclosure.
+- **The value is never logged.** The audit line records who minted it, for
+  which tenant, and that a claim happened — never the password.
+
+### Deviation from the change's design.md
+
+`design.md` proposed storing the password encrypted at rest under the token
+digest. The implementation stores no password at all instead. Python's
+standard library has no authenticated cipher, and hand-rolling one would be
+worse than the problem; "never stored" is also a stronger property than
+"encrypted with a key that lives in the same pod".
+
+## What it reads, and the honest limit
+
+Per
+[Nextcloud-base SECRETS.md](https://github.com/ConductionNL/Nextcloud-base/blob/main/docs/SECRETS.md),
+every tenant ends up with a Secret `nextcloud-secrets` in its namespace —
+the **bare tenant name** (`straatje-accept`; `nc-<tenant>` is the Argo
+application, not a namespace). The admin password is under
+`nextcloud-password`, not `admin-password`. Both mechanisms produce that
+shape, so this flow does not care whether the Secret came from
+`create-tenant-secret.sh` or from ESO.
+
+`nextcloud-secrets` also holds S3, database and Redis credentials, and
+Kubernetes RBAC cannot authorise per key inside a Secret. The RBAC grant
+(`get`, `resourceNames: [nextcloud-secrets]`, no `list`/`watch`) is
+therefore wider than the feature needs. **The code is the boundary:**
+`burnstore.read_admin_password()` returns exactly one key. Narrowing the
+grant further would require Nextcloud-base to split the admin password into
+its own Secret.
+
+## Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `REVEAL_ENABLED` | `false` | Master switch. Off means both routes 404. |
+| `REVEAL_TTL_SECONDS` | `86400` | Link lifetime (24h). |
+| `REVEAL_MAX_TICKETS` | `200` | Outstanding-ticket guard; minting fails loudly above it. |
+| `REVEAL_TOKEN_BYTES` | `32` | Token entropy (256 bit). |
+| `PORTAL_NAMESPACE` | `openwoo-platform` | Where the ticket ConfigMap lives. |
+| `BURNSTORE_CONFIGMAP` | `secret-reveal-tickets` | Ticket ConfigMap name. |
+
+The flag is off by default because the route reads a tenant Secret: it
+stays dark until someone deliberately turns it on for a deployment.
+
+## Operator notes
+
+- **Minting fails fast** when the tenant has no readable
+  `nextcloud-password`, so you find out immediately instead of the product
+  owner finding out at the link.
+- **Tell the recipient it is single-use.** The page says so, but a link
+  that a mail client pre-fetches is a link already burned. If that turns
+  out to bite in practice, that is an argument for a click-through step,
+  not for making the link reusable.
+- **Rotation is not part of this.** ESO generates once and does not rotate
+  (`refreshInterval: "0"`); the product owner should change the password
+  after first login.

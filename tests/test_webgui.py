@@ -367,3 +367,93 @@ def test_dashboard_is_resilient_to_partial_failure(client, monkeypatch):
     resp = client.get("/dashboard.json")
     assert resp.status_code == 200  # page still loads
     assert any("argo" in e for e in resp.get_json()["errors"])
+
+
+# --- secret-reveal flow (change tenant-onboarding-completion, sectie 4) ---
+
+
+@pytest.fixture
+def reveal_on(monkeypatch):
+    """Feature flag on, with an in-memory ticket store and a known password."""
+    monkeypatch.setattr(server, "REVEAL_ENABLED", True)
+    tickets = {}
+    monkeypatch.setattr(server.burnstore, "_load", lambda: (dict(tickets), "1"))
+    monkeypatch.setattr(server.burnstore, "_save",
+                        lambda t, v: (tickets.clear(), tickets.update(t)))
+    monkeypatch.setattr(server.burnstore, "read_admin_password",
+                        lambda tenant: "heiligboontje" if tenant == "almere-accept" else None)
+    return tickets
+
+
+def _mint(client, tenant="almere-accept"):
+    resp = client.post(f"/tenant/{tenant}/secret-link")
+    return resp, resp.get_json() or {}
+
+
+def test_secret_link_mints_a_url(client, reveal_on):
+    resp, body = _mint(client)
+    assert resp.status_code == 201
+    assert "/reveal/" in body["reveal_url"] and body["tenant"] == "almere-accept"
+    # the password must NOT be in the mint response
+    assert "heiligboontje" not in resp.get_data(as_text=True)
+
+
+def test_reveal_shows_the_password_once(client, reveal_on):
+    _resp, body = _mint(client)
+    path = "/reveal/" + body["reveal_url"].split("/reveal/")[1]
+    first = client.get(path)
+    assert first.status_code == 200
+    assert "heiligboontje" in first.get_data(as_text=True)
+    # second read is gone
+    assert client.get(path).status_code == 404
+
+
+def test_reveal_of_an_unknown_token_is_404(client, reveal_on):
+    assert client.get("/reveal/ditbestaatniet").status_code == 404
+
+
+def test_reveal_needs_no_operator_identity(monkeypatch, reveal_on):
+    """The PO has no Keycloak account: /reveal must pass the auth gate, while
+    minting must not."""
+    monkeypatch.setattr(server, "REQUIRE_AUTH", True)
+    server.app.config["TESTING"] = True
+    c = server.app.test_client()
+    # minting without an operator identity is refused
+    assert c.post("/tenant/almere-accept/secret-link").status_code == 403
+    # revealing is not (404 = no such ticket, i.e. it got past the gate)
+    assert c.get("/reveal/whatever").status_code == 404
+
+
+def test_secret_link_refuses_a_tenant_without_a_password(client, reveal_on):
+    resp, _body = _mint(client, "bestaatniet-accept")
+    assert resp.status_code == 404
+    assert "nextcloud-secrets" in resp.get_data(as_text=True)
+
+
+def test_secret_link_rejects_an_invalid_tenant_name(client, reveal_on):
+    assert client.post("/tenant/Not_Valid/secret-link").status_code in (400, 404)
+
+
+def test_reveal_is_off_by_default(client, monkeypatch):
+    monkeypatch.setattr(server, "REVEAL_ENABLED", False)
+    assert client.post("/tenant/almere-accept/secret-link").status_code == 404
+    assert client.get("/reveal/anything").status_code == 404
+
+
+def test_password_never_reaches_the_logs(client, reveal_on, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        _resp, body = _mint(client)
+        client.get("/reveal/" + body["reveal_url"].split("/reveal/")[1])
+    assert "heiligboontje" not in caplog.text
+    # but the fact of it is audited
+    assert "secret-link minted" in caplog.text and "reveal claimed" in caplog.text
+
+
+def test_reveal_page_warns_it_is_single_use(client, reveal_on):
+    _resp, body = _mint(client)
+    page = client.get("/reveal/" + body["reveal_url"].split("/reveal/")[1])
+    text = page.get_data(as_text=True)
+    assert "eenmalig" in text.lower()
+    assert "noindex" in text            # never indexed by a crawler

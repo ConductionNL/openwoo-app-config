@@ -1,9 +1,15 @@
 ## 1. Prerequisites — confirm before building
 
-- [ ] 1.1 Confirm `tenant-creation-pr-flow` task 1.3 (ESO → `nextcloud-secrets`)
-      status — hard dependency for section 4 (`secret-reveal-once`). Not a
-      dependency for sections 2 (theme) or 3 (TLS rendering).
-      **Status 2026-08-07: still unchecked on `main`.**
+- [x] 1.1 ESO is **not** a dependency — **premise corrected 2026-08-07.**
+      Nextcloud-base `docs/SECRETS.md`: *every* tenant ends up with a Secret
+      `nextcloud-secrets` in its namespace; only the mechanism differs
+      (`create-tenant-secret.sh` for existing tenants, ESO for managed ones).
+      Both produce the same keys, so the reveal flow reads the same thing
+      either way. The real precondition is per tenant — does that Secret exist
+      — which the mint route now checks before minting.
+      Two corrections that came out of the same page: the namespace is the
+      **bare tenant name**, not `nc-<tenant>` (that is the Argo application),
+      and the admin key is **`nextcloud-password`**, not `admin-password`.
 - [x] 1.2 Confirm whether `certswap` has any working code yet — **done
       2026-08-07: yes.** Working CLI at v0.3.0+ with a Kubernetes target
       (`certswap plan|apply k8s <bundle> --namespace <ns> --secret <name>`),
@@ -81,32 +87,45 @@ afterwards — the manual devops step this change exists to remove.
 
 ## 4. One-time secret reveal
 
-- [ ] 4.1 New stdlib module (e.g. `webgui/burnstore.py`): `mint(value, ttl)
-      -> token`, `reveal(token) -> value | None` (delete-on-read + expiry).
-      Encrypt at rest with a key from the pod's existing secret material —
-      never plaintext in the store. TTL and rate limit env-tunable.
-- [ ] 4.2 `POST /tenant/<name>/secret-link` — operator-gated
-      (`_require_operator`), reads `nextcloud-secrets` for `<name>` via the
-      minimal RBAC addition below, mints a token, returns the `/reveal/<token>`
-      URL. Does not log the secret value.
-- [ ] 4.3 `GET /reveal/<token>` — **no auth gate**, single read, plain HTML
-      response (no JS dependency), then delete regardless of outcome.
-- [ ] 4.4 RBAC: extend `webgui/deploy/rbac-argo.yaml` (or a new
-      `rbac-secrets.yaml`) to `get` (not `list`/`watch`) on `Secret
-      nextcloud-secrets` per tenant namespace — smallest addition that makes
-      4.2 work.
-- [ ] 4.5 `tests/test_webgui.py`: happy path, second-read-404, expiry,
-      unauthenticated mint attempt rejected, secret value never appears in
-      logs/error messages.
-- [ ] 4.6 Feature-flag the mint route; **do not enable for operators** until
-      1.1 confirms ESO is live end-to-end (mirrors `tenant-creation-pr-flow`
-      task 6.2's gating pattern).
+- [x] 4.1 `webgui/burnstore.py` (stdlib): `mint(tenant, requested_by, ttl)
+      -> token`, `claim(token) -> entry | None` (burn-on-read + expiry), and
+      `read_admin_password(tenant)`. TTL, ticket cap and token size env-tunable.
+      **Deviation from design.md, deliberate:** the store holds **no secret
+      material** rather than an encrypted copy. The stdlib has no authenticated
+      cipher and hand-rolling one is worse than the problem; "never stored" also
+      beats "encrypted with a key in the same pod". Only `sha256(token)` is
+      persisted, so the stored form cannot be replayed as a link. Storage is one
+      ConfigMap in the portal's own namespace, so a pod restart does not turn a
+      valid link into "already used".
+- [x] 4.2 `POST /tenant/<name>/secret-link` — operator-gated, validates the
+      tenant name, fails fast when there is no readable password (the operator
+      finds out, not the product owner), mints, returns the URL. The value is
+      not in the response and not in any log line.
+- [x] 4.3 `GET /reveal/<token>` — no auth gate, burns the ticket **before**
+      fetching, plain JS-free page (`templates/reveal.html`, `noindex`,
+      `no-referrer`). Expired and already-used are the same 404 so a probe
+      learns nothing.
+- [x] 4.4 RBAC: new `webgui/deploy/rbac-secrets.yaml`, wired into the
+      kustomization. ClusterRole `get` on Secrets restricted by
+      `resourceNames: [nextcloud-secrets]`, no `list`/`watch`; plus a
+      *namespaced* Role for the ticket ConfigMap. Documented honest limit: the
+      Secret also holds S3/DB/Redis creds and RBAC cannot scope per key, so
+      `read_admin_password()` is the boundary.
+- [x] 4.5 `tests/test_burnstore.py` (15) + `tests/test_webgui.py` (9):
+      mint/claim, second-read 404, expiry, sweep, store-full, token uniqueness,
+      no secret material in the stored ticket, the right namespace and key,
+      unauthenticated mint rejected while reveal passes the gate, flag off by
+      default, and an assertion that the password never reaches the logs.
+- [x] 4.6 `REVEAL_ENABLED` defaults to **false**; both routes 404 until a
+      deployment turns it on deliberately.
 
 ## 5. Docs + changelog
 
-- [ ] 5.1 `webgui/README.md`: document the theme step, the `frontend.tls`
-      rendering + cert runbook, and the reveal-link flow (mint vs. reveal, who
-      can do what).
+- [x] 5.1 `docs/secret-reveal.md` (+ linked from `docs/index.md`): the reveal
+      flow, why the reveal route is unauthenticated, what it reads, the RBAC
+      limit, and the env knobs. Written in `docs/` rather than a new
+      `webgui/README.md` so the handbook/MCP indexes it like every other page.
+      The TLS runbook follows with section 3.
 - [ ] 5.2 `CHANGELOG.md` updated.
 
 ## 6. Dry-run + done criteria
@@ -117,8 +136,11 @@ afterwards — the manual devops step this change exists to remove.
 - [ ] 6.2 TLS rendering: create a throwaway custom-domain tenant, confirm the
       PR carries a `frontend.tls` block identical in shape to the live examples
       and that Nextcloud-base CI accepts it.
-- [ ] 6.3 Reveal flow: mint a link for a throwaway tenant's secret, confirm
-      one read works, a second read 404s, and an expired token 404s.
+- [ ] 6.3 Reveal flow: with `REVEAL_ENABLED=true` on a deployment, mint a link
+      for a throwaway tenant, confirm one read works, a second read 404s, and an
+      expired token 404s. Also confirm the RBAC is sufficient (the pod can `get`
+      `nextcloud-secrets` in a tenant namespace) and no wider (it cannot `list`
+      Secrets).
 - [ ] 6.4 Done: a PO can receive a working custom-domain, themed Nextcloud
       and its initial password via a link — with zero devops-person
       involvement after the PR is merged.

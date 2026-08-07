@@ -14,6 +14,7 @@ resources:
   # kube-system-regel — bevindingen in de kop van die file). Heractiveren
   # alleen na het debug-pod-experiment dat daar beschreven staat.
   - rbac-argo.yaml   # cluster-scoped read-only on Argo Applications (status poll)
+  - rbac-secrets.yaml  # get on Secret/nextcloud-secrets + de reveal-tickets-ConfigMap
   # secret.example.yaml is a TEMPLATE — create the real Secret out-of-band.
 
 # The oauth2-proxy config becomes a hashed ConfigMap, so editing it rolls the pod.
@@ -54,4 +55,14 @@ images:
     #        (GITHUB_TOKEN/GITHUB_API_URL i.p.v. FORGEJO_*) + HUB_SHA-bump
     #        naar 9f6aed88 (hub-main op GitHub). Secret openwoo-provisioner-git
     #        moet een GitHub-PAT bevatten (zie secret.example.yaml).
-    newTag: "0.5.0"
+    # 0.6.0: REGISTRY VERHUIST naar ghcr.io/conductionnl (newName hieronder).
+    #        Reden: de Docker Pro-PAT is 2026-08-03 verlopen en wordt niet
+    #        vernieuwd, dus de fleet pullt Docker Hub weer anoniem onder de
+    #        limiet (cluster-config/docs/mirror.md). Eigen images horen daar
+    #        vanuit hun eigen pipeline naartoe — niet gespiegeld.
+    #        Inhoud: eenmalige reveal-link (sectie 4) + brandingblok bij
+    #        tenant-creatie (sectie 2) + HUB_SHA-bump naar 4945cf97.
+    #        LET OP: de ghcr-package moet PUBLIC staan, anders heeft deze
+    #        namespace alsnog een pull-secret nodig.
+    newName: ghcr.io/conductionnl/openwoo-provisioner
+    newTag: "0.6.0"
