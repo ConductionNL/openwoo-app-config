@@ -1,0 +1,5 @@
+---
+schema: spec-driven
+created: 2026-08-07
+updated: 2026-08-07
+pivot: Close the three loose ends of tenant-creation-pr-flow so a PO gets a working, themed, custom-domain Nextcloud plus its initial password with no devops step after the merge — webgui renders the existing frontend.tls contract, theming becomes an idempotent provisioner step, and the admin password is revealed once via a self-hosted burn-after-read link.
