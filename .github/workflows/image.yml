@@ -28,8 +28,24 @@
 # secret again — exactly the cost this move avoids.
 name: image
 
+# Two kinds of build, on purpose:
+#
+#   push to main  -> `sha-<short>`, an immutable per-commit artifact. This is
+#                    the canary for "does main still build at all". The HUB_SHA
+#                    pin goes stale on its own schedule (hub moves, this repo
+#                    does not), and without a build on every merge nobody finds
+#                    out until the next release — which is exactly how it went
+#                    on 2026-08-07.
+#   tag `v*` /    -> `<version>`, the tag a human puts in
+#   dispatch         webgui/deploy/kustomization.yaml. Deliberate, reviewable.
+#
+# A merge deliberately does NOT publish the deployed tag. Argo follows
+# `newTag`, so building it automatically on merge would let Argo see the tag
+# before the image exists. Build first, merge the bump after — the sha builds
+# give you the confidence without moving that gate.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
@@ -57,14 +73,24 @@ jobs:
           set -euo pipefail
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             tag="${GITHUB_REF_NAME#v}"          # v0.6.0 -> 0.6.0
-          else
+            release=true
+          elif [[ -n "${{ inputs.tag }}" ]]; then
             tag="${{ inputs.tag }}"
+            release=true
+          else
+            tag="sha-${GITHUB_SHA:0:12}"        # per-commit artifact
+            release=false
           fi
           [[ -n "${tag}" ]] || { echo "empty tag" >&2; exit 1; }
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
           echo "ref=${IMAGE}:${tag}" >> "$GITHUB_OUTPUT"
 
-      - name: Refuse to overwrite an existing tag
+      - name: Refuse to overwrite an existing release tag
+        # Only for the deliberate tags. A sha tag is derived from the commit, so
+        # it cannot collide with different bytes — and a re-run of the same
+        # commit rebuilding it is harmless.
+        if: steps.meta.outputs.release == 'true'
         run: |
           set -euo pipefail
           # An image tag is an audit anchor: Argo may already be running it, and
@@ -95,9 +121,13 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Verify the tag really landed
+        # Anonymous check, so it only proves anything once the package is
+        # public. While it is still private this reports "probably private" and
+        # fails — which is itself the reminder to flip it.
         run: python3 scripts/check_image_on_registry.py "${{ steps.meta.outputs.ref }}"
 
       - name: Next steps
+        if: steps.meta.outputs.release == 'true'
         run: |
           echo "Published ${{ steps.meta.outputs.ref }}"
           echo "Now bump newTag in webgui/deploy/kustomization.yaml to ${{ steps.meta.outputs.tag }} and merge."
