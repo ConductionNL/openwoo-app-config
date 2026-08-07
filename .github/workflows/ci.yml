@@ -50,6 +50,9 @@ jobs:
         # not run locally for weeks. The rest of webgui/requirements.txt
         # (claude-agent-sdk, gunicorn) is not needed to run the tests.
         #
+        # cryptography: certlib parseert er X.509 mee en server.py importeert
+        # certlib, dus zonder deze regel faalt de hele webgui-collectie.
+        #
         # uv: techbook's `docs-contract` hook shells out to it ("Python tooling
         # via uv, never pip directly" — techbook/openspec/project.md). Without
         # it that hook fails with "Executable `uv` not found". Installed from
@@ -57,7 +60,7 @@ jobs:
         # third-party surface to the two GitHub-owned actions above.
         run: |
           python -m pip install --upgrade pip
-          pip install pytest "Flask>=3.0,<4.0" pre-commit uv
+          pip install pytest "Flask>=3.0,<4.0" "cryptography>=42,<47" pre-commit uv
 
       - name: Tests must not silently skip
         # The guard that would have caught the above. If a dependency goes
