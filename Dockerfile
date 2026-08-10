@@ -29,12 +29,15 @@ RUN pip install --no-cache-dir -r webgui/requirements.txt
 # (docs/sites-batch) vóór de eerstvolgende image-build. De sha-pin is
 # host-onafhankelijk (zelfde commit op beide hosts).
 ARG HUB_REPO=https://github.com/ConductionNL/hub.git
-# Bumped 2026-08-07: 9f6aed88 -> 4945cf97 (6 commits). Inhoud: docs-mcp leest
-# nu de lokale werkkopie als bron en geeft een herkomst-veld terug, publieke en
-# interne componentenlijst ontkoppeld, en clone_all.sh kloont van GitHub i.p.v.
-# Codeberg. Bewuste bump: zonder deze faalt elke build, want hub-main is voorbij
-# de oude pin.
-ARG HUB_SHA=4945cf97df16508dbc54233024c6aa998a671cd3
+# Bumped 2026-08-10: 4945cf97 -> 6bbf2aee (11 commits). Inhoud:
+#   * docs_mcp veegt de git-omgeving schoon vóór elke aanroep (clean_git_env);
+#     zonder dat kon de MCP-server onder een gelekte GIT_DIR de verkeerde repo
+#     bewerken. Dit is de enige wijziging die de inhoudslaag van dit image raakt.
+#   * server-side docs-gate (ci.yml), docs-touched in warn-mode, techbook-pin
+#     op v0.2.0, en een cryptography-bump (GHSA-g6cj-pr64-35w5).
+# Bewuste bump: de builds van 09:08 en 10:56 faalden op deze tripwire, precies
+# zoals bedoeld — hub-main was voorbij de pin.
+ARG HUB_SHA=6bbf2aee28bfa5bdb79f4e2fd84d05e70dd8618f
 RUN git clone --depth 1 "$HUB_REPO" /opt/hub \
  && [ "$(git -C /opt/hub rev-parse HEAD)" = "$HUB_SHA" ] \
  && rm -rf /opt/hub/.git

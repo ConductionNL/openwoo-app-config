@@ -4,6 +4,25 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gerepareerd — 2026-08-10 (image-build stond stil op de hub-pin)
+
+De builds van 09:08 en 10:56 faalden allebei op de tripwire in de Dockerfile:
+`git clone --depth 1` van hub, gevolgd door de eis dat HEAD gelijk is aan
+`HUB_SHA`. Hub-main was voorbij de pin gelopen. Dat is **bedoeld gedrag** — de
+pin dwingt af dat het meebakken van handboekinhoud een bewuste keuze is — maar
+het gevolg was wel dat er sinds vanmorgen geen nieuw image is uitgerold, en dus
+dat de portal-wijzigingen uit #18 (labels op tenant-PR's, zichtbare
+verwijderaanvragen) nog niet live zijn.
+
+- `Dockerfile`: `HUB_SHA` van `4945cf97` naar `6bbf2aee` (11 commits). Voor de
+  inhoudslaag van dit image telt er één: `docs_mcp` veegt de git-omgeving
+  schoon vóór elke aanroep, zodat de MCP-server onder een gelekte `GIT_DIR`
+  niet de verkeerde repo bewerkt. De rest is CI en gates in hub zelf.
+
+Gevolg voor de operatie: zolang dit niet gemerged is, moeten tenant-PR's van het
+portaal met de hand gelabeld worden. PR #54 op Nextcloud-base is daar het
+levende voorbeeld van.
+
 ### Gewijzigd — 2026-08-10 (docs-touched: documentatie wijzigt mee met de code)
 
 De bestaande gates (`docs-contract`, `docs-claims`) kijken naar de hele boom en
