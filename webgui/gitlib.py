@@ -154,12 +154,55 @@ def open_pr(head, title, body, base=None):
     return _request("POST", f"/repos/{repo}/pulls", payload)
 
 
-def list_prs(branch_prefix="add-tenant/", limit=20):
-    """Recent tenant PRs (those opened by this portal use the `add-tenant/<tenant>`
-    head branch). Returns [{number, title, state, merged, html_url, tenant}], newest
-    first. Used by the dashboard. GitHub kent geen `merged`-bool in de lijstweergave;
-    afgeleid uit `merged_at`."""
+def add_labels(number, labels):
+    """Add `labels` to PR `number`. PRs are issues to GitHub, so this is the
+    issues endpoint. Adding is additive — existing labels are kept — and a label
+    the repo does not have yet is created on the fly.
+
+    Callers should treat a failure here as non-fatal: the PR already exists by
+    the time this runs."""
     _api, _token, repo, _base = _cfg()
+    names = [str(name) for name in labels if name]
+    if not names:
+        return {}
+    return _request("POST", f"/repos/{repo}/issues/{int(number)}/labels",
+                    {"labels": names})
+
+
+# Welke head-branch bij welke soort aanvraag hoort. Het portaal opent
+# `add-tenant/<t>` om aan te maken en `delete-tenant/<t>` om te verwijderen; de
+# dashboardrij moet die twee uit elkaar houden, want een verwijderaanvraag die
+# eruitziet als een aanmaakaanvraag is erger dan geen rij.
+_PR_KINDS = (("delete-tenant/", "delete"), ("add-tenant/", "create"))
+_DEFAULT_PR_PREFIXES = tuple(prefix for prefix, _kind in _PR_KINDS)
+
+
+def _pr_kind(head):
+    """(matched prefix, kind) for a head branch, or (None, None) when it is not
+    one the portal opened."""
+    for prefix, kind in _PR_KINDS:
+        if head.startswith(prefix):
+            return prefix, kind
+    return None, None
+
+
+def list_prs(branch_prefix=_DEFAULT_PR_PREFIXES, limit=20):
+    """Recent tenant PRs opened by this portal. Returns
+    [{number, title, state, merged, html_url, tenant, kind}], newest first.
+
+    `branch_prefix` accepts a single prefix (str, as before) or a sequence of
+    them; the default covers both the create and the delete flow. Passing a
+    falsy value disables filtering. `kind` is 'create'/'delete' (None for a
+    branch outside the portal's own prefixes) so the dashboard can label the row
+    instead of guessing.
+
+    GitHub kent geen `merged`-bool in de lijstweergave; afgeleid uit `merged_at`.
+    """
+    _api, _token, repo, _base = _cfg()
+    if isinstance(branch_prefix, str):
+        prefixes = (branch_prefix,) if branch_prefix else ()
+    else:
+        prefixes = tuple(p for p in (branch_prefix or ()) if p)
     data = _request(
         "GET",
         f"/repos/{repo}/pulls?state=all&sort=updated&direction=desc&per_page={int(limit)}",
@@ -168,15 +211,19 @@ def list_prs(branch_prefix="add-tenant/", limit=20):
     out = []
     for p in rows:
         head = (p.get("head") or {}).get("ref", "")
-        if branch_prefix and not head.startswith(branch_prefix):
+        matched = next((prefix for prefix in prefixes if head.startswith(prefix)), None)
+        if prefixes and matched is None:
             continue
+        kind_prefix, kind = _pr_kind(head)
+        strip = matched or kind_prefix
         out.append({
             "number": p.get("number"),
             "title": p.get("title"),
             "state": p.get("state"),
             "merged": bool(p.get("merged_at")),
             "html_url": p.get("html_url"),
-            "tenant": head[len(branch_prefix):] if head.startswith(branch_prefix) else None,
+            "tenant": head[len(strip):] if strip else None,
+            "kind": kind,
         })
     return out
 

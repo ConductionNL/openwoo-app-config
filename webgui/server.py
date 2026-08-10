@@ -70,6 +70,13 @@ import yaml      # noqa: E402
 
 TENANTS_DIR = "nextcloud-platform/values/tenants"
 
+# Nextcloud-base's governance-check weigert elke PR zonder het label dat bij de
+# classificatie hoort; een PR die alleen tenantbestanden raakt classificeert als
+# `tenant-additive`. Zonder label is élke portal-PR rood en moet een mens hem
+# alsnog handmatig labelen — precies het handwerk dat het portaal wegneemt.
+# Env-instelbaar, want de labelnaam is een afspraak in die andere repo.
+TENANT_PR_LABEL = os.environ.get("TENANT_PR_LABEL", "change/tenant-additive")
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 app = Flask(__name__)
@@ -79,6 +86,25 @@ app.logger.setLevel(logging.INFO)
 # Set REQUIRE_AUTH=false only for local dev where no proxy fronts the app.
 REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "true").strip().lower() not in (
     "false", "0", "no", "off")
+
+
+def _label_pr(number, label=None):
+    """Put the governance label on a freshly opened PR.
+
+    Best-effort on purpose. By the time this runs the PR exists, so a failing
+    label call must not turn a successful request into an error: a 500 would
+    tell the operator nothing happened while an unlabelled PR sits open. Log it
+    and let the caller return the PR.
+    """
+    name = label or TENANT_PR_LABEL
+    if not number or not name:
+        return
+    try:
+        gitlib.add_labels(number, [name])
+    except gitlib.GitlibError as exc:
+        app.logger.warning("PR label failed (PR stays open, label by hand): "
+                           "pr=%s label=%s status=%s detail=%s",
+                           number, name, exc.status, exc.detail)
 
 
 def current_user():
@@ -318,6 +344,7 @@ def _tenant_write(form, is_edit):
                             user, name, exc.status, exc.detail)
         return {"errors": [exc.detail]}, status
 
+    _label_pr(result.get("number"))
     app.logger.info("tenant PR opened: user=%s name=%s pr=%s update=%s",
                     user, name, result.get("number"), updating)
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
@@ -403,6 +430,7 @@ def tenant_batch_create():
     except gitlib.GitlibError as exc:
         status = 409 if exc.status == 409 else (502 if exc.status in (0, 500, 502, 503) else 400)
         return {"errors": [exc.detail]}, status
+    _label_pr(result.get("number"))
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
             "count": len(names), "tenants": names}, 201
 
@@ -570,9 +598,10 @@ def tenant_delete_form():
 
 @app.post("/tenant/delete")
 def tenant_delete():
-    """Open a PR that REMOVES a tenant file. NB: Argo prunes the Nextcloud app on
-    merge, but PV/PVCs and the <tenant>-reactfront app are NOT auto-removed —
-    flagged in the PR body for manual cleanup (destructive, human-reviewed)."""
+    """Open a PR that REMOVES a tenant file. On merge the ApplicationSet drops
+    the Applications, but `preserveResourcesOnDeletion: true` keeps everything
+    they rolled out — the namespace keeps running, frontend included. The PR
+    body says so and names the cleanup tool (destructive, human-reviewed)."""
     tenant = request.form.get("tenant", "").strip()
     if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", tenant):
         return {"errors": ["invalid tenant name"]}, 400
@@ -582,9 +611,16 @@ def tenant_delete():
     commit_msg = f"remove tenant: {tenant}\n\nrequested-by: {user}\n"
     pr_body = (f"Removes tenant `{tenant}` via the OpenWoo portal.\n\n"
                f"- requested-by: `{user}`\n"
-               f"- ⚠️ After merge Argo prunes the Nextcloud app, but **PV/PVCs and the "
-               f"`{tenant}-reactfront` frontend app (preserveResourcesOnDeletion) are NOT "
-               f"auto-removed** — clean those up manually.\n")
+               f"- ⚠️ Merging this does **not** take `{tenant}` off the air. The "
+               f"ApplicationSet removes the Applications (`nc-{tenant}`, "
+               f"`{tenant}-reactfront`), but `preserveResourcesOnDeletion: true` "
+               f"keeps the **resources**: the namespace, its PVCs and secrets, and "
+               f"the frontend Deployment with its Ingress — which keeps serving "
+               f"traffic until someone removes it.\n"
+               f"- Cleanup tool: `scripts/cleanup-tenant.sh --tenant {tenant}` "
+               f"(openwoo-app-config) — plan first, then `--execute`. Run it only "
+               f"**after** this PR is merged. DNS needs no action: external-dns "
+               f"drops the Cloudflare record once the Ingress is gone.\n")
     app.logger.info("delete PR requested: user=%s tenant=%s", user, tenant)
     try:
         result = gitlib.propose_deletion(branch=branch, path=path, commit_message=commit_msg,
@@ -593,6 +629,9 @@ def tenant_delete():
         status = (404 if exc.status == 404 else 409 if exc.status == 409
                   else 502 if exc.status in (0, 500, 502, 503) else 400)
         return {"errors": [exc.detail]}, status
+    _label_pr(result.get("number"))
+    app.logger.info("delete PR opened: user=%s tenant=%s pr=%s",
+                    user, tenant, result.get("number"))
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"), "tenant": tenant}, 201
 
 
@@ -612,12 +651,21 @@ def tenant_pr_status():
 @app.get("/tenant/argo-status")
 def tenant_argo_status():
     """After merge: poll the Argo Application nc-<tenant> sync/health so the form
-    can show a green check before handing off to provisioning."""
+    can show a green check before handing off to provisioning.
+
+    Carries `reactfront` (the same {exists, sync, health} shape) for
+    `<tenant>-reactfront`. The delete path needs it: that app has its own
+    ApplicationSet and its own name, so "nc-<tenant> is gone" says nothing about
+    whether the frontend still exists. Read-only, same RBAC as the rest
+    (applications: get,list,watch).
+    """
     tenant = request.args.get("tenant", "")
     if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", tenant):
         return {"errors": ["invalid tenant name"]}, 400
     try:
-        return argolib.app_status(f"nc-{tenant}"), 200
+        status = argolib.app_status(f"nc-{tenant}")
+        status["reactfront"] = argolib.app_status(f"{tenant}-reactfront")
+        return status, 200
     except argolib.ArgoError as exc:
         return {"errors": [exc.detail]}, 502
 

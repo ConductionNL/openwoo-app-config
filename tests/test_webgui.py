@@ -330,6 +330,66 @@ def test_delete_rejects_bad_name(client):
     assert client.post("/tenant/delete", data={"tenant": "Bad!"}).status_code == 400
 
 
+def test_delete_pr_is_labelled_for_the_governance_check(client, monkeypatch):
+    # governance-check.yaml in Nextcloud-base weigert een PR zonder het label dat
+    # bij de classificatie hoort; zonder deze aanroep is elke portal-PR rood.
+    labelled = []
+    monkeypatch.setattr(server.gitlib, "propose_deletion",
+                        lambda **kw: {"number": 12, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels",
+                        lambda number, labels: labelled.append((number, labels)))
+    resp = client.post("/tenant/delete", data={"tenant": "almere-accept"})
+    assert resp.status_code == 201
+    assert labelled == [(12, ["change/tenant-additive"])]
+
+
+def test_create_pr_is_labelled_too(client, monkeypatch):
+    labelled = []
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: {"number": 13, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels",
+                        lambda number, labels: labelled.append((number, labels)))
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept"})
+    assert resp.status_code == 201, resp.get_json()
+    assert labelled == [(13, ["change/tenant-additive"])]
+
+
+def test_label_failure_does_not_undo_the_pr(client, monkeypatch):
+    # De PR bestaat al als het labelen faalt. Een 500 teruggeven zou de operator
+    # laten denken dat er niets gebeurd is, terwijl er een PR openstaat.
+    monkeypatch.setattr(server.gitlib, "propose_deletion",
+                        lambda **kw: {"number": 14, "html_url": "u14"})
+
+    def boom(number, labels):
+        raise server.gitlib.GitlibError(403, "label forbidden")
+    monkeypatch.setattr(server.gitlib, "add_labels", boom)
+    resp = client.post("/tenant/delete", data={"tenant": "almere-accept"})
+    assert resp.status_code == 201
+    assert resp.get_json()["pr_url"] == "u14"
+
+
+def test_delete_pr_body_says_resources_keep_running(client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(server.gitlib, "propose_deletion",
+                        lambda **kw: captured.update(kw) or {"number": 15, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels", lambda number, labels: None)
+    client.post("/tenant/delete", data={"tenant": "almere-accept"})
+    body = captured["pr_body"]
+    # de Applications verdwijnen wél; de resources blijven draaien
+    assert "preserveResourcesOnDeletion" in body
+    assert "keeps serving" in body
+    assert "cleanup-tenant.sh" in body
+    # en DNS is geen handwerk
+    assert "external-dns" in body
+
+
+def test_delete_form_warns_that_the_site_stays_up(client):
+    resp = client.get("/tenant/delete?tenant=almere-accept")
+    assert resp.status_code == 200
+    assert "cleanup-tenant.sh".encode() in resp.data
+    assert "blijft draaien".encode() in resp.data
+
+
 def test_pr_status_proxies_gitlib(client, monkeypatch):
     monkeypatch.setattr(server.gitlib, "get_pr",
                         lambda n: {"state": "open", "merged": False, "html_url": "u"})
@@ -356,6 +416,22 @@ def test_argo_status_rejects_bad_tenant(client):
     assert resp.status_code == 400
 
 
+def test_argo_status_also_reports_the_reactfront_app(client, monkeypatch):
+    # De frontend heeft een eigen Application met een eigen naam: nc-<t> weg
+    # betekent niet dat de website weg is. Het verwijderpad moet beide zien.
+    asked = []
+
+    def fake(name):
+        asked.append(name)
+        return {"exists": name.startswith("almere-accept-react"),
+                "sync": None, "health": None}
+    monkeypatch.setattr(server.argolib, "app_status", fake)
+    body = client.get("/tenant/argo-status?tenant=almere-accept").get_json()
+    assert asked == ["nc-almere-accept", "almere-accept-reactfront"]
+    assert body["exists"] is False              # Nextcloud-app is opgeruimd
+    assert body["reactfront"]["exists"] is True  # de website staat er nog
+
+
 def test_logout_redirects_via_signout_to_keycloak(client):
     resp = client.get("/logout")
     assert resp.status_code == 302
@@ -376,6 +452,25 @@ def test_dashboard_combines_sources(client, monkeypatch):
     assert d["tenants"][0]["tenant"] == "almere-accept"
     assert d["prs"][0]["number"] == 5
     assert d["errors"] == []
+
+
+def test_dashboard_distinguishes_delete_requests(client, monkeypatch):
+    # De rij moet zeggen wat voor aanvraag het is; het dashboard toonde
+    # verwijderaanvragen eerder helemaal niet.
+    monkeypatch.setattr(server.argolib, "list_apps", lambda: [])
+    monkeypatch.setattr(server.gitlib, "list_prs",
+                        lambda: [{"number": 6, "tenant": "dryrun-accept", "state": "open",
+                                  "merged": False, "html_url": "u", "title": "remove",
+                                  "kind": "delete"}])
+    d = client.get("/dashboard.json").get_json()
+    assert d["prs"][0]["kind"] == "delete"
+
+
+def test_home_renders_the_request_kind_column(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"Soort" in resp.data
+    assert b"Verwijderen" in resp.data
 
 
 def test_dashboard_is_resilient_to_partial_failure(client, monkeypatch):

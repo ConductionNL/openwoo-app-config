@@ -139,6 +139,60 @@ def test_list_prs_filters_to_tenant_branches(monkeypatch):
     assert out[0]["merged"] is True
 
 
+def test_add_labels_posts_to_the_issues_endpoint(monkeypatch):
+    # PRs are issues to GitHub; labelling goes through /issues/<n>/labels.
+    calls = []
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([[]], calls))
+    gitlib.add_labels(12, ["change/tenant-additive"])
+    assert calls[0].get_method() == "POST"
+    assert calls[0].full_url.endswith(
+        "/repos/ConductionNL/Nextcloud-base/issues/12/labels")
+    assert json.loads(calls[0].data.decode("utf-8")) == {
+        "labels": ["change/tenant-additive"]}
+
+
+def test_add_labels_without_names_makes_no_call(monkeypatch):
+    calls = []
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([], calls))
+    assert gitlib.add_labels(12, []) == {}
+    assert calls == []
+
+
+def test_list_prs_shows_delete_requests_with_their_kind(monkeypatch):
+    # Verwijderaanvragen zitten op delete-tenant/<t> en waren met alleen de
+    # add-tenant/-prefix onzichtbaar op het dashboard.
+    rows = [
+        {"number": 9, "title": "add tenant: almere-accept", "state": "open",
+         "merged_at": None, "html_url": "u9", "head": {"ref": "add-tenant/almere-accept"}},
+        {"number": 10, "title": "remove tenant: dryrun-accept", "state": "open",
+         "merged_at": None, "html_url": "u10",
+         "head": {"ref": "delete-tenant/dryrun-accept"}},
+        {"number": 11, "title": "unrelated", "state": "open", "merged_at": None,
+         "html_url": "u11", "head": {"ref": "feature/x"}},
+    ]
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([rows], []))
+    out = gitlib.list_prs()
+    assert [(p["number"], p["tenant"], p["kind"]) for p in out] == [
+        (9, "almere-accept", "create"),
+        (10, "dryrun-accept", "delete"),
+    ]
+
+
+def test_list_prs_still_accepts_a_single_prefix_string(monkeypatch):
+    # Achterwaarts compatibel: de oude aanroepvorm blijft één soort filteren.
+    rows = [
+        {"number": 9, "title": "add", "state": "open", "merged_at": None,
+         "html_url": "u9", "head": {"ref": "add-tenant/almere-accept"}},
+        {"number": 10, "title": "remove", "state": "open", "merged_at": None,
+         "html_url": "u10", "head": {"ref": "delete-tenant/dryrun-accept"}},
+    ]
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([rows], []))
+    out = gitlib.list_prs("delete-tenant/")
+    assert len(out) == 1
+    assert out[0]["number"] == 10 and out[0]["tenant"] == "dryrun-accept"
+    assert out[0]["kind"] == "delete"
+
+
 def test_get_pr_returns_state(monkeypatch):
     monkeypatch.setattr(gitlib.urllib.request, "urlopen",
                         _fake_urlopen([{"state": "open", "merged": False,
