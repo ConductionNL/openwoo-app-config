@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-07-10
+last_reviewed: 2026-08-10
 owner: info@conduction.nl
 ---
 
@@ -16,7 +16,7 @@ elke stap GET-checkt eerst en slaat over wat al klopt.
 | Operatie | Autonomie | Idempotentie | Verificatie |
 |---|---|---|---|
 | Config-wijziging via de flow (export → `make sanitize` → lint/test) | autonoom t/m commit | sanitizer is idempotent; lint bewaakt | `make lint && make test` (verify); PR-flow uit docs/config-changes.md |
-| Linter/sanitizer/provisioner-code wijzigen | autonoom | n.v.t. (code) | unit tests (116+) groen; nieuwe checks krijgen tests |
+| Linter/sanitizer/provisioner-code wijzigen | autonoom | n.v.t. (code) | unit tests (116+) groen; nieuwe checks krijgen tests; docs mee in dezelfde PR (`docs-touched`) |
 | Docs bijwerken | autonoom | tekstueel | docs-contract-gate |
 | `make functional` (docker, layer-2) | mens-vereist | test is zelf idempotent (down -v) | lokaal, geen gate — te traag |
 | `provision.py` draaien tegen een tenant | mens-vereist | provisioner is idempotent, máár: credentials + productie-tenant | operator-driven per ontwerp (docs/provisioning.md) |
@@ -24,6 +24,21 @@ elke stap GET-checkt eerst en slaat over wat al klopt.
 | webgui deployen | mens-vereist | — | webgui/deploy-flow |
 | Push | mens-vereist | — | gates draaien bij de mens |
 | Echte API-keys/credentials in config of git | verboden | — | secret-scan in CI; config draagt lege placeholder |
+
+### De gate `docs-touched`
+
+Naast `docs-contract` (front-matter, index, CODEOWNERS) draait er sinds
+2026-08-10 een diff-gate mee: raakt een push de provisioner, de webgui, de
+config of de scripts, dan hoort er documentatie in diezelfde push te zitten.
+De padregels staan in `.docs-touched.yaml` in de repo-root en dragen elk een
+`reason` die in de melding verschijnt.
+
+De gate staat op **`mode: warn`** — hij rapporteert volledig en blokkeert
+niets, zodat we eerst zien wat hij zou tegenhouden. Naar `enforce` is een
+aparte, bewuste wijziging.
+
+Configformaat, de vrijstelling per commit (`Docs-not-needed: <reden>`) en het
+verificatierecept staan in techbook `docs/docs-touched.md`.
 
 ## Platform-assistent (webgui, v1 strikt lezend)
 

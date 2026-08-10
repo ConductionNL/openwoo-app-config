@@ -4,6 +4,31 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-10 (docs-touched: documentatie wijzigt mee met de code)
+
+De bestaande gates (`docs-contract`, `docs-claims`) kijken naar de hele boom en
+nooit naar wat je pusht. Daarmee werd de docs-as-code-afspraak — documentatie
+wijzigt in dezelfde PR als de code die zij beschrijft — door niets afgedwongen.
+`docs-touched` is de diff-gate die dat wél doet.
+
+- `.pre-commit-config.yaml`: techbook-pin van de kale sha
+  `edf269eeea4fd28f150791a00d6600d645262a91` naar tag **`v0.2.0`**, en
+  `- id: docs-touched` toegevoegd. Die twee horen bij elkaar: de hook bestaat
+  pas vanaf `v0.2.0`, dus zonder de bump zou pre-commit hard falen op een
+  onbekende hook-id.
+- `.docs-touched.yaml` (nieuw): vier padregels — provisioner, webgui,
+  config/schema, en de Makefile-targets plus scripts. Elke regel draagt een
+  `reason` die in de melding verschijnt, zodat de gate zichzelf uitlegt.
+- `docs/agents.md`: korte verwijzing bij de gates in het operatie-cataloog.
+
+**Mode is `warn`, met opzet.** De gate rapporteert volledig en geeft exit 0. We
+willen eerst een periode zien wát hij zou tegenhouden voordat hij pushes gaat
+weigeren; een padregel die te breed staat, merk je alleen door mee te kijken.
+Naar `enforce` is een aparte, bewuste wijziging.
+
+Vrijstelling blijft per commit mogelijk via de trailer `Docs-not-needed: <reden>`.
+Configformaat en verificatierecept staan in techbook `docs/docs-touched.md`.
+
 ### Gewijzigd — 2026-08-10 (verwijderpad: eerlijke tekst, labels, opruimgereedschap getest)
 
 **Waarom.** Het verwijderpad vertelde op vier plekken hetzelfde onjuiste verhaal
