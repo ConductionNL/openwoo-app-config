@@ -5,13 +5,14 @@
 # scripts/verify.sh — snelle functionele verificatie (pre-push gate).
 #
 # Draait de statische gate van deze repo: config-lint (pollution,
-# dangling refs, authorization) en de unit tests van linter/sanitizer en
-# provisioner. Dry-run only; de functionele layer-2-test (`make
-# functional`, docker) is bewust GEEN onderdeel — te traag voor een gate.
+# dangling refs, authorization), de unit tests van linter/sanitizer en
+# provisioner, en shellcheck over de eigen shell-scripts. Dry-run only; de
+# functionele layer-2-test (`make functional`, docker) is bewust GEEN
+# onderdeel — te traag voor een gate.
 #
 # Writes: read-only
 # Idempotent: yes
-# Requires: python3, make
+# Requires: python3, make, shellcheck
 #
 # Usage:
 #   ./scripts/verify.sh
@@ -46,4 +47,11 @@ if missing:
 print(f"doc-assertion OK ({len(mentioned)} genoemde make-targets bestaan)")
 PYEOF
 
-echo "verify: OK (lint + unit tests + doc-assertion)"
+# Shellcheck over alle shell-scripts van deze repo, zoals react-base dat doet.
+# Volledige dekking: alle scripts zijn op dit moment schoon, dus er is geen
+# reden om de scope te beperken.
+mapfile -t scripts < <(find scripts -name '*.sh' -type f | sort)
+shellcheck "${scripts[@]}"
+echo "shellcheck OK (${#scripts[@]} scripts)"
+
+echo "verify: OK (lint + unit tests + doc-assertion + shellcheck)"
