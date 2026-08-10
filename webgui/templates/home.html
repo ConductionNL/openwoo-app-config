@@ -78,8 +78,8 @@
   <section class="dash">
     <h2>Openstaande aanvragen <span class="muted" id="pr-meta"></span></h2>
     <table>
-      <thead><tr><th>Aanvraag</th><th>Omgeving</th><th>Status</th></tr></thead>
-      <tbody id="pr-body"><tr><td colspan="3" class="muted">laden…</td></tr></tbody>
+      <thead><tr><th>Aanvraag</th><th>Omgeving</th><th>Soort</th><th>Status</th></tr></thead>
+      <tbody id="pr-body"><tr><td colspan="4" class="muted">laden…</td></tr></tbody>
     </table>
 
     <h2 style="margin-top:1.8rem">Omgevingen <span class="muted" id="t-meta"></span></h2>
@@ -105,6 +105,13 @@
       return ['b-bad', 'Afgewezen'];
     }
     function badge(cls, txt){ return `<span class="badge ${cls}">${esc(txt)}</span>`; }
+    // Een verwijderaanvraag die eruitziet als een aanmaakaanvraag is erger dan
+    // geen rij: de soort krijgt daarom een eigen kolom, niet alleen een kleur.
+    function aanvraagSoort(p){
+      if (p.kind === 'delete') return ['b-bad', 'Verwijderen'];
+      if (p.kind === 'create') return ['b-muted', 'Aanmaken'];
+      return ['b-muted', 'Onbekend'];
+    }
 
     async function loadDash(){
       let d;
@@ -113,10 +120,10 @@
       const pb = document.getElementById('pr-body');
       const open = (d.prs || []).filter(p => p.state === 'open');
       pb.innerHTML = (d.prs && d.prs.length)
-        ? d.prs.map(p => { const [c,t] = aanvraagStatus(p);
+        ? d.prs.map(p => { const [c,t] = aanvraagStatus(p); const [sc,st] = aanvraagSoort(p);
             return `<tr><td><a href="${esc(p.html_url)}" target="_blank" rel="noopener">#${esc(p.number)}</a></td>`+
-                   `<td>${esc(p.tenant)}</td><td>${badge(c,t)}</td></tr>`; }).join('')
-        : '<tr><td colspan="3" class="muted">geen recente aanvragen</td></tr>';
+                   `<td>${esc(p.tenant)}</td><td>${badge(sc,st)}</td><td>${badge(c,t)}</td></tr>`; }).join('')
+        : '<tr><td colspan="4" class="muted">geen recente aanvragen</td></tr>';
       document.getElementById('pr-meta').textContent = open.length ? `(${open.length} in review)` : '';
 
       const tb = document.getElementById('t-body');

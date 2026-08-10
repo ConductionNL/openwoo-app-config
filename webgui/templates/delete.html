@@ -27,9 +27,13 @@
      ruimt het platform de Nextcloud-omgeving op.</p>
 
   <div class="warn">
-    ⚠️ <strong>Niet volledig automatisch.</strong> Na goedkeuring verwijdert het platform de
-    Nextcloud-omgeving, maar <strong>je data (volumes) en de website-app blijven staan</strong> —
-    die ruim je daarna zelf op, na controle. Deze aanvraag haalt alleen de omgeving uit de configuratie.
+    ⚠️ <strong>Hiermee gaat de omgeving nog niet uit de lucht.</strong> Na goedkeuring haalt het
+    platform de omgeving uit de configuratie en verdwijnen de Argo-applicaties, maar
+    <strong>alles wat draait blijft draaien</strong>: de namespace, je data (volumes en secrets)
+    én de website zelf — die blijft bezoekers bedienen tot iemand hem opruimt.
+    Opruimen doe je daarna, na controle, met
+    <code>scripts/cleanup-tenant.sh --tenant &lt;naam&gt;</code> (openwoo-app-config).
+    DNS hoeft niet: dat record verdwijnt vanzelf zodra de website weg is.
   </div>
 
   <form id="f">
@@ -45,10 +49,30 @@
 
   <script>
     const f = document.getElementById('f'), result = document.getElementById('result');
+
+    // De frontend heeft een eigen Application met een eigen naam, dus "nc-<naam>
+    // is weg" zegt niets over de website. Beide worden getoond, want de website
+    // is degene die verkeer blijft serveren.
+    async function checkArgo(tenant){
+      const box = document.getElementById('argo');
+      box.textContent = 'controleren…';
+      let d;
+      try { d = await (await fetch('/tenant/argo-status?tenant=' + encodeURIComponent(tenant))).json(); }
+      catch (err) { box.textContent = 'netwerkfout: ' + err; return; }
+      if (d.errors) { box.textContent = '⚠️ ' + d.errors.join(', '); return; }
+      const front = d.reactfront || {};
+      const mark = (x) => x ? '⚠️ bestaat nog' : '✅ weg';
+      box.innerHTML = `Nextcloud-omgeving: ${mark(d.exists)} &middot; Website: ${mark(front.exists)}` +
+        ((d.exists || front.exists)
+          ? `<br>Nog niet doorgevoerd, of de merge moet nog gebeuren.`
+          : `<br>De applicaties zijn weg. De namespace <code>${tenant}</code> draait nog — ` +
+            `ruim die op met <code>scripts/cleanup-tenant.sh --tenant ${tenant}</code>.`);
+    }
+
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       const t = document.getElementById('tenant').value.trim();
-      if (!confirm(`Aanvraag indienen om omgeving "${t}" te verwijderen? (data blijft staan tot je die zelf opruimt)`)) return;
+      if (!confirm(`Aanvraag indienen om omgeving "${t}" te verwijderen? (de website en de data blijven draaien tot je ze zelf opruimt)`)) return;
       result.style.display = 'block'; result.className = 'pending'; result.textContent = 'aanvraag indienen…';
       let resp, data;
       try { resp = await fetch('/tenant/delete', { method: 'POST', body: new FormData(f) }); data = await resp.json(); }
@@ -56,8 +80,10 @@
       if (resp.status === 201 && data.pr_url) {
         result.className = 'ok';
         result.innerHTML = `🗑️ Verwijder-aanvraag voor <code>${data.tenant}</code> — #${data.pr_number} → ` +
-          `<a href="${data.pr_url}" target="_blank" rel="noopener">bekijken &amp; goedkeuren</a>. ` +
-          `Vergeet de data/website-opruiming niet.`;
+          `<a href="${data.pr_url}" target="_blank" rel="noopener">bekijken &amp; goedkeuren</a>.<br>` +
+          `Na de merge: <button type="button" id="check">controleer wat er nog staat</button>` +
+          `<div id="argo" class="hint"></div>`;
+        document.getElementById('check').addEventListener('click', () => checkArgo(data.tenant));
       } else {
         result.className = 'err';
         const errs = (data && data.errors) ? data.errors : ['unexpected error (HTTP ' + resp.status + ')'];

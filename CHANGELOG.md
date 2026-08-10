@@ -4,6 +4,68 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-10 (verwijderpad: eerlijke tekst, labels, opruimgereedschap getest)
+
+**Waarom.** Het verwijderpad vertelde op vier plekken hetzelfde onjuiste verhaal
+over `preserveResourcesOnDeletion`, had geen enkele test, en leverde PR's op die
+de governance-check van Nextcloud-base per definitie afkeurde.
+
+- **`preserveResourcesOnDeletion` stond overal verkeerd uitgelegd.** De vlag
+  bewaart de **resources**, niet de Application: zodra het tenantbestand weg is
+  verwijdert de ApplicationSet-controller `nc-<tenant>` en `<tenant>-reactfront`
+  gewoon, alleen zonder resources-finalizer. Gevolg dat nergens stond: de
+  namespace blijft draaien, inclusief het **frontend-Deployment met zijn
+  Ingress** — de site blijft dus verkeer serveren na een gemergede verwijder-PR.
+  Rechtgezet in `scripts/cleanup-tenant.sh` (header), de PR-body in
+  `webgui/server.py` en de waarschuwing in `webgui/templates/delete.html`.
+  Bron: Nextcloud-base `docs/TENANT-OPERATIONS.md` § Tenant Volledig Verwijderen.
+- **DNS is géén handwerk.** `cleanup-tenant.sh` zette DNS-records op de
+  handmatige lijst. external-dns draait met `policy: sync` en bezit de records
+  die het aanmaakte (cluster-infra `external-dns/values.yaml`), dus het
+  Cloudflare-record verdwijnt vanzelf zodra de Ingress weg is — zoals React-base
+  `docs/ADDING-TENANT.md` al zei.
+- **De productieklep is env-instelbaar en breder.** Was een hardcoded
+  `*-prod`-glob. Nu `PROD_PATTERN` (default `-(prod|production)$`) plus een
+  expliciete `PROD_TENANTS`-lijst voor tenants die buiten de naamconventie
+  vallen. Geen enkele limiet in dit script staat nog hardcoded.
+- **Eén bron voor de git-procedure.** Stap 1 van `plan()` vatte de
+  verwijderprocedure samen naast Nextcloud-base `docs/REMOVING-TENANT.md`. Nu een
+  verwijzing plus de kern: het portaal opent de PR, dit script draait pas ná de
+  merge — anders zet de ApplicationSet alles terug.
+- **Tests voor `cleanup-tenant.sh`, er waren er nul.** `tests/test_cleanup_tenant.py`
+  draait het script als subprocess met een nep-`kubectl` op `PATH` die elke argv
+  logt. Bewijst: een plan-run voert niets uit, ongeldige naam en productienaam
+  geven exit 2, `--force-production` opent de klep, alles-al-weg meldt "Niets te
+  doen" met exit 0, en `--execute --yes` roept écht
+  `kubectl delete namespace <t>` aan. Geen nieuw gereedschap: pytest, dus
+  `make test` pakt ze mee.
+- **shellcheck in de gate.** `scripts/verify.sh` draaide geen shellcheck, anders
+  dan react-base. Patroon overgenomen (`mapfile` + `shellcheck`), volledige
+  dekking: alle vijf scripts waren al schoon.
+- **Portal-PR's krijgen hun governance-label.** `gitlib.add_labels()` (GitHub
+  `POST /repos/{repo}/issues/{n}/labels`) wordt na `open_pr()` aangeroepen op het
+  aanmaak-, batch- én verwijderpad, met `change/tenant-additive` uit
+  `TENANT_PR_LABEL`. Zonder label keurde `governance-check.yaml` élke portal-PR
+  af en moest een mens hem alsnog labelen. Falen van het labelen laat de PR staan
+  en logt — een 500 zou suggereren dat er niets gebeurd is.
+- **Verwijderaanvragen zijn zichtbaar op het dashboard.** `gitlib.list_prs()`
+  filterde alleen op `add-tenant/`, terwijl verwijderaanvragen op
+  `delete-tenant/` zitten. Accepteert nu meerdere prefixes (een losse string
+  blijft werken) en geeft per rij `kind` mee; `templates/home.html` heeft een
+  kolom "Soort", want een verwijderaanvraag die eruitziet als een
+  aanmaakaanvraag is erger dan geen rij.
+- **Reactfront-status na de merge.** `/tenant/argo-status` gaf alleen
+  `nc-<tenant>` terug, terwijl de frontend een eigen Application met een eigen
+  naam heeft. Er is nu een `reactfront`-veld (zelfde vorm), en `delete.html` toont
+  na het indienen een knop die beide checkt. Past binnen de bestaande RBAC
+  (`applications: get,list,watch`) — het portaal blijft PR-only, er is **geen**
+  `delete`-verb toegevoegd.
+
+Bestanden: `scripts/cleanup-tenant.sh`, `scripts/verify.sh`, `webgui/gitlib.py`,
+`webgui/server.py`, `webgui/templates/home.html`, `webgui/templates/delete.html`,
+`tests/test_cleanup_tenant.py` (nieuw), `tests/test_gitlib.py`,
+`tests/test_webgui.py`, `docs/design.md`.
+
 ### Gewijzigd — 2026-08-07 (reveal-route bereikbaar, één link per omgeving, certificaat-upload)
 - **De reveal-link werkte niet voor wie hem nodig heeft.** `oauth2-proxy` had geen
   `skip_auth_routes`, dus élke aanvraag — ook `/reveal/<token>` — moest langs

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-10
 owner: info@conduction.nl
 ---
 
@@ -85,6 +85,24 @@ cluster-local Service with `--host-header`, see the in-cluster note above.
   Ingress + TLS, at `platform.commonground.nu`. Build the image with
   `make image`. See `webgui/deploy/README.md`. Local dev:
   `REQUIRE_AUTH=false python3 webgui/server.py`.
+- **PR-only, also for deletion.** The portal never mutates the cluster on
+  the tenant path: it opens a PR on Nextcloud-base and stops. Every such
+  PR is labelled `change/tenant-additive` (`TENANT_PR_LABEL`) because
+  Nextcloud-base's `governance-check` fails any PR whose label does not
+  match its classification. Labelling is best-effort: it happens after
+  the PR exists, so a failure is logged and the PR is still returned.
+- **What a merged delete-PR does — and does not.** The ApplicationSet
+  removes the Applications (`nc-<tenant>`, `<tenant>-reactfront`), but
+  `preserveResourcesOnDeletion: true` keeps the **resources**: the
+  namespace, its PVCs and secrets, and the frontend Deployment with its
+  Ingress, which keeps serving traffic. Removing that is a separate,
+  deliberate step: `scripts/cleanup-tenant.sh --tenant <name>` (plan by
+  default, `--execute` to act; production names are gated behind
+  `--force-production`, tunable via `PROD_PATTERN` / `PROD_TENANTS`).
+  DNS needs no action — external-dns runs `policy: sync` and drops the
+  Cloudflare record once the Ingress is gone. The full removal procedure
+  lives in Nextcloud-base `docs/REMOVING-TENANT.md`; it is not repeated
+  here.
 
 The host is named generically (`platform.`) because the control-plane is
 intended to grow beyond provisioning (e.g. driving deployments) over time.
