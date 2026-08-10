@@ -1,0 +1,80 @@
+# Docs-as-code gate. Referentie: techbook docs/docs-touched.md.
+# Dit bestand staat in de repo-root en niet in args: van
+# .pre-commit-config.yaml — dat bestand wordt bij een uitrol in zijn
+# geheel herschreven, dus padlijsten daarin sneuvelen.
+version: 1
+
+# Eerst meekijken: de gate rapporteert volledig maar blokkeert niets.
+# Naar `enforce` zodra hij een periode rustig meedraait.
+mode: warn
+
+docs:
+  - "docs/**"
+  - "README.md"
+
+rules:
+  - name: provisioner
+    reason: >-
+      De provisioner is operator-gereedschap dat tegen echte tenants draait;
+      docs/provisioning.md en docs/provisioner-commands.md beschrijven per
+      subcommando wat het doet en wat het aanneemt. Een ongedocumenteerde
+      gedragswijziging laat een operator een verouderde procedure volgen
+      tegen een draaiende tenant.
+    paths:
+      - "scripts/provision.py"
+      - "scripts/provisionlib/**"
+      - "scripts/oac.py"
+      - "scripts/provision_gui.py"
+
+  - name: webgui
+    reason: >-
+      Het portaal is het hosted control-plane: het schrijft PR's, onthult
+      het initiële wachtwoord en verwerkt klantcertificaten. docs/design.md,
+      docs/secret-reveal.md en docs/custom-domain-cert.md beschrijven precies
+      dat gedrag, inclusief waarom de reveal-route onbeschermd is.
+    paths:
+      - "webgui/**"
+    exclude:
+      - "webgui/**/*.lock"
+      - "webgui/**/README.md"
+
+  - name: config-en-sanitizer
+    reason: >-
+      De config en het schema zijn wat er uiteindelijk in een tenant geladen
+      wordt; docs/config-changes.md schrijft de verplichte flow voor en
+      docs/sanitizer.md legt vast wat per bucket gestript wordt.
+    paths:
+      - "config/**"
+      - "schema/**"
+
+  - name: gates-en-scripts
+    reason: >-
+      De Makefile-targets en de scripts zijn de afspraak: docs/config-changes.md
+      noemt de targets bij naam en scripts/verify.sh houdt met een
+      doc-assertie bij dat die targets echt bestaan.
+    paths:
+      - "Makefile"
+      - "scripts/**"
+      - ".pre-commit-config.yaml"
+      - ".docs-touched.yaml"
+    exclude:
+      # Al gedekt door de striktere regel `provisioner` hierboven.
+      - "scripts/provision.py"
+      - "scripts/provisionlib/**"
+      - "scripts/oac.py"
+      - "scripts/provision_gui.py"
+
+# Wijzigingen die per definitie geen documentatie vragen.
+ignore:
+  - ".github/**"
+  - ".woodpecker.yml"
+  # Tests bewegen mee met de code die ze dekken, niet met de uitleg.
+  - "tests/**"
+  # Changelog is de audit-trail, niet de uitleg; matcht op elk niveau.
+  - "CHANGELOG.md"
+  - "**/*.lock"
+  - "**/requirements.txt"
+
+escape:
+  trailer: "Docs-not-needed"
+  min_reason_len: 10
