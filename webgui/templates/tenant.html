@@ -67,8 +67,22 @@
       <input type="text" name="frontend_jumbotron" placeholder="https://raw.githubusercontent.com/…/jumbotron.jpg">
       <label>Favicon <span class="hint">(URL; leeg = platformstandaard)</span></label>
       <input type="text" name="frontend_favicon" placeholder="https://…/favicon.ico">
-      <label>Frontend-versie <span class="hint">(image-tag; leeg = platformstandaard. In gebruik: latest, dev)</span></label>
-      <input type="text" name="frontend_tag" placeholder="latest">
+      <!-- Drie losse velden, geen vrij "image"-veld. Een volledige reference in
+           het tag-veld rendert als `…/woo-website-v2:woo-website-v2:<tag>` en is
+           ongeldig; dat is twee keer gebeurd op 2026-08-11. `pattern` weigert het
+           al in de browser, de servervalidatie in tenants.py is de echte gate. -->
+      <label>Frontend-versie <span class="hint">(alleen de image-tag; leeg = platformstandaard. In gebruik: latest, dev)</span></label>
+      <input type="text" name="frontend_tag" placeholder="latest"
+             pattern="[A-Za-z0-9_][A-Za-z0-9._-]*"
+             title="Alleen het tag-deel, dus geen '/' of ':' (bijvoorbeeld V1.0.260422-development)">
+      <label>Image-repository <span class="hint">(leeg = platformstandaard; alleen samen met de registry zinvol)</span></label>
+      <input type="text" name="frontend_repository" placeholder="conduction2022/woo-website-v2"
+             pattern="[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*"
+             title="Het pad zonder host en zonder tag">
+      <label>Image-registry <span class="hint">(alleen de host; vereist een repository)</span></label>
+      <input type="text" name="frontend_registry" placeholder="docker.io"
+             pattern="[a-z0-9]+([.-][a-z0-9]+)*(:[0-9]+)?"
+             title="Alleen de host, eventueel met poort. Geen pad.">
     </details>
 
     <!-- Buiten de vouw, en alleen zichtbaar bij een eigen host: op een eigen
@@ -179,6 +193,7 @@
           frontend_org: 'weergavenaam', frontend_host: 'eigen host',
           frontend_theme: 'thema', frontend_jumbotron: 'jumbotron',
           frontend_favicon: 'favicon', frontend_tag: 'frontend-versie',
+          frontend_repository: 'image-repository', frontend_registry: 'image-registry',
         };
         const filled = Object.keys(labels).filter(k => (v[k] || '').trim());
         adv.open = filled.length > 0;   // niets te zien = niet openklappen

@@ -236,6 +236,54 @@ def test_validate_accepts_plain_tags():
         assert tenants.validate(_base(frontend_tag=good)) == [], good
 
 
+def test_render_registry_and_repository():
+    out = tenants.render(_base(frontend_registry="docker.io",
+                               frontend_repository="conduction2022/woo-website-v2",
+                               frontend_tag="V1.0.260422-development"))
+    assert '    registry: "docker.io"' in out
+    assert '    repository: "conduction2022/woo-website-v2"' in out
+    assert '    tag: "V1.0.260422-development"' in out
+
+
+def test_registry_and_repository_roundtrip():
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(tenants.render(_base(
+        frontend_registry="ghcr.io",
+        frontend_repository="conductionnl/woo-website-v2",
+        frontend_tag="dev")))
+    assert tenants.unknown_keys(doc) == []
+    back = tenants.from_declaration(doc)
+    assert back["frontend_registry"] == "ghcr.io"
+    assert back["frontend_repository"] == "conductionnl/woo-website-v2"
+    assert back["frontend_tag"] == "dev"
+
+
+def test_validate_registry_requires_repository():
+    """De ApplicationSet stelt de reference alleen samen als er een repository is;
+    een registry op zichzelf wordt stil genegeerd."""
+    errors = tenants.validate(_base(frontend_registry="docker.io"))
+    assert any("zonder frontend.repository" in e for e in errors)
+
+
+def test_validate_rejects_misplaced_image_parts():
+    with_tag = tenants.validate(_base(
+        frontend_registry="docker.io",
+        frontend_repository="conduction2022/woo-website-v2:V1"))
+    assert any("repository" in e and "':'" in e for e in with_tag)
+
+    with_path = tenants.validate(_base(
+        frontend_registry="docker.io/conduction2022",
+        frontend_repository="woo-website-v2"))
+    assert any("registry" in e and "'/'" in e for e in with_path)
+
+
+def test_validate_accepts_full_image_triple():
+    assert tenants.validate(_base(
+        frontend_registry="docker.io",
+        frontend_repository="conduction2022/woo-website-v2",
+        frontend_tag="V1.0.260422-development")) == []
+
+
 def test_validate_rejects_thema_typo():
     """`-thema` in plaats van `-theme` geeft geen foutmelding maar een site zonder
     huisstijl: de klasse bestaat niet in de bundle. Stond live op twee tenants."""

@@ -107,6 +107,46 @@ cluster-local Service with `--host-header`, see the in-cluster note above.
 The host is named generically (`platform.`) because the control-plane is
 intended to grow beyond provisioning (e.g. driving deployments) over time.
 
+## The frontend image is three fields, not one
+
+The tenant form writes `tenant.frontend.registry`, `.repository` and `.tag`
+separately. The `react-tenants` ApplicationSet in `React-base` composes them
+into `<registry>/<repository>:<tag>` and hands that to the chart as
+`pwa.image.image` / `pwa.image.tag`. Leave all three blank and the frontend
+follows the platform default in `react-platform/values/common.yaml`.
+
+Three fields rather than one free-text image reference, because one field
+invites a full reference — and a full reference in the tag position renders as
+`docker.io/conduction2022/woo-website-v2:woo-website-v2:<tag>`, which is not a
+valid image. That happened twice on 2026-08-11 (`epe-accept` and the newly
+added `tubbergen-prod`): someone pasted a reference out of a registry UI into
+the tag box and nothing rejected it.
+
+Two things made it hard to see. The portal's `render()` writes the tag
+verbatim, so there was no transformation to inspect. And the frontend image was
+ignore-diffed in Argo CD, so the Application carried the broken value while the
+live Deployment kept running the platform default and Argo reported
+`Synced/Healthy`. The tenant file looked wrong, the cluster looked fine, and
+nothing connected the two.
+
+`validate()` now rejects a `/` or `:` in the tag, a tag in the repository, a
+path in the registry, and a registry without a repository. The form carries
+matching `pattern` attributes so the browser refuses it first, but the server
+check is the gate — a `pattern` is a convenience, not a boundary.
+
+`validate()` mirrors `validate-values.sh` in `Nextcloud-base`, and that
+mirroring is a promise you have to maintain. It had lapsed: `validate-values.sh`
+gained `tenant.frontend.*` checks that were missing here, so its CI only caught
+the bad files *after* they merged to `main`. A new frontend check belongs on
+both sides.
+
+Not modelled: `themeClassname` is checked for shape (`<name>-theme`) but not
+against the list of themes that actually exist. Those live in
+`ConductionNL/conduction-theme` and are bundled into the image; the list changes
+often and the image lags behind it, so a list check here would reject a theme
+that was added yesterday. A wrong-but-well-formed theme still yields a site
+without styling, silently.
+
 ## How Nextcloud-base consumes this
 
 `Nextcloud-base` (the GitOps platform) does **not** own this config. It

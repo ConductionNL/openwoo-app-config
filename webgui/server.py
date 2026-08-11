@@ -278,6 +278,8 @@ def _tenant_write(form, is_edit):
         favicon=form.get("frontend_favicon", ""),
         tls_issuer=form.get("frontend_tls_issuer", ""),
         tag=form.get("frontend_tag", ""),
+        registry=form.get("frontend_registry", ""),
+        repository=form.get("frontend_repository", ""),
     )
     # defense-in-depth: the derived fields must still pass the full validator
     errors = tenants.validate(fields)

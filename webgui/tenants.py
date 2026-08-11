@@ -54,6 +54,14 @@ _SUFFIX_ENV = {"prod": "prod", "accept": "accept", "test": "accept", "demo": "ac
 # merge op main.
 _TAG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
 
+# Het pad-deel, zonder registry-host en zonder tag. Bijvoorbeeld
+# `conduction2022/woo-website-v2`.
+_REPOSITORY_RE = re.compile(r"^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$")
+
+# Alleen de host, met optionele poort. Bijvoorbeeld `docker.io`, `ghcr.io` of
+# `registry.local:5000`. Een pad hoort in repository.
+_REGISTRY_RE = re.compile(r"^[a-z0-9]+([.-][a-z0-9]+)*(:[0-9]+)?$")
+
 # NL Design-themaklasse. De geldige thema's staan in ConductionNL/conduction-theme
 # (map `<naam>-design-tokens` -> klasse `<naam>-theme`) en worden in het image
 # gebundeld. Die lijst wijzigt vaak en het image loopt erop achter, dus toetsen we
@@ -131,7 +139,8 @@ def validate_org(org, environment):
 
 
 def from_org(org, environment, dbType=None, display=None, host=None,
-             theme=None, jumbotron=None, favicon=None, tls_issuer=None, tag=None):
+             theme=None, jumbotron=None, favicon=None, tls_issuer=None, tag=None,
+             registry=None, repository=None):
     """Build the full fields dict from the minimal input. Everything not given is
     derived: name=`<org>-<env>`, all three apps, branding 'Gemeente <Org>',
     db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu).
@@ -154,6 +163,8 @@ def from_org(org, environment, dbType=None, display=None, host=None,
         "frontend_favicon": (favicon or "").strip(),
         "frontend_tls_issuer": (tls_issuer or "").strip() or DEFAULT_TLS_ISSUER,
         "frontend_tag": (tag or "").strip(),
+        "frontend_registry": (registry or "").strip(),
+        "frontend_repository": (repository or "").strip(),
     }
 
 
@@ -166,7 +177,8 @@ def from_org(org, environment, dbType=None, display=None, host=None,
 RENDERED_TOP_KEYS = frozenset({"tenant"})
 RENDERED_TENANT_KEYS = frozenset({"name", "environment", "wave", "dbType",
                                   "secrets", "apps", "frontend"})
-RENDERED_FRONTEND_KEYS = frozenset({"tag", "host", "tls", "branding"})
+RENDERED_FRONTEND_KEYS = frozenset({"tag", "registry", "repository", "host",
+                                    "tls", "branding"})
 RENDERED_BRANDING_KEYS = frozenset({"organisationName", "themeClassname",
                                     "jumbotronImageUrl", "faviconUrl"})
 RENDERED_TLS_KEYS = frozenset({"secretName", "issuer"})
@@ -228,6 +240,8 @@ def from_declaration(doc):
         "frontend_favicon": str(branding.get("faviconUrl") or ""),
         "frontend_tls_issuer": str(tls.get("issuer") or DEFAULT_TLS_ISSUER),
         "frontend_tag": str(frontend.get("tag") or ""),
+        "frontend_registry": str(frontend.get("registry") or ""),
+        "frontend_repository": str(frontend.get("repository") or ""),
     }
 
 
@@ -292,6 +306,36 @@ def validate(fields):
             errors.append(
                 f"frontend.tag '{tag}' is geen geldige tag (letters, cijfers, "
                 "'.', '_' en '-', beginnend met letter/cijfer/'_')")
+
+    repository = (fields.get("frontend_repository") or "").strip()
+    if repository:
+        if ":" in repository:
+            errors.append(
+                f"frontend.repository '{repository}' bevat ':' — de tag hoort in "
+                "het tag-veld")
+        elif not _REPOSITORY_RE.match(repository):
+            errors.append(
+                f"frontend.repository '{repository}' is geen geldig pad "
+                "(kleine letters, geen leidende of afsluitende '/', "
+                "bijvoorbeeld 'conduction2022/woo-website-v2')")
+
+    registry = (fields.get("frontend_registry") or "").strip()
+    if registry:
+        if "/" in registry:
+            errors.append(
+                f"frontend.registry '{registry}' bevat '/' — vul hier alleen de "
+                "host in (bijvoorbeeld 'docker.io'); het pad hoort in het "
+                "repository-veld")
+        elif not _REGISTRY_RE.match(registry):
+            errors.append(
+                f"frontend.registry '{registry}' is geen geldige host "
+                "(bijvoorbeeld 'ghcr.io' of 'registry.local:5000')")
+        # De ApplicationSet stelt de reference alleen samen als er een repository
+        # is; een registry op zichzelf wordt stil genegeerd.
+        if not repository:
+            errors.append(
+                "frontend.registry is gezet zonder frontend.repository — vul "
+                "beide in, of geen van beide")
 
     # Een verkeerd getypt thema geeft geen foutmelding maar een site zonder
     # huisstijl — de klasse bestaat simpelweg niet in de bundle.
@@ -365,13 +409,21 @@ def render(fields):
              "  apps:", "    enabled:"]
     lines += [f"      - {a}" for a in apps]
 
-    # Optionele image-pin voor de frontend (appset -> pwa.image.tag). Komt in de
-    # vloot voor als `latest`, `dev` of een vaste versie; zonder waarde volgt de
-    # frontend de platformstandaard.
+    # Optionele image-pin voor de frontend. De ApplicationSet stelt de reference
+    # samen als `<registry>/<repository>:<tag>` en levert dat als
+    # pwa.image.image / pwa.image.tag. Drie losse velden, zodat een volledige
+    # reference niet in één veld kan belanden — zie de toelichting bij _TAG_RE.
+    # Zonder waarden volgt de frontend de platformstandaard uit common.yaml.
     tag = (fields.get("frontend_tag") or "").strip()
+    registry = (fields.get("frontend_registry") or "").strip()
+    repository = (fields.get("frontend_repository") or "").strip()
 
-    if host or org or extras or tag:
+    if host or org or extras or tag or registry or repository:
         lines.append("  frontend:")
+        if registry:
+            lines.append(f"    registry: {_q(registry)}")
+        if repository:
+            lines.append(f"    repository: {_q(repository)}")
         if tag:
             lines.append(f"    tag: {_q(tag)}")
         if host:

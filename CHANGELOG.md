@@ -39,9 +39,29 @@ expliciet dat een nieuwe frontend-check aan beide kanten hoort.
 Vier tests, met de echte incidentwaarden als fixture. Mutatietest gedaan: beide
 checks uitschakelen laat precies die tests falen.
 
-**Niet gedaan.** Het formulier heeft nog geen aparte velden voor registry en
-repository, terwijl de tenant-kant die sinds vandaag accepteert. Wie een
-afwijkende registry nodig heeft, kan dat via de portal nog niet zetten.
+### Toegevoegd — 2026-08-11 (registry- en repository-velden in het portaal)
+
+Het formulier schrijft nu `tenant.frontend.registry` en `.repository` naast
+`.tag`. De react-tenants ApplicationSet stelt daaruit
+`<registry>/<repository>:<tag>` samen; alle drie leeg betekent de
+platformstandaard uit `react-platform/values/common.yaml`.
+
+Drie velden en niet één vrij image-veld, precies omdat één veld uitnodigt tot
+een volledige reference — en dat is wat vandaag twee keer misging. `validate()`
+weigert nu ook een tag in het repository-veld, een pad in het registry-veld, en
+een registry zonder repository (die wordt door de ApplicationSet stil
+genegeerd). De formuliervelden dragen bijpassende `pattern`-attributen zodat de
+browser het eerst weigert, maar de servercheck is de gate — een `pattern` is
+gemak, geen grens.
+
+Geraakt: `from_org()` en `from_declaration()` (beide richtingen),
+`RENDERED_FRONTEND_KEYS` (anders zou het portaal een bestand met deze velden als
+"niet door mij te bewerken" beschouwen), `render()`, de POST-handler, en beide
+formuliertemplates. `docs/design.md` beschrijft het geheel, inclusief waarom het
+incident zo lang onzichtbaar bleef.
+
+Negen tests erbij (309 totaal). Mutatietest gedaan: het renderen weghalen laat
+twee tests falen, de registry-zonder-repository-check uitschakelen precies één.
 ### Gerepareerd — 2026-08-10 (image-build stond stil op de hub-pin)
 
 De builds van 09:08 en 10:56 faalden allebei op de tripwire in de Dockerfile:
