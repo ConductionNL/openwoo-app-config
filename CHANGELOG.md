@@ -4,6 +4,44 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-11 (portal weigert een kapotte image-tag en thema)
+
+`webgui/tenants.py` `validate()` toetst nu `frontend_tag` en `frontend_theme`.
+
+**Aanleiding.** Op 2026-08-11 kwamen twee tenant-bestanden op `main` van
+Nextcloud-base met `frontend.tag: "woo-website-v2:V1.0.260422-development"` —
+`epe-accept` (09:15 CEST) en het nieuwe `tubbergen-prod`. De react-tenants
+ApplicationSet bouwt de image als `<pwa.image.image>:<pwa.image.tag>`, dus dat
+rendert als
+`docker.io/conduction2022/woo-website-v2:woo-website-v2:V1.0.260422-development`
+en is ongeldig.
+
+Er was geen splitsingsbug: `render()` schrijft de tag verbatim uit een vrij
+tekstveld (`webgui/templates/tenant.html`). Iemand plakte een volledige
+reference uit een registry-UI en niets ving het — niet hier, en tot vandaag ook
+niet in Nextcloud-base CI. Het bleef onzichtbaar omdat de image in Argo
+ignore-diffed was: de Application dróég de kapotte waarde terwijl live de
+platform-default draaide en Argo `Synced/Healthy` rapporteerde.
+
+Meegenomen: `themeClassname` wordt op vorm getoetst (`<naam>-theme`). Een
+verkeerd getypt thema geeft geen foutmelding maar een site zonder huisstijl,
+omdat de klasse niet in de bundle bestaat. Stond live op `noordwijk-accept`
+(`noordwijk-thema`) en in git op `dinkelland-prod`. Alleen de vorm en geen
+lijst: de geldige thema's staan in `ConductionNL/conduction-theme`, die lijst
+wijzigt vaak en het image loopt erop achter.
+
+**Waarom hier en niet alleen in Nextcloud-base.** De docstring van `validate()`
+belooft dat een geldig resultaat hier door Nextcloud-base CI komt. Die belofte
+was verlopen: daar kwamen vandaag `tenant.frontend.*`-checks bij die hier
+ontbraken, en de CI ving het dus pas ná de merge op `main`. De docstring zegt nu
+expliciet dat een nieuwe frontend-check aan beide kanten hoort.
+
+Vier tests, met de echte incidentwaarden als fixture. Mutatietest gedaan: beide
+checks uitschakelen laat precies die tests falen.
+
+**Niet gedaan.** Het formulier heeft nog geen aparte velden voor registry en
+repository, terwijl de tenant-kant die sinds vandaag accepteert. Wie een
+afwijkende registry nodig heeft, kan dat via de portal nog niet zetten.
 ### Gerepareerd — 2026-08-10 (image-build stond stil op de hub-pin)
 
 De builds van 09:08 en 10:56 faalden allebei op de tripwire in de Dockerfile:

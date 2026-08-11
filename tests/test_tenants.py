@@ -218,6 +218,37 @@ def test_frontend_tag_is_no_longer_unknown():
     assert tenants.unknown_keys(doc) == []
 
 
+def test_validate_rejects_full_image_reference_in_tag():
+    """Het echte incident van 2026-08-11, twee keer: iemand plakte een volledige
+    reference in het tag-veld. De ApplicationSet bouwt `<image>:<tag>`, dus dat
+    rendert als `.../woo-website-v2:woo-website-v2:<tag>` en is ongeldig."""
+    for bad in ("woo-website-v2:V1.0.260422-development",
+                "docker.io/conduction2022/woo-website-v2:V1.0.260422-development",
+                "conduction2022/woo-website-v2"):
+        errors = tenants.validate(_base(frontend_tag=bad))
+        assert errors, f"{bad!r} had geweigerd moeten worden"
+        assert any("frontend.tag" in e for e in errors)
+        assert any("alleen het tag-deel" in e for e in errors)
+
+
+def test_validate_accepts_plain_tags():
+    for good in ("latest", "dev", "V1.0.260422-development", "1.0.0-development.3"):
+        assert tenants.validate(_base(frontend_tag=good)) == [], good
+
+
+def test_validate_rejects_thema_typo():
+    """`-thema` in plaats van `-theme` geeft geen foutmelding maar een site zonder
+    huisstijl: de klasse bestaat niet in de bundle. Stond live op twee tenants."""
+    errors = tenants.validate(_base(frontend_theme="noordwijk-thema"))
+    assert any("themeClassname" in e for e in errors)
+    assert any("-thema" in e for e in errors)
+
+
+def test_validate_accepts_valid_themes():
+    for good in ("epe-theme", "hof-van-twente-theme", "conduction-theme"):
+        assert tenants.validate(_base(frontend_theme=good)) == [], good
+
+
 def test_unknown_keys_flags_hand_written_fields():
     """The live fleet carries keys the form does not model; those files must not
     be re-rendered by the portal."""

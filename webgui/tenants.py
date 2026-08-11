@@ -44,6 +44,24 @@ DEFAULT_TLS_ISSUER = "none"
 _NAME_RE = re.compile(r"^([a-z][a-z0-9-]*[a-z0-9]|[a-z])-(accept|test|demo|prod)$")
 _SUFFIX_ENV = {"prod": "prod", "accept": "accept", "test": "accept", "demo": "accept"}
 
+# Alleen het TAG-deel van een image-reference. De react-tenants ApplicationSet
+# bouwt de image als `<pwa.image.image>:<pwa.image.tag>`, dus een volledige
+# reference in dit veld rendert als
+# `docker.io/conduction2022/woo-website-v2:woo-website-v2:V1.0.260422-development`
+# en is ongeldig. Dat is twee keer gebeurd op 2026-08-11 (epe-accept en
+# tubbergen-prod): iemand plakte `woo-website-v2:<tag>` uit een registry-UI in
+# een vrij tekstveld en niets ving het. Nextcloud-base CI ving het pas ná de
+# merge op main.
+_TAG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
+
+# NL Design-themaklasse. De geldige thema's staan in ConductionNL/conduction-theme
+# (map `<naam>-design-tokens` -> klasse `<naam>-theme`) en worden in het image
+# gebundeld. Die lijst wijzigt vaak en het image loopt erop achter, dus toetsen we
+# alleen de VORM — net als validate-values.sh. Vangt `-thema` i.p.v. `-theme`,
+# wat stilzwijgend geen thema oplevert omdat de waarde ongewijzigd doorgaat naar
+# GATSBY_NL_DESIGN_THEME_CLASSNAME.
+_THEME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*-theme$")
+
 
 def filename(name):
     """Repo-relative path for a tenant's values file."""
@@ -216,8 +234,15 @@ def from_declaration(doc):
 def validate(fields):
     """Return a list of human-readable error strings ([] == valid).
 
-    `fields` keys: name, environment, dbType, apps (list[str]); optional wave.
-    Mirrors validate-values.sh so a valid result here passes Nextcloud-base CI."""
+    `fields` keys: name, environment, dbType, apps (list[str]); optional wave,
+    frontend_tls_issuer, frontend_tag, frontend_theme.
+
+    Mirrors validate-values.sh so a valid result here passes Nextcloud-base CI.
+    Die spiegeling is een belofte die je moet onderhouden: op 2026-08-11 kreeg
+    validate-values.sh checks op `tenant.frontend.*` die hier ontbraken, en
+    daardoor kwamen twee kapotte tenant-bestanden ongehinderd op main terecht.
+    Komt er een frontend-check bij aan de Nextcloud-base-kant, voeg hem hier ook
+    toe — anders vangt de CI hem pas ná de merge."""
     errors = []
     name = (fields.get("name") or "").strip()
     env = (fields.get("environment") or "").strip()
@@ -253,6 +278,30 @@ def validate(fields):
     issuer = (fields.get("frontend_tls_issuer") or "").strip()
     if issuer and issuer not in TLS_ISSUERS:
         errors.append(f"frontend.tls.issuer must be one of {TLS_ISSUERS}")
+
+    # Alleen het tag-deel. Een volledige reference hier levert een ongeldige
+    # image op; zie de toelichting bij _TAG_RE.
+    tag = (fields.get("frontend_tag") or "").strip()
+    if tag and not _TAG_RE.match(tag):
+        if "/" in tag or ":" in tag:
+            errors.append(
+                f"frontend.tag '{tag}' bevat '/' of ':' — vul hier alleen het "
+                "tag-deel in (bijvoorbeeld 'V1.0.260422-development'), niet de "
+                "volledige image-reference")
+        else:
+            errors.append(
+                f"frontend.tag '{tag}' is geen geldige tag (letters, cijfers, "
+                "'.', '_' en '-', beginnend met letter/cijfer/'_')")
+
+    # Een verkeerd getypt thema geeft geen foutmelding maar een site zonder
+    # huisstijl — de klasse bestaat simpelweg niet in de bundle.
+    theme = (fields.get("frontend_theme") or "").strip()
+    if theme and not _THEME_RE.match(theme):
+        errors.append(
+            f"frontend.branding.themeClassname '{theme}' moet de vorm "
+            "'<naam>-theme' hebben (kleine letters, koppeltekens). Let op "
+            "'-thema' in plaats van '-theme'")
+
     return errors
 
 
