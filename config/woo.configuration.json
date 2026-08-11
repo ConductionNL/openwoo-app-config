@@ -915,9 +915,7 @@
         "version": "1.0.4",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -1067,7 +1065,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -1102,8 +1100,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -1203,7 +1200,7 @@
             "format": "",
             "title": "Categorie",
             "description": "",
-            "facetable": false,
+            "facetable": true,
             "hideOnForm": true,
             "order": 3,
             "const": "Vergaderstukken decentrale overheden"
@@ -1314,9 +1311,7 @@
         "version": "1.0.3",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -1466,7 +1461,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -1501,8 +1496,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -1602,7 +1596,7 @@
             "format": "text",
             "title": "Categorie",
             "description": "",
-            "facetable": false,
+            "facetable": true,
             "hideOnForm": true,
             "order": 3,
             "const": "Subsidieverplichtingen anders dan met beschikking"
@@ -1713,9 +1707,7 @@
         "version": "1.0.2",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -1790,7 +1782,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": false,
             "hideOnForm": true,
             "order": 3,
@@ -1876,7 +1868,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -1911,8 +1903,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -2113,9 +2104,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -2190,7 +2179,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": false,
             "hideOnForm": true,
             "order": 3,
@@ -2276,7 +2265,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -2311,8 +2300,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -2513,9 +2501,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -2590,7 +2576,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -2676,7 +2662,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -2711,8 +2697,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -2913,9 +2898,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -2990,7 +2973,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -3076,7 +3059,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -3111,8 +3094,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -3313,9 +3295,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -3390,7 +3370,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -3476,7 +3456,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -3511,8 +3491,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -3713,9 +3692,7 @@
         "version": "1.0.2",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -3790,7 +3767,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -3876,7 +3853,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -3911,8 +3888,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -4114,9 +4090,7 @@
         "version": "1.0.6",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -4191,7 +4165,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": false,
             "hideOnForm": true,
             "order": 3,
@@ -4278,7 +4252,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -4313,8 +4287,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -4526,9 +4499,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -4603,7 +4574,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -4689,7 +4660,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -4724,8 +4695,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -4926,9 +4896,7 @@
         "version": "1.0.2",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -5003,7 +4971,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -5089,7 +5057,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -5124,8 +5092,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -5334,9 +5301,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -5411,7 +5376,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -5497,7 +5462,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -5532,8 +5497,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -5734,9 +5698,7 @@
         "version": "1.0.2",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -5811,7 +5773,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -5897,7 +5859,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -5932,8 +5894,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -6135,9 +6096,7 @@
         "version": "1.0.2",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -6212,7 +6171,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -6298,7 +6257,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -6333,8 +6292,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -6535,9 +6493,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -6612,7 +6568,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -6698,7 +6654,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -6733,8 +6689,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -6935,9 +6890,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -7012,7 +6965,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -7098,7 +7051,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -7133,8 +7086,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",
@@ -7335,9 +7287,7 @@
         "version": "1.0.1",
         "summary": "",
         "icon": null,
-        "required": [
-          "titel"
-        ],
+        "required": [],
         "properties": {
           "attachments": {
             "$ref": "",
@@ -7412,7 +7362,7 @@
           },
           "categorie": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "hideOnCollection": true,
             "hideOnForm": true,
             "order": 3,
@@ -7498,7 +7448,7 @@
           },
           "publicatiedatum": {
             "extends": "#/components/templates/commonPropertyDefaults",
-            "facetable": false,
+            "facetable": true,
             "format": "date",
             "order": 7,
             "title": "Publicatiedatum",
@@ -7533,8 +7483,7 @@
             "format": "text",
             "order": 1,
             "title": "Titel",
-            "type": "string",
-            "required": true
+            "type": "string"
           },
           "tooiCategorieId": {
             "const": "c_3baef532",

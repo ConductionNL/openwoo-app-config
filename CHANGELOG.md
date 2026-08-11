@@ -4,6 +4,35 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-11 (titel niet meer verplicht; publicatiedatum en categorie facetable)
+
+`config/woo.configuration.json`, alle 17 schema's. Op verzoek van de
+functioneel eigenaar.
+
+- Titel niet langer verplicht. Dat stond op twee plekken en beide zijn weg:
+  de schema-level `required: ["titel"]` is nu `required: []`, en de sleutel
+  `required: true` in `properties.titel` is verwijderd. Eén van de twee
+  laten staan zou het veld verplicht houden.
+- `publicatiedatum.facetable`: `false` → `true` (17×).
+- `categorie.facetable`: `false` → `true` (17×). In
+  `vergaderstukken_decentrale_overheden` en
+  `subsidieverplichtingen_anders_dan_met_beschikking` heet die property
+  `Categorie` met hoofdletter; die zijn meegenomen. De casing zelf is niet
+  gelijkgetrokken — dat raakt mogelijk mappings en bestaande objecten en is
+  een aparte wijziging.
+
+`titel.facetable` blijft `true`. Lint 0/0, 311 tests groen.
+
+**Afwijking van `docs/config-changes.md`:** gerichte hand-edit direct op
+`main`, zonder verse export en zonder `make sanitize`/PR. Bewuste keuze;
+de gate (`lint` + `test`) is wel gedraaid. Round-trip via
+`json.dumps(indent=2, ensure_ascii=False)` is byte-identiek aan het
+origineel, dus de diff bevat alleen de geraakte regels.
+
+Landt pas op een tenant met `provision.py all --force-import` — de import
+slaat zichzelf over zolang alle slugs al bestaan, en een inhoudswijziging
+ziet die slug-check niet.
+
 ### Toegevoegd — 2026-08-11 (portal weigert een kapotte image-tag en thema)
 
 `webgui/tenants.py` `validate()` toetst nu `frontend_tag` en `frontend_theme`.
