@@ -39,6 +39,34 @@ expliciet dat een nieuwe frontend-check aan beide kanten hoort.
 Vier tests, met de echte incidentwaarden als fixture. Mutatietest gedaan: beide
 checks uitschakelen laat precies die tests falen.
 
+### Gerepareerd — 2026-08-11 (formulier hield velden van de vorige omgeving vast)
+
+Het nieuwe-omgevingsformulier haalt bij het typen van een organisatie
+`/tenant/<org>-<env>/declaration` op en vult bij een bestaande, bewerkbare
+tenant de velden via `setFields()`. Een volgende opzoeking ruimde alleen de
+meldingsbalk en de knoptekst op — **niet de velden**.
+
+Gevolg: vul je `tubbergen` in bij acceptatie en wissel je daarna naar
+productie, dan bleef `acceptatie-open.tubbergen.nl` in het hostveld staan
+terwijl de knop weer op "Aanvraag indienen" sprong en er geen melding was.
+Indienen zou een productie-tenant met een acceptatie-host opleveren. Gemeld met
+een schermafbeelding; server-side was er niets aan de hand, het formulier komt
+leeg van `render_template("tenant.html")`.
+
+`lookup()` ruimt nu op vóór elke uitgang (lege naam, ongeldige naam, mislukte
+fetch, bestaat niet, niet bewerkbaar). Alleen wat de lookup zélf schreef wordt
+gewist — wat de operator daarna typt blijft staan.
+
+Meegenomen, uit dezelfde schermafbeelding: de samenvatting toonde
+`website <org>.<env>.openwoo.app` ook als er een eigen frontend-host stond. Die
+belofte kwam niet uit, want de eigen host is wat er uitgerold wordt. De
+samenvatting volgt nu het hostveld en beweegt mee met wat je typt. De drie
+waarden in dat blok worden nu ook ge-escaped; ze komen uit operator-invoer en
+gingen ongefilterd naar `innerHTML`.
+
+Twee tests. Geen JS-runner in deze repo, dus ze bewaken dat de opruimstap
+bestaat en vóór de eerste uitgang van `lookup()` staat. Mutatietest gedaan.
+
 ### Toegevoegd — 2026-08-11 (registry- en repository-velden in het portaal)
 
 Het formulier schrijft nu `tenant.frontend.registry` en `.repository` naast

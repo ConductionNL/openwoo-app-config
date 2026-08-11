@@ -180,6 +180,31 @@ def test_tenant_form_renders(client):
     assert b'name="org"' in resp.data and b'name="environment"' in resp.data
 
 
+def test_tenant_form_has_registry_and_repository_fields(client):
+    """De tenant-kant accepteert registry/repository sinds 2026-08-11; zonder deze
+    velden kan een operator een afwijkende registry niet zetten."""
+    resp = client.get("/tenant")
+    for field in (b'name="frontend_registry"', b'name="frontend_repository"',
+                  b'name="frontend_tag"'):
+        assert field in resp.data, field
+
+
+def test_tenant_form_clears_lookup_fields_between_environments(client):
+    """De lookup vult het formulier vanuit een bestaand tenantbestand. Ruimde een
+    volgende lookup die niets vindt de velden niet op, dan bleef de host van de
+    ACCEPTATIE-omgeving staan bij een productie-aanvraag — zonder melding.
+    Geen JS-runner in deze repo, dus we bewaken dat de opruimstap er staat."""
+    resp = client.get("/tenant")
+    assert b"clearLookupFields" in resp.data
+    # De opruiming moet vóór elke uitgang van lookup() gebeuren, dus meteen na
+    # het terugzetten van de knoptekst.
+    body = resp.data.decode()
+    reset = body.index("submitBtn.textContent = 'Aanvraag indienen';")
+    clear = body.index("clearLookupFields();", reset)
+    first_return = body.index("if (!o) return;", reset)
+    assert clear < first_return
+
+
 def test_tenant_validation_error_is_400_no_pr(client, monkeypatch):
     # A full <org>-<env> in the org field must fail BEFORE any git call.
     called = {"n": 0}

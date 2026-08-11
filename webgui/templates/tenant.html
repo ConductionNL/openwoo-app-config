@@ -120,11 +120,17 @@
       const o = org.value.trim().toLowerCase(), e = env.value;
       if (!o) { preview.textContent = '…'; return; }
       const host = e === 'prod' ? `${o}.commonground.nu` : `${o}.${e}.commonground.nu`;
-      const fe   = e === 'prod' ? `${o}.openwoo.app`     : `${o}.${e}.openwoo.app`;
+      // Een eigen frontend-host overrulet de afgeleide website. Stond die er wel
+      // maar liet de samenvatting toch de afgeleide `<org>.<env>.openwoo.app`
+      // zien, dan beloofde het overzicht een adres dat niet uitgerold wordt.
+      // Via f.elements en niet via de const feHost: die wordt hieronder pas
+      // gedeclareerd en refresh() draait ook vóór dat punt.
+      const own = (f.elements['frontend_host'].value || '').trim().toLowerCase();
+      const fe   = own || (e === 'prod' ? `${o}.openwoo.app` : `${o}.${e}.openwoo.app`);
       const disp = dispOverride.value.trim() || `Gemeente ${cap(o)}`;
       preview.innerHTML =
-        `Omgeving <code>${o}-${e}</code> &middot; achterkant <code>${host}</code><br>` +
-        `website <code>${fe}</code> &middot; organisatie <code>${disp}</code> &middot; apps: opencatalogi, openconnector, openregister`;
+        `Omgeving <code>${o}-${e}</code> &middot; achterkant <code>${esc(host)}</code><br>` +
+        `website <code>${esc(fe)}</code> &middot; organisatie <code>${esc(disp)}</code> &middot; apps: opencatalogi, openconnector, openregister`;
     }
     // Certificaatkeuze alleen tonen bij een host buiten het platformdomein —
     // spiegelt tenants.py::is_custom_frontend_host.
@@ -136,7 +142,10 @@
       certBlock.hidden = !custom;
       if (custom) certHost.textContent = h;
     }
-    feHost.addEventListener('input', refreshCert); refreshCert();
+    // Ook refresh(): de host bepaalt sinds deze wijziging de website in de
+    // samenvatting, dus die moet meebewegen met wat je typt.
+    feHost.addEventListener('input', () => { refreshCert(); refresh(); });
+    refreshCert();
 
     // Bestaat deze omgeving al? Dan tonen we wat er gedeclareerd staat en wordt
     // de submit een wijziging in plaats van een aanvraag.
@@ -144,10 +153,32 @@
     const adv = document.getElementById('adv');
     let lookupTimer = null, editing = false;
 
+    // Welke velden de lookup heeft ingevuld. Nodig omdat een VOLGENDE lookup die
+    // niets vindt ze weer moet leegmaken: zonder dit bleven de waarden van de
+    // vorige tenant staan terwijl de knop weer op "Aanvraag indienen" sprong.
+    // Concreet gebeurde dat bij het wisselen van omgeving — je kreeg dan een
+    // productie-aanvraag met de acceptatie-host van dezelfde organisatie erin,
+    // zonder enige melding. Alleen wat de lookup zélf schreef wordt gewist; wat
+    // de operator daarna typt blijft staan.
+    let lookupFilled = [];
+
+    function clearLookupFields() {
+      for (const name of lookupFilled) {
+        const el = f.elements[name];
+        if (el) el.value = '';
+      }
+      lookupFilled = [];
+      refresh(); refreshCert();
+    }
+
     function setFields(v) {
+      clearLookupFields();
       for (const [name, val] of Object.entries(v)) {
         const el = f.elements[name];
-        if (el && typeof val === 'string') el.value = val;
+        if (el && typeof val === 'string') {
+          el.value = val;
+          lookupFilled.push(name);
+        }
       }
       refresh(); refreshCert();
     }
@@ -162,6 +193,11 @@
       editing = false;
       declared.hidden = true;
       submitBtn.textContent = 'Aanvraag indienen';
+      // Eerst opruimen, dan pas opnieuw vullen. Elke uitgang van deze functie
+      // (lege naam, ongeldige naam, mislukte fetch, bestaat niet, niet
+      // bewerkbaar) laat het formulier zo achter zonder waarden van een andere
+      // omgeving.
+      clearLookupFields();
       if (!o) return;
       if (!ORG_RE.test(o)) {
         // Zeg het meteen, in plaats van pas bij indienen. Een punt in de naam
