@@ -151,9 +151,16 @@ comment in step 5 is currently the only tracking that exists.
 Closing that gap means a probe that reads the certificate out of the
 Secret (or off the live endpoint) rather than out of cert-manager. That is
 a change for the monitoring repo, not this one; it is recorded as a
-follow-up rather than quietly assumed to be handled. `certswap upcoming`
-(`--within-days`) reads expiry off the deployments themselves and is the
-obvious candidate to build that probe on — not yet wired up anywhere.
+follow-up rather than quietly assumed to be handled.
+
+`certswap upcoming --within-days N` is **not** that probe, and is worth
+understanding before anyone reaches for it. It reads
+`~/.certswap/state.json` — a file on the operator's own workstation, written
+at `apply` time. So it lists only certificates certswap itself placed, from
+whichever machine placed them, and the expiry it prints is the value recorded
+back then, not a reading of the live Secret. Replace a certificate by any
+other route and the entry silently goes stale. Useful as a personal reminder,
+useless as fleet coverage.
 
 Renewing is step 3 again with the new bundle, followed by step 4. The
 frontend picks up the new Secret without a restart.
