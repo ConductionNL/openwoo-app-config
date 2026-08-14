@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-08-07
+last_reviewed: 2026-08-14
 owner: info@conduction.nl
 ---
 
@@ -71,16 +71,58 @@ and the namespace is created by the merge.
    their CA produced: PFX, a PEM bundle, separate files, PKCS#7, a zip.
 3. **Write the Secret** into the tenant namespace (the *bare* tenant name):
 
-       certswap plan  k8s <bundle> --namespace <tenant> --secret <name>
-       certswap apply k8s <bundle> --namespace <tenant> --secret <name> \
-         --argocd-app nc-<tenant>
+       certswap plan  k8s <bundle> --key privkey.pem \
+         --namespace <tenant> --secret <name> \
+         --context <kubeconfig-context> --ingress <ingress>
+       certswap apply k8s <bundle> --key privkey.pem \
+         --namespace <tenant> --secret <name> \
+         --context <kubeconfig-context> --ingress <ingress> \
+         --evidence-dir <dir>
 
    `certswap` normalises the input formats, checks the chain, and does an
-   ArgoCD-aware in-place swap. It is an **external tool**, not a platform
-   component — so the dependency-free path is equally supported:
+   ArgoCD-aware in-place swap. Three flags earn their place:
+
+   | Flag | Why |
+   |---|---|
+   | `--context` | The active kubeconfig context must match, or the command refuses. Cheap insurance against writing a customer key into the wrong cluster. |
+   | `--ingress` | Deletes a leftover cert-manager `Certificate` and forces the annotation off — the entire "replaced by a Let's Encrypt one" recovery below, done for you. |
+   | `--evidence-dir` | Writes before/after evidence. Someone will ask when this was last swapped. |
+
+   `--argocd-app nc-<tenant>` coordinates with ArgoCD, but per its own help
+   an Application owned by an ApplicationSet or a parent app needs
+   `--argocd-force-managed` because the patches get reverted. Frontends
+   under the `react-tenants` ApplicationSet are in that category — leave the
+   flag off when the tenant file already says `issuer: none`, because then
+   there is nothing left to patch.
+
+   **Concatenate first if the CA delivered separate files.** `--chain` is
+   honoured only for separate-file ingest; the moment the bundle argument is
+   itself a PEM, the flag is silently ignored and the chain comes out empty
+   (`Complete: no`). Sectigo delivers separate files, so this is the common
+   case, not the exception:
+
+       cat leaf.crt intermediate.crt root.crt > fullchain.pem
+       certswap inspect fullchain.pem
+
+   Run that `inspect` before `plan`, every time. It must say
+   `Complete: yes` and `Verified against trust store: yes`.
+
+   `certswap` is an **external tool**, not a platform component — so the
+   dependency-free path is equally supported, but only for the *first*
+   seeding:
 
        kubectl create secret tls <name> \
          --namespace <tenant> --cert=fullchain.pem --key=privkey.pem
+
+   **It is not a renewal path.** The Secret already exists, so `create`
+   fails; and reaching for `kubectl apply` instead stores a plaintext copy
+   of `tls.key` in the `kubectl.kubernetes.io/last-applied-configuration`
+   annotation, where it outlives the key it belongs to. Replace the whole
+   object:
+
+       kubectl create secret tls <name> --namespace <tenant> \
+         --cert=fullchain.pem --key=privkey.pem \
+         --dry-run=client -o yaml | kubectl replace -f -
 
    Use the `secretName` from the tenant file verbatim.
 4. **Verify** the site serves the right certificate:
@@ -109,7 +151,9 @@ comment in step 5 is currently the only tracking that exists.
 Closing that gap means a probe that reads the certificate out of the
 Secret (or off the live endpoint) rather than out of cert-manager. That is
 a change for the monitoring repo, not this one; it is recorded as a
-follow-up rather than quietly assumed to be handled.
+follow-up rather than quietly assumed to be handled. `certswap upcoming`
+(`--within-days`) reads expiry off the deployments themselves and is the
+obvious candidate to build that probe on — not yet wired up anywhere.
 
 Renewing is step 3 again with the new bundle, followed by step 4. The
 frontend picks up the new Secret without a restart.
