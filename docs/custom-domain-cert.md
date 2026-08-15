@@ -95,17 +95,22 @@ and the namespace is created by the merge.
    flag off when the tenant file already says `issuer: none`, because then
    there is nothing left to patch.
 
-   **Concatenate first if the CA delivered separate files.** `--chain` is
-   honoured only for separate-file ingest; the moment the bundle argument is
-   itself a PEM, the flag is silently ignored and the chain comes out empty
-   (`Complete: no`). Sectigo delivers separate files, so this is the common
-   case, not the exception:
+   **Concatenate first if the CA delivered separate files.** Sectigo ships
+   leaf, intermediate and roots as separate files, so this is the common
+   case:
 
        cat leaf.crt intermediate.crt root.crt > fullchain.pem
        certswap inspect fullchain.pem
 
    Run that `inspect` before `plan`, every time. It must say
    `Complete: yes` and `Verified against trust store: yes`.
+
+   Concatenating is not cosmetic: `certswap inspect <leaf> --chain <chain>`
+   reports `Complete: no` and suggests `--fetch-intermediates`, because
+   `--chain` is dropped on the keyless read-only path (certswap 0.3.0). It
+   *is* honoured by `plan` and `apply`, which pass `--key`. One
+   `fullchain.pem` sidesteps the difference and gives you one artefact to
+   archive.
 
    `certswap` is an **external tool**, not a platform component — so the
    dependency-free path is equally supported, but only for the *first*
