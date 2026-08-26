@@ -261,3 +261,28 @@ def test_error_message_never_leaks_token(monkeypatch):
     with pytest.raises(gitlib.GitlibError) as ei:
         gitlib.open_pr("head", "t", "b")
     assert "tok-secret" not in ei.value.detail
+
+
+def test_file_history_returns_commits_newest_first(monkeypatch):
+    """Onderscheidt 'bestond nooit' van 'is verwijderd'.
+
+    get_file() geeft 404 voor beide, en juist het tweede geval is gevaarlijk:
+    preserveResourcesOnDeletion laat namespace en PVC staan, dus een tenant met
+    dezelfde naam landt op een bestaand volume.
+    """
+    calls = []
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([[
+        {"sha": "dc512d9",
+         "commit": {"committer": {"date": "2026-08-25T10:00:00Z"},
+                    "message": "remove tenant: harderwijk\n\nrequested-by: x"}},
+    ]], calls))
+    out = gitlib.file_history("values/tenants/tenant-x.yaml", limit=5)
+    # Het pad hoort url-geencodeerd in de query, niet rauw.
+    assert "path=values%2Ftenants%2Ftenant-x.yaml" in calls[0].full_url
+    assert out == [{"sha": "dc512d9", "date": "2026-08-25T10:00:00Z",
+                    "message": "remove tenant: harderwijk"}]
+
+
+def test_file_history_empty_means_never_existed(monkeypatch):
+    monkeypatch.setattr(gitlib.urllib.request, "urlopen", _fake_urlopen([[]], []))
+    assert gitlib.file_history("values/tenants/tenant-x.yaml") == []

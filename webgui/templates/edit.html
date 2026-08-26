@@ -21,6 +21,8 @@
     #result { margin-top: 1rem; padding: 1rem; border-radius: 6px; display: none; }
     #result.ok { background: #e7f6e7; border: 1px solid #8c8; }
     #result.err { background: #fbeaea; border: 1px solid #d99; }
+    /* Geslaagd, maar met iets om te controleren. Bewust niet .err: de PR staat er. */
+    #result.warn { background: #fff6f0; border: 1px solid #c40; }
   </style>
 </head>
 <body>
@@ -72,6 +74,56 @@
       </fieldset>
 
       <fieldset>
+        <legend>App-versies</legend>
+        <p class="hint">
+          Leeg = de app volgt de laatste release. Een versie invullen zet hem vast
+          in git. Zonder <code>v</code> ervoor en met alle drie de delen
+          (<code>0.7.12</code>, niet <code>v0.7.12</code> of <code>0.7</code>).
+        </p>
+        <label>OpenCatalogi</label>
+        <input type="text" name="version_opencatalogi" value="{{ declared.fields.version_opencatalogi }}"
+               pattern="[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?"
+               title="Drie numerieke delen, eventueel met suffix. Geen 'v' ervoor.">
+        <label>OpenConnector</label>
+        <input type="text" name="version_openconnector" value="{{ declared.fields.version_openconnector }}"
+               pattern="[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?"
+               title="Drie numerieke delen, eventueel met suffix. Geen 'v' ervoor.">
+        <label>OpenRegister</label>
+        <input type="text" name="version_openregister" value="{{ declared.fields.version_openregister }}"
+               pattern="[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?"
+               title="Drie numerieke delen, eventueel met suffix. Geen 'v' ervoor.">
+      </fieldset>
+
+      <fieldset>
+        <legend>Afwijkende Nextcloud-image <span class="hint">(uitzondering)</span></legend>
+        <p class="hint">
+          Alleen voor een tenant die een PHP-extensie nodig heeft die het
+          officiële image niet meelevert (soap voor Woo BCT). Leeg = de
+          platformversie.
+        </p>
+        <p class="hint">
+          <strong>Verlagen kan niet.</strong> <code>/var/www/html</code> is een
+          PVC: de entrypoint stopt met exit 1 op een ouder image, de pod komt in
+          CrashLoopBackOff en Argo blijft het met <code>selfHeal</code> proberen.
+          Een lagere versie wordt hier geweigerd. Zwevende tags
+          (<code>fpm-soap</code>, <code>latest</code>) ook — dan hangt de
+          draaiende versie af van wanneer een node voor het laatst pullde.
+        </p>
+        <label>Nextcloud-versie <span class="hint">(image-tag mét versienummer)</span></label>
+        <input type="text" name="nc_image_tag" value="{{ declared.fields.nc_image_tag }}"
+               pattern="[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]*)?"
+               title="Patch-tag met versienummer, bijvoorbeeld 32.0.6-fpm-soap. Niet 'fpm-soap' of 'latest'.">
+        <label>Image-repository <span class="hint">(leeg = platformstandaard)</span></label>
+        <input type="text" name="nc_image_repository" value="{{ declared.fields.nc_image_repository }}"
+               pattern="[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*"
+               title="Het pad zonder host en zonder tag">
+        <label>Image-registry <span class="hint">(alleen de host; vereist een repository)</span></label>
+        <input type="text" name="nc_image_registry" value="{{ declared.fields.nc_image_registry }}"
+               pattern="[a-z0-9]+([.-][a-z0-9]+)*(:[0-9]+)?"
+               title="Alleen de host, eventueel met poort. Geen pad.">
+      </fieldset>
+
+      <fieldset>
         <legend>Adres en certificaat</legend>
         <label>Eigen frontend-host <span class="hint">(leeg = afgeleid op openwoo.app)</span></label>
         <input type="text" name="frontend_host" id="feHost" value="{{ declared.fields.frontend_host }}">
@@ -112,9 +164,14 @@
       show('', 'bezig…');
       const r = await fetch('/tenant/{{ tenant }}/edit', { method: 'POST', body: new FormData(f) });
       const d = await r.json();
-      if (!r.ok) return show('err', (d.errors || ['onbekende fout']).join('<br>'));
-      show('ok', `Wijziging ingediend: <a href="${d.pr_url}" target="_blank" rel="noopener">PR #${d.pr_number}</a>. ` +
-                 `Na de merge rolt het platform hem uit.`);
+      // Waarschuwingen horen bij een geslaagde aanvraag, niet bij een fout —
+      // maar ze mogen niet wegvallen: ze staan verder alleen in de PR-body.
+      const warns = (d.warnings || []).map(x => '⚠️ ' + x).join('<br>');
+      if (!r.ok) return show('err', (d.errors || ['onbekende fout']).join('<br>')
+                                    + (warns ? '<br>' + warns : ''));
+      show(warns ? 'warn' : 'ok',
+           `Wijziging ingediend: <a href="${d.pr_url}" target="_blank" rel="noopener">PR #${d.pr_number}</a>. ` +
+           `Na de merge rolt het platform hem uit.` + (warns ? '<br>' + warns : ''));
     });
 
     const c = document.getElementById('cert');

@@ -851,3 +851,217 @@ def test_branding_picker_is_reachable(client):
     assert 'href="/branding"' in body
     page = client.get("/branding").get_data(as_text=True)
     assert "Branding" in page and "/edit" in page
+
+
+# --- image-downgrade-guard ----------------------------------------------------
+# Handhaaft de regel uit Nextcloud-base docs/ADDING-TENANT.md: nooit een lagere
+# versie dan wat de tenant draait. Aanleiding: Nextcloud-base PR #100
+# (2026-08-26), een re-add van een dag eerder verwijderde tenant met een ouder
+# image, waar niets op wees.
+
+_SOAP = {"nc_image_registry": "ghcr.io",
+         "nc_image_repository": "conductionnl/nextcloud-images",
+         "nc_image_tag": "32.0.6-fpm-soap"}
+
+_EXISTING_TENANT = """---
+tenant:
+  name: almere-accept
+  environment: accept
+  wave: "1"
+  dbType: postgres
+  secrets:
+    managed: true
+  apps:
+    enabled:
+      - opencatalogi
+      - openconnector
+      - openregister
+  frontend:
+    branding:
+      organisationName: "Gemeente Almere"
+
+image:
+  registry: "ghcr.io"
+  repository: "conductionnl/nextcloud-images"
+  tag: "32.0.13-fpm"
+"""
+
+
+def _no_history(monkeypatch):
+    monkeypatch.setattr(server.gitlib, "file_history", lambda path, limit=1: [])
+
+
+def _argo(monkeypatch, images):
+    monkeypatch.setattr(server.argolib, "app_status",
+                        lambda name: {"exists": True, "sync": "Synced",
+                                      "health": "Healthy", "images": images})
+
+
+def test_guard_blocks_a_downgrade_on_an_existing_tenant(client, monkeypatch):
+    _declared(monkeypatch, _EXISTING_TENANT)
+    _argo(monkeypatch, [])
+    monkeypatch.setattr(server.gitlib, "propose_update",
+                        lambda **kw: 1 / 0)          # mag niet aangeroepen worden
+    resp = client.post("/tenant/almere-accept/edit",
+                       data={"org": "almere", "environment": "accept", **_SOAP})
+    assert resp.status_code == 400
+    assert any("ouder dan de versie" in e for e in resp.get_json()["errors"])
+
+
+def test_guard_allows_the_same_version_in_another_build(client, monkeypatch):
+    """32.0.13-fpm -> 32.0.13-fpm-soap is geen downgrade."""
+    _declared(monkeypatch, _EXISTING_TENANT)
+    _argo(monkeypatch, [])
+    monkeypatch.setattr(server.gitlib, "propose_update",
+                        lambda **kw: {"number": 21, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels", lambda number, labels: None)
+    resp = client.post("/tenant/almere-accept/edit",
+                       data={"org": "almere", "environment": "accept",
+                             **{**_SOAP, "nc_image_tag": "32.0.13-fpm-soap"}})
+    assert resp.status_code == 201, resp.get_json()
+
+
+def test_guard_blocks_when_argo_sees_a_newer_image(client, monkeypatch):
+    """Argo is de kruiscontrole: git kan achterlopen op de werkelijkheid."""
+    tenant_without_override = _EXISTING_TENANT.split("\nimage:")[0] + "\n"
+    _declared(monkeypatch, tenant_without_override)
+    _argo(monkeypatch, ["ghcr.io/conductionnl/nextcloud-images:32.1.0-fpm"])
+    monkeypatch.setattr(server.gitlib, "propose_update", lambda **kw: 1 / 0)
+    resp = client.post("/tenant/almere-accept/edit",
+                       data={"org": "almere", "environment": "accept", **_SOAP})
+    assert resp.status_code == 400
+    assert any("Argo" in e for e in resp.get_json()["errors"])
+
+
+def test_guard_warns_on_a_readd_but_does_not_block(client, monkeypatch):
+    """Het harderwijk-geval: bestand bestond, is verwijderd, wordt opnieuw
+    aangemaakt. Of het volume er nog staat weet het portaal niet — dus
+    waarschuwen, niet blokkeren, en het in de PR-body zetten."""
+    bodies = []
+    monkeypatch.setattr(server.gitlib, "file_history",
+                        lambda path, limit=1: [{"sha": "dc512d9",
+                                                "date": "2026-08-25T10:00:00Z",
+                                                "message": "remove tenant: almere-accept"}])
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: bodies.append(kw["pr_body"]) or {"number": 22,
+                                                                      "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels", lambda number, labels: None)
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept", **_SOAP})
+    assert resp.status_code == 201
+    warnings = resp.get_json()["warnings"]
+    assert any("eerder bestaan en is verwijderd" in w for w in warnings), warnings
+    # De reviewer moet het in de PR zien, niet alleen de operator in het formulier.
+    assert "preserveResourcesOnDeletion" in bodies[0]
+    assert "Afwijkende Nextcloud-image" in bodies[0]
+
+
+def test_guard_is_silent_for_a_genuinely_new_tenant(client, monkeypatch):
+    """Geen historie, geen volume: elke versie mag."""
+    _no_history(monkeypatch)
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: {"number": 23, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels", lambda number, labels: None)
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept", **_SOAP})
+    assert resp.status_code == 201
+    assert resp.get_json()["warnings"] == []
+
+
+def test_guard_warns_when_history_cannot_be_read(client, monkeypatch):
+    """Laag 3 blokkeert nooit, dus mag zijn eigen falen ook niet blokkeren —
+    maar stil overslaan leest als 'geen historie'."""
+    def boom(path, limit=1):
+        raise server.gitlib.GitlibError(0, "server misconfigured")
+    monkeypatch.setattr(server.gitlib, "file_history", boom)
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: {"number": 24, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels", lambda number, labels: None)
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept", **_SOAP})
+    assert resp.status_code == 201
+    assert any("niet vastgesteld" in w for w in resp.get_json()["warnings"])
+
+
+def test_app_version_pins_reach_the_tenant_file(client, monkeypatch):
+    """De pins moeten in de gerenderde YAML landen, niet alleen in het formulier."""
+    written = {}
+    _no_history(monkeypatch)
+    monkeypatch.setattr(server.gitlib, "propose_file",
+                        lambda **kw: written.update(kw) or {"number": 31, "html_url": "u"})
+    monkeypatch.setattr(server.gitlib, "add_labels", lambda number, labels: None)
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept",
+                                       "version_opencatalogi": "0.7.12",
+                                       "version_openregister": "0.2.11"})
+    assert resp.status_code == 201, resp.get_json()
+    assert "    versions:\n" in written["content"]
+    assert '      opencatalogi: "0.7.12"' in written["content"]
+    # Niet gepind = geen key; de app volgt dan de laatste release.
+    assert "openconnector:" not in written["content"]
+
+
+def test_a_leading_v_in_an_app_version_is_refused(client, monkeypatch):
+    _no_history(monkeypatch)
+    monkeypatch.setattr(server.gitlib, "propose_file", lambda **kw: 1 / 0)
+    resp = client.post("/tenant", data={"org": "almere", "environment": "accept",
+                                       "version_opencatalogi": "v0.7.12"})
+    assert resp.status_code == 400
+    assert any("mag niet met 'v' beginnen" in e for e in resp.get_json()["errors"])
+
+
+# Exact het tenantbestand dat een image-override én versie-pins draagt: het geval
+# waarop de live portal op 2026-08-26 nog meldde "met de hand aangepast en wordt
+# niet door de portal beheerd: image". Deze twee tests pinnen vast dat dat nu
+# niet meer gebeurt en dat de velden ook echt op de bewerkpagina staan.
+_OVERRIDE_FILE = """---
+tenant:
+  name: almere-accept
+  environment: accept
+  wave: "1"
+  dbType: mariadb
+  secrets:
+    managed: true
+  apps:
+    enabled:
+      - opencatalogi
+      - openconnector
+      - openregister
+    versions:
+      opencatalogi: "0.7.12"
+      openconnector: "0.2.19"
+      openregister: "0.2.11"
+  frontend:
+    branding:
+      organisationName: "Gemeente Almere"
+
+image:
+  registry: "ghcr.io"
+  repository: "conductionnl/nextcloud-images"
+  tag: "32.0.6-fpm-soap"
+"""
+
+
+def test_declaration_no_longer_calls_an_override_hand_edited(client, monkeypatch):
+    """De live portal meldde hierop `unknown: ["image"]` en zette de tenant
+    read-only. Dat was de reden voor deze change."""
+    _declared(monkeypatch, _OVERRIDE_FILE)
+    body = client.get("/tenant/almere-accept/declaration").get_json()
+    assert body["exists"] is True
+    assert body["unknown"] == []
+    assert body["editable"] is True
+    assert body["fields"]["nc_image_tag"] == "32.0.6-fpm-soap"
+    assert body["fields"]["version_openconnector"] == "0.2.19"
+
+
+def test_edit_page_shows_the_override_and_pins_prefilled(client, monkeypatch):
+    """Niet alleen de API: de velden moeten mét waarde op de pagina staan.
+
+    Zonder deze test zou een `value="…"` die in het template ontbreekt onopgemerkt
+    blijven — de API klopt dan wel en het formulier verliest de waarde stil bij
+    het opslaan.
+    """
+    _declared(monkeypatch, _OVERRIDE_FILE)
+    body = client.get("/tenant/almere-accept/edit").get_data(as_text=True)
+    assert 'name="nc_image_tag"' in body and 'value="32.0.6-fpm-soap"' in body
+    assert 'name="nc_image_registry"' in body and 'value="ghcr.io"' in body
+    assert 'name="version_opencatalogi"' in body and 'value="0.7.12"' in body
+    assert 'name="version_openregister"' in body and 'value="0.2.11"' in body
+    # En de read-only-melding hoort er juist NIET te staan.
+    assert "met de hand aangepast" not in body

@@ -25,6 +25,9 @@
     #result.ok { background: #e7f6e7; border: 1px solid #8c8; }
     #result.err { background: #fbeaea; border: 1px solid #d99; }
     #result.pending { background: #fff7e6; border: 1px solid #e3c266; }
+    /* PR geopend, maar met een waarschuwing erbij. Bewust niet dezelfde stijl
+       als .err: de aanvraag is gelukt, er is alleen iets om te controleren. */
+    #result.warn { background: #fff6f0; border: 1px solid #c40; }
     #result a { font-weight: 600; }
   </style>
 </head>
@@ -81,6 +84,66 @@
              title="Het pad zonder host en zonder tag">
       <label>Image-registry <span class="hint">(alleen de host; vereist een repository)</span></label>
       <input type="text" name="frontend_registry" placeholder="docker.io"
+             pattern="[a-z0-9]+([.-][a-z0-9]+)*(:[0-9]+)?"
+             title="Alleen de host, eventueel met poort. Geen pad.">
+    </details>
+
+    <details id="appversions">
+      <summary>App-versies vastzetten <span class="hint">(optioneel)</span></summary>
+      <p class="hint">
+        Leeg laten is de norm: de app volgt dan de laatste release. Vul een
+        versie in om hem in git vast te leggen — bijvoorbeeld als een tenant op
+        een bekende combinatie moet blijven staan.
+      </p>
+      <p class="hint">
+        Zonder <code>v</code> ervoor (GitHub-releases heten <code>v0.7.12</code>,
+        dit veld wil <code>0.7.12</code>) en met alle drie de delen:
+        <code>0.7</code> wordt geweigerd.
+      </p>
+      <label>OpenCatalogi <span class="hint">(leeg = laatste release)</span></label>
+      <input type="text" name="version_opencatalogi" placeholder="0.7.12"
+             pattern="[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?"
+             title="Drie numerieke delen, eventueel met suffix. Geen 'v' ervoor.">
+      <label>OpenConnector <span class="hint">(leeg = laatste release)</span></label>
+      <input type="text" name="version_openconnector" placeholder="0.2.19"
+             pattern="[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?"
+             title="Drie numerieke delen, eventueel met suffix. Geen 'v' ervoor.">
+      <label>OpenRegister <span class="hint">(leeg = laatste release)</span></label>
+      <input type="text" name="version_openregister" placeholder="0.2.11"
+             pattern="[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?"
+             title="Drie numerieke delen, eventueel met suffix. Geen 'v' ervoor.">
+    </details>
+
+    <!-- Apart ingeklapt en niet bij de frontend-velden: dit is de Nextcloud-image
+         zelf, en het is een uitzondering — geen gelijkwaardige optie. Bijna elke
+         tenant hoort de platformstandaard uit common.yaml te volgen. -->
+    <details id="ncimage">
+      <summary>Afwijkende Nextcloud-image <span class="hint">(uitzondering)</span></summary>
+      <p class="hint">
+        Alleen nodig als de tenant een PHP-extensie vereist die het officiële
+        image niet meelevert — soap voor Woo BCT bijvoorbeeld. Laat leeg om de
+        platformversie te volgen.
+      </p>
+      <p class="hint">
+        Drie regels, elk uit een incident:
+        <strong>altijd een patch-tag</strong>, nooit een zwevende (met
+        <code>pullPolicy: IfNotPresent</code> hangt de draaiende versie anders af
+        van wanneer een node voor het laatst pullde);
+        <strong>nooit naar een lagere versie</strong> dan de tenant draait
+        (<code>/var/www/html</code> is een PVC, de pod komt in CrashLoopBackOff en
+        Argo blijft het proberen) — daar zit een controle op;
+        <strong>geen digest</strong>, daarom is er geen veld voor.
+      </p>
+      <label>Nextcloud-versie <span class="hint">(image-tag mét versienummer; leeg = platformstandaard)</span></label>
+      <input type="text" name="nc_image_tag" placeholder="32.0.6-fpm-soap"
+             pattern="[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]*)?"
+             title="Patch-tag met versienummer, bijvoorbeeld 32.0.6-fpm-soap. Niet 'fpm-soap' of 'latest'.">
+      <label>Image-repository <span class="hint">(leeg = platformstandaard <code>nextcloud</code>)</span></label>
+      <input type="text" name="nc_image_repository" placeholder="conductionnl/nextcloud-images"
+             pattern="[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*"
+             title="Het pad zonder host en zonder tag">
+      <label>Image-registry <span class="hint">(alleen de host; vereist een repository)</span></label>
+      <input type="text" name="nc_image_registry" placeholder="ghcr.io"
              pattern="[a-z0-9]+([.-][a-z0-9]+)*(:[0-9]+)?"
              title="Alleen de host, eventueel met poort. Geen pad.">
     </details>
@@ -230,9 +293,23 @@
           frontend_theme: 'thema', frontend_jumbotron: 'jumbotron',
           frontend_favicon: 'favicon', frontend_tag: 'frontend-versie',
           frontend_repository: 'image-repository', frontend_registry: 'image-registry',
+          nc_image_tag: 'Nextcloud-versie',
+          nc_image_repository: 'Nextcloud-image-repository',
+          nc_image_registry: 'Nextcloud-image-registry',
+          version_opencatalogi: 'OpenCatalogi-versie',
+          version_openconnector: 'OpenConnector-versie',
+          version_openregister: 'OpenRegister-versie',
         };
         const filled = Object.keys(labels).filter(k => (v[k] || '').trim());
-        adv.open = filled.length > 0;   // niets te zien = niet openklappen
+        adv.open = filled.some(k => k.startsWith('frontend_'));
+        // Elke sectie klapt alleen open als deze tenant daar echt iets heeft
+        // staan; anders blijft een uitzondering een uitzondering.
+        const openIf = (id, pred) => {
+          const el = document.getElementById(id);
+          if (el) el.open = filled.some(pred);
+        };
+        openIf('ncimage', k => k.startsWith('nc_image_'));
+        openIf('appversions', k => k.startsWith('version_'));
 
         const heeft = filled.length
           ? `Ingevuld vanuit het tenantbestand: ${filled.map(k => labels[k]).join(', ')}. ` +
@@ -304,16 +381,22 @@
       let resp, data;
       try { resp = await fetch('/tenant', { method: 'POST', body: new FormData(f) }); data = await resp.json(); }
       catch (err) { result.className = 'err'; result.textContent = 'network error: ' + err; return; }
+      // Waarschuwingen zijn geen fouten: de PR is geopend. Ze staan ook in de
+      // PR-body, maar die leest de operator pas ná het klikken — en juist een
+      // re-add-waarschuwing moet hij vóór het mergen zien.
+      const warns = (data && data.warnings || [])
+        .map(x => '⚠️ ' + x.replace(/</g, '&lt;')).join('<br>');
       if (resp.status === 201 && data.pr_url) {
-        result.className = 'pending';
+        result.className = warns ? 'warn' : 'pending';
         result.innerHTML = `📬 Tenant <code>${data.tenant}</code> — PR #${data.pr_number} geopend ` +
           `(<a href="${data.pr_url}" target="_blank" rel="noopener">review &amp; merge</a>). ` +
-          `Wacht op merge…`;
+          `Wacht op merge…` + (warns ? '<br>' + warns : '');
         pollStatus(data.pr_number, data.tenant);
       } else {
         result.className = 'err';
         const errs = (data && data.errors) ? data.errors : ['unexpected error (HTTP ' + resp.status + ')'];
-        result.innerHTML = '⚠️ ' + errs.map(x => x.replace(/</g, '&lt;')).join('<br>');
+        result.innerHTML = '⚠️ ' + errs.map(x => x.replace(/</g, '&lt;')).join('<br>')
+          + (warns ? '<br>' + warns : '');
       }
     });
   </script>

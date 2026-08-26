@@ -4,6 +4,105 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-08-26 (Nextcloud-image-override in het portaal, met downgrade-guard)
+
+Een tenant die een afwijkende Nextcloud-build nodig heeft — het soap-image voor
+Woo BCT — kon dat niet via het portaal krijgen. `RENDERED_TOP_KEYS` kende alleen
+`tenant`, dus een top-level `image:`-blok viel buiten wat `render()` kan
+schrijven. Erger: `unknown_keys()` meldde het als hand-geschreven, waardoor
+`_declaration()` zo'n tenant **read-only** zette. Precies de tenants met een
+override (`harderwijk-prod`, `rijswijk-accept`) waren dus niet in het portaal te
+beheren.
+
+De velden toevoegen was de kleine helft. De regel die ze veilig maakt staat in
+`Nextcloud-base/docs/ADDING-TENANT.md` en is er een die een formulier niet zelf
+kan uitdrukken: **nooit een lagere versie dan wat de tenant draait**.
+`/var/www/html` is een PVC, de upstream-entrypoint stopt met exit 1 op een ouder
+image, en met `selfHeal: true` blijft Argo het proberen. Die regel ging deze
+maand twee keer bijna mis, beide keren via de blinde vlek van dit portaal:
+
+- **2026-08-25** — op de vraag of tenants een ander image ondersteunen had het
+  portaal niets om uit te antwoorden; een reconstructie noemde een downgrade van
+  32.0.13 naar 32.0.6 "gewoon doen" en `beek` als precedent, terwijl dat een
+  legacy losse Application op chart 6.4.1 is en geen tenant van de
+  ApplicationSet.
+- **2026-08-26** — Nextcloud-base PR #100 voegde `harderwijk-prod` opnieuw toe,
+  een dag na het verwijderen, met `32.0.6-fpm-soap` terwijl het vervangen bestand
+  geen override had en dus 32.0.13 draaide. Het liep goed af omdat de namespace
+  bleek te zijn opgeruimd, niet omdat iets het tegenhield.
+
+Daarom is het veld er nu **met** een guard in drie lagen, met opzet verschillende
+hardheid:
+
+| Laag | Bron | Hardheid |
+|---|---|---|
+| git | effectieve huidige tag: die van het tenantbestand, anders `common.yaml` | blokkeert |
+| argo | `status.summary.images` van `nc-<tenant>` | blokkeert; verschil met git is een waarschuwing |
+| historie | bestond `tenant-<naam>.yaml` en is het verwijderd? | waarschuwt alleen |
+
+Git is maatgevend voor wat er hoort te draaien, Argo meldt wat het ziet; bij
+verschil wint git, want een gedrifte cluster mag een correcte wijziging niet
+vetoen. De historie-laag is het PR #100-geval, en juist daar weten de andere twee
+niets: het bestand is weg en de Application is opgeruimd. Hij waarschuwt en
+blokkeert niet — het portaal mag geen namespaces lezen en hoort dat recht ook
+niet te krijgen, dus of het volume er nog staat is onbekend. De waarschuwing
+noemt de `dbType` en het image van het verwijderde bestand, zodat een
+database-engine-switch zichtbaar wordt; dat was het andere dat bij PR #100
+niemand opmerkte. Een verse tenant zonder historie mag elke versie: er is geen
+volume om tegenaan te lopen.
+
+Twee regels worden gehandhaafd door iets *niet* aan te bieden: geen `digest:`
+(chart 8.9.0 rendert het niet, dus git zou een digest beweren die de podspec niet
+draagt) en geen GHCR-bestaanscheck (dat maakt formuliervalidatie afhankelijk van
+een externe dienst; een niet-bestaande tag komt er als `ImagePullBackOff` uit).
+
+Versies worden **geparseerd**, niet als string vergeleken. Lexicaal is
+`"32.0.6-fpm-soap"` groter dan `"32.0.13-fpm"`, want '6' > '1' — een
+stringvergelijking laat dus exact de downgrade door die de controle moet vangen.
+Het build-suffix (`-fpm`, `-fpm-soap`) wordt genegeerd: dezelfde versie in een
+andere build is geen downgrade.
+
+**Bijvangst die het bijna misging.** `image` een gerenderde key maken haalde de
+enige reden weg waarom `tenant-harderwijk-prod.yaml` read-only was — terwijl dat
+bestand ook `apps.versions` heeft, en `unknown_keys()` nooit in `tenant.apps`
+afdaalde. Opslaan via het portaal zou dus stil drie versie-pins hebben weggegooid.
+Twee dingen zijn daarom veranderd: `unknown_keys()` daalt nu af in `apps`, én de
+pins worden gerenderd (hieronder). Die afdaling blijft nodig voor alles ónder
+`apps` dat `render()` niet kent — dat is precies wat dit ving.
+
+**Per-app versie-pins in het formulier.** `tenant.apps.versions` is nu een
+gerenderde key, met per app een veld: leeg = de app volgt de laatste release (de
+ApplicationSet geeft dan `""` mee), een waarde = vastgezet in git. Daarmee is
+`harderwijk-prod` — een top-level `image:`-blok én drie pins — voor het eerst in
+het portaal te beheren.
+
+Exact drie apps zijn pinbaar, want `nextcloud-tenants.yaml` mapt precies drie
+keys naar `OPENCATALOGI_VERSION` / `OPENCONNECTOR_VERSION` /
+`OPENREGISTER_VERSION`. `validate-values.sh` heeft géén allowlist op appnamen: een
+pin op een vierde naam passeert die CI en doet vervolgens niets. In een formulier
+is die stille no-op erger dan een foutmelding, dus `PINNABLE_APPS` is hier een
+gesloten set — een vierde pinbare app betekent eerst de ApplicationSet aanpassen.
+
+Het versieformaat spiegelt `validate_app_versions_format()`, inclusief de aparte
+melding voor een leidende `v`. Die verdient zijn eigen tekst: GitHub-releases heten
+`v0.7.12` terwijl het veld `0.7.12` wil, dus dat is de fout die mensen echt maken.
+Drie numerieke delen zijn verplicht; `0.7` wordt geweigerd.
+
+Gewijzigd: `webgui/tenants.py` (`RENDERED_TOP_KEYS`, `RENDERED_APPS_KEYS`,
+`render()`, `from_declaration()`, `from_org()`, `_validate_image()` als
+gedeelde helper voor beide image-blokken, `image_version()`,
+`compare_versions()`), `webgui/argolib.py` (`images` uit `status.summary`,
+`image_for_repository()`), `webgui/gitlib.py` (`file_history()`),
+`webgui/server.py` (`_image_guard()`, `_common_image_tag()`, inhaken in
+`_tenant_write()`, waarschuwingen in de PR-body en de response),
+`webgui/templates/tenant.html` + `edit.html`, `docs/design.md`
+(`last_reviewed` → 2026-08-26), `openspec/changes/tenant-image-override/`.
+Voor de pins: `PINNABLE_APPS`, `_APP_VERSION_RE`, `RENDERED_APPS_KEYS`,
+`_validate_app_versions()`.
+Tests: 311 → 342, `./scripts/verify.sh` groen. De bewerkpagina wordt nu ook op
+templateniveau getest (velden mét `value=`, geen read-only-melding); zonder die
+test zou een ontbrekende `value=` de waarde stil laten verdwijnen bij opslaan.
+
 ### Gewijzigd — 2026-08-11 (titel niet meer verplicht; publicatiedatum en categorie facetable)
 
 `config/woo.configuration.json`, alle 17 schema's. Op verzoek van de

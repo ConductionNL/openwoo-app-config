@@ -21,6 +21,19 @@ ENVS = ("accept", "prod")
 DB_TYPES = ("mariadb", "postgres", "external")
 KNOWN_APPS = ("opencatalogi", "openconnector", "openregister")
 
+# Apps waarvan een versie-pin daadwerkelijk aankomt. De ApplicationSet mapt
+# precies deze drie naar OPENCATALOGI_VERSION / OPENCONNECTOR_VERSION /
+# OPENREGISTER_VERSION (argo/applicationsets/nextcloud-tenants.yaml). Een pin op
+# een andere naam passeert `validate-values.sh` — die heeft geen allowlist — en
+# doet vervolgens niets. In een formulier is zo'n stille no-op erger dan een
+# foutmelding, dus hier weigeren we het wél. Een vierde pinbare app betekent:
+# eerst de ApplicationSet, dan deze tuple.
+PINNABLE_APPS = ("opencatalogi", "openconnector", "openregister")
+
+# Spiegelt `ver_re` in validate_app_versions_format() van validate-values.sh:
+# drie numerieke delen, optioneel suffix na '-' of '.', geen leidende 'v'.
+_APP_VERSION_RE = re.compile(r"^[0-9]+[.][0-9]+[.][0-9]+([-.][0-9A-Za-z][0-9A-Za-z.-]*)?$")
+
 # Frontend hosts on the platform domain are covered by the shared wildcard cert
 # (`wildcard-openwoo-tls`, the ApplicationSet's default). Only a host OUTSIDE it
 # needs a per-tenant `frontend.tls` block — emitting one for a platform host
@@ -53,6 +66,12 @@ _SUFFIX_ENV = {"prod": "prod", "accept": "accept", "test": "accept", "demo": "ac
 # een vrij tekstveld en niets ving het. Nextcloud-base CI ving het pas ná de
 # merge op main.
 _TAG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
+
+# Het versiedeel van een Nextcloud-image-tag: `32.0.6-fpm-soap` -> 32.0.6.
+# Bewust alleen aan het begin van de tag en met alle drie de delen verplicht:
+# een tag zonder versie (`fpm-soap`, `latest`) mag geen versie opleveren, want
+# daarop rust de weigering van zwevende tags.
+_VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[.-].*)?$")
 
 # Het pad-deel, zonder registry-host en zonder tag. Bijvoorbeeld
 # `conduction2022/woo-website-v2`.
@@ -140,7 +159,9 @@ def validate_org(org, environment):
 
 def from_org(org, environment, dbType=None, display=None, host=None,
              theme=None, jumbotron=None, favicon=None, tls_issuer=None, tag=None,
-             registry=None, repository=None):
+             registry=None, repository=None,
+             nc_tag=None, nc_registry=None, nc_repository=None,
+             versions=None):
     """Build the full fields dict from the minimal input. Everything not given is
     derived: name=`<org>-<env>`, all three apps, branding 'Gemeente <Org>',
     db=postgres, host blank (=> platform derives <org>.<env>.commonground.nu).
@@ -165,6 +186,15 @@ def from_org(org, environment, dbType=None, display=None, host=None,
         "frontend_tag": (tag or "").strip(),
         "frontend_registry": (registry or "").strip(),
         "frontend_repository": (repository or "").strip(),
+        # Per-app versie-pins. Leeg = de app volgt de laatste release; de
+        # ApplicationSet geeft dan `""` mee. Alleen PINNABLE_APPS komen aan.
+        **{f"version_{app}": str((versions or {}).get(app) or "").strip()
+           for app in PINNABLE_APPS},
+        # Top-level `image:` — de Nextcloud-image zelf, niet de frontend. Leeg
+        # betekent: volg de platformstandaard uit common.yaml. Zie render().
+        "nc_image_tag": (nc_tag or "").strip(),
+        "nc_image_registry": (nc_registry or "").strip(),
+        "nc_image_repository": (nc_repository or "").strip(),
     }
 
 
@@ -174,9 +204,18 @@ def from_org(org, environment, dbType=None, display=None, host=None,
 # hand-written tenant files carry `frontend.tag` (24×), `hostname`/
 # `hostnameOverride` (7/6), `namespace` (6) and more — none of which the form
 # models. Those files are hand-managed and stay that way.
-RENDERED_TOP_KEYS = frozenset({"tenant"})
+# `image` staat er bij sinds de image-override-change: zonder die key meldt
+# unknown_keys() elke tenant met een eigen Nextcloud-image als hand-geschreven,
+# en zet _declaration() hem read-only. Dat kostte precies de tenants die het
+# portaal het hardst nodig hebben (harderwijk-prod, rijswijk-accept) hun
+# beheerbaarheid.
+RENDERED_TOP_KEYS = frozenset({"tenant", "image"})
 RENDERED_TENANT_KEYS = frozenset({"name", "environment", "wave", "dbType",
                                   "secrets", "apps", "frontend"})
+# Binnen `apps` rendert render() `enabled` en `versions`. Alles daarbuiten meldt
+# unknown_keys(), waardoor zo'n bestand read-only blijft in plaats van bij het
+# opslaan stil te worden uitgekleed.
+RENDERED_APPS_KEYS = frozenset({"enabled", "versions"})
 RENDERED_FRONTEND_KEYS = frozenset({"tag", "registry", "repository", "host",
                                     "tls", "branding"})
 RENDERED_BRANDING_KEYS = frozenset({"organisationName", "themeClassname",
@@ -212,6 +251,15 @@ def unknown_keys(doc):
     secrets = tenant.get("secrets")
     if isinstance(secrets, dict):
         check(secrets, frozenset({"managed"}), "tenant.secrets.")
+    # `apps` too: render() emits only `enabled`. A tenant file may also carry
+    # `apps.versions` (per-app pins, documented in Nextcloud-base
+    # docs/ADDING-TENANT.md) and re-rendering would silently drop those.
+    # Descending here is what keeps such a file read-only instead of quietly
+    # losing three version pins — the exact loss `image` used to mask on
+    # tenant-harderwijk-prod.yaml before `image` became a rendered key.
+    apps = tenant.get("apps")
+    if isinstance(apps, dict):
+        check(apps, RENDERED_APPS_KEYS, "tenant.apps.")
     return sorted(found)
 
 
@@ -227,7 +275,15 @@ def from_declaration(doc):
     frontend = tenant.get("frontend") or {}
     branding = frontend.get("branding") or {}
     tls = frontend.get("tls") or {}
+    # Top-level, naast `tenant:` — zie de toelichting in render().
+    nc_image = (doc or {}).get("image") or {}
+    pins = (tenant.get("apps", {}) or {}).get("versions") or {}
+    out = {f"version_{app}": str(pins.get(app) or "") for app in PINNABLE_APPS}
     return {
+        **out,
+        "nc_image_registry": str(nc_image.get("registry") or ""),
+        "nc_image_repository": str(nc_image.get("repository") or ""),
+        "nc_image_tag": str(nc_image.get("tag") or ""),
         "name": str(tenant.get("name") or ""),
         "environment": str(tenant.get("environment") or ""),
         "wave": str(tenant.get("wave") or "1"),
@@ -293,49 +349,13 @@ def validate(fields):
     if issuer and issuer not in TLS_ISSUERS:
         errors.append(f"frontend.tls.issuer must be one of {TLS_ISSUERS}")
 
-    # Alleen het tag-deel. Een volledige reference hier levert een ongeldige
-    # image op; zie de toelichting bij _TAG_RE.
-    tag = (fields.get("frontend_tag") or "").strip()
-    if tag and not _TAG_RE.match(tag):
-        if "/" in tag or ":" in tag:
-            errors.append(
-                f"frontend.tag '{tag}' bevat '/' of ':' — vul hier alleen het "
-                "tag-deel in (bijvoorbeeld 'V1.0.260422-development'), niet de "
-                "volledige image-reference")
-        else:
-            errors.append(
-                f"frontend.tag '{tag}' is geen geldige tag (letters, cijfers, "
-                "'.', '_' en '-', beginnend met letter/cijfer/'_')")
-
-    repository = (fields.get("frontend_repository") or "").strip()
-    if repository:
-        if ":" in repository:
-            errors.append(
-                f"frontend.repository '{repository}' bevat ':' — de tag hoort in "
-                "het tag-veld")
-        elif not _REPOSITORY_RE.match(repository):
-            errors.append(
-                f"frontend.repository '{repository}' is geen geldig pad "
-                "(kleine letters, geen leidende of afsluitende '/', "
-                "bijvoorbeeld 'conduction2022/woo-website-v2')")
-
-    registry = (fields.get("frontend_registry") or "").strip()
-    if registry:
-        if "/" in registry:
-            errors.append(
-                f"frontend.registry '{registry}' bevat '/' — vul hier alleen de "
-                "host in (bijvoorbeeld 'docker.io'); het pad hoort in het "
-                "repository-veld")
-        elif not _REGISTRY_RE.match(registry):
-            errors.append(
-                f"frontend.registry '{registry}' is geen geldige host "
-                "(bijvoorbeeld 'ghcr.io' of 'registry.local:5000')")
-        # De ApplicationSet stelt de reference alleen samen als er een repository
-        # is; een registry op zichzelf wordt stil genegeerd.
-        if not repository:
-            errors.append(
-                "frontend.registry is gezet zonder frontend.repository — vul "
-                "beide in, of geen van beide")
+    errors += _validate_app_versions(fields)
+    errors += _validate_image(fields, "frontend_", "frontend",
+                              tag_example="V1.0.260422-development")
+    # De Nextcloud-image eist bovendien een versie in de tag — zie
+    # _validate_image() voor waarom dat voor de frontend niet geldt.
+    errors += _validate_image(fields, "nc_image_", "image",
+                              tag_example="32.0.13-fpm", require_version=True)
 
     # Een verkeerd getypt thema geeft geen foutmelding maar een site zonder
     # huisstijl — de klasse bestaat simpelweg niet in de bundle.
@@ -347,6 +367,140 @@ def validate(fields):
             "'-thema' in plaats van '-theme'")
 
     return errors
+
+
+def _validate_app_versions(fields):
+    """Valideer de per-app versie-pins. Returnt foutstrings.
+
+    Spiegelt validate_app_versions_format() uit validate-values.sh, inclusief de
+    aparte melding voor een leidende 'v' — dat is de fout die mensen maken omdat
+    GitHub-releases `v0.7.12` heten terwijl het appstore-veld het zonder wil.
+
+    Een pin op een app buiten PINNABLE_APPS kán niet via dit formulier ontstaan
+    (de velden heten `version_<app>`), maar from_declaration() leest een
+    hand-geschreven bestand terug en dan hoort een niet-gewirede naam als fout
+    te verschijnen in plaats van stil te verdwijnen.
+    """
+    errors = []
+    for app in PINNABLE_APPS:
+        ver = (fields.get(f"version_{app}") or "").strip()
+        if not ver:
+            continue                      # geen pin: de app volgt de laatste release
+        if ver.startswith("v"):
+            errors.append(
+                f"apps.versions.{app} mag niet met 'v' beginnen (kreeg '{ver}') — "
+                f"gebruik '{ver[1:]}'")
+        elif not _APP_VERSION_RE.match(ver):
+            errors.append(
+                f"apps.versions.{app} '{ver}' is geen geldige versie — drie "
+                f"numerieke delen, eventueel met suffix (bijvoorbeeld '0.7.12' "
+                f"of '0.2.10-unstable.4'). Niet '0.7', niet 'latest'")
+    return errors
+
+
+def _validate_image(fields, prefix, label, tag_example, require_version=False):
+    """Valideer een registry/repository/tag-drieluik. Returnt foutstrings.
+
+    Twee blokken gebruiken dit: `tenant.frontend.*` (de PWA-image) en het
+    top-level `image:` (de Nextcloud-image). De vormregels zijn identiek — drie
+    losse velden, nooit een volledige reference in één veld — dus staan ze hier
+    één keer.
+
+    `require_version` is het enige verschil, en alleen de Nextcloud-image zet
+    het. Met `pullPolicy: IfNotPresent` hangt de draaiende versie bij een
+    zwevende tag af van wanneer een node voor het laatst pullde: op 2026-08-19
+    schoof `fpm-soap` van sha256:31123c8c naar sha256:80310a36 zonder dat er in
+    git iets veranderde. De frontend-tags dragen geen semver en bestaande
+    tenants leunen op die laksere regel, dus daar geldt het niet.
+    """
+    errors = []
+
+    # Alleen het tag-deel. Een volledige reference hier levert een ongeldige
+    # image op; zie de toelichting bij _TAG_RE.
+    tag = (fields.get(f"{prefix}tag") or "").strip()
+    if tag and not _TAG_RE.match(tag):
+        if "/" in tag or ":" in tag:
+            errors.append(
+                f"{label}.tag '{tag}' bevat '/' of ':' — vul hier alleen het "
+                f"tag-deel in (bijvoorbeeld '{tag_example}'), niet de "
+                "volledige image-reference")
+        else:
+            errors.append(
+                f"{label}.tag '{tag}' is geen geldige tag (letters, cijfers, "
+                "'.', '_' en '-', beginnend met letter/cijfer/'_')")
+    elif tag and require_version and image_version(tag) is None:
+        errors.append(
+            f"{label}.tag '{tag}' draagt geen versienummer — gebruik een "
+            f"patch-tag zoals '{tag_example}', niet een zwevende tag. Met "
+            "pullPolicy IfNotPresent hangt de draaiende versie anders af van "
+            "wanneer een node voor het laatst pullde")
+
+    repository = (fields.get(f"{prefix}repository") or "").strip()
+    if repository:
+        if ":" in repository:
+            errors.append(
+                f"{label}.repository '{repository}' bevat ':' — de tag hoort in "
+                "het tag-veld")
+        elif not _REPOSITORY_RE.match(repository):
+            errors.append(
+                f"{label}.repository '{repository}' is geen geldig pad "
+                "(kleine letters, geen leidende of afsluitende '/', "
+                "bijvoorbeeld 'conduction2022/woo-website-v2')")
+
+    registry = (fields.get(f"{prefix}registry") or "").strip()
+    if registry:
+        if "/" in registry:
+            errors.append(
+                f"{label}.registry '{registry}' bevat '/' — vul hier alleen de "
+                "host in (bijvoorbeeld 'docker.io'); het pad hoort in het "
+                "repository-veld")
+        elif not _REGISTRY_RE.match(registry):
+            errors.append(
+                f"{label}.registry '{registry}' is geen geldige host "
+                "(bijvoorbeeld 'ghcr.io' of 'registry.local:5000')")
+        # De ApplicationSet stelt de reference alleen samen als er een repository
+        # is; een registry op zichzelf wordt stil genegeerd.
+        if not repository:
+            errors.append(
+                f"{label}.registry is gezet zonder {label}.repository — vul "
+                "beide in, of geen van beide")
+
+    return errors
+
+
+def image_version(tag):
+    """De versie uit een image-tag als vergelijkbare tuple, of None.
+
+    `32.0.6-fpm-soap` -> (32, 0, 6). `fpm-soap` en `latest` -> None: die dragen
+    geen versie. Dat onderscheid is de hele reden dat deze functie bestaat —
+    zie de toelichting bij validate() over zwevende tags.
+
+    Alleen de drie leidende numerieke delen tellen. Het suffix (`-fpm`,
+    `-fpm-soap`) zegt welke build het is, niet welke versie, en mag de
+    vergelijking dus niet beinvloeden: 32.0.6-fpm en 32.0.6-fpm-soap zijn
+    dezelfde Nextcloud-versie in een andere build.
+    """
+    match = _VERSION_RE.match(str(tag or "").strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.group(1, 2, 3))
+
+
+def compare_versions(left, right):
+    """-1 als `left` ouder is dan `right`, 0 bij gelijk, 1 als nieuwer.
+
+    Beide argumenten zijn tags; None-versies geven None terug (onvergelijkbaar).
+
+    Waarom niet op de string vergelijken: lexicaal is `"32.0.6-fpm-soap"` GROTER
+    dan `"32.0.13-fpm"`, want '6' > '1'. Een stringvergelijking concludeert dus
+    dat 32.0.6 nieuwer is dan 32.0.13 en laat de downgrade door — groen licht op
+    exact het geval dat de controle moet vangen. Daarom parsen we de versie in
+    plaats van de tekst te vergelijken, en daarom heeft dit eigen tests.
+    """
+    a, b = image_version(left), image_version(right)
+    if a is None or b is None:
+        return None
+    return (a > b) - (a < b)
 
 
 def _q(value):
@@ -409,6 +563,15 @@ def render(fields):
              "  apps:", "    enabled:"]
     lines += [f"      - {a}" for a in apps]
 
+    # Optionele versie-pins per app. Een key weglaten betekent "volg de laatste
+    # release"; de ApplicationSet geeft dan `""` mee. Alleen de drie gewirede
+    # apps kunnen hier staan — zie PINNABLE_APPS.
+    pins = [(app, (fields.get(f"version_{app}") or "").strip()) for app in PINNABLE_APPS]
+    pins = [(app, ver) for app, ver in pins if ver]
+    if pins:
+        lines.append("    versions:")
+        lines += [f"      {app}: {_q(ver)}" for app, ver in pins]
+
     # Optionele image-pin voor de frontend. De ApplicationSet stelt de reference
     # samen als `<registry>/<repository>:<tag>` en levert dat als
     # pwa.image.image / pwa.image.tag. Drie losse velden, zodat een volledige
@@ -438,5 +601,27 @@ def render(fields):
             if org:
                 lines.append(f"      organisationName: {_q(org)}")
             lines += [f"      {key}: {_q(value)}" for key, value in extras]
+
+    # Optionele image-override voor Nextcloud zelf. BEWUST top-level en niet
+    # onder `tenant:`: dit is een chart-value, geen hub-veld. Het werkt omdat het
+    # tenantbestand als laatste in de `valueFiles` van de ApplicationSet staat en
+    # dus van common.yaml wint.
+    #
+    # Geen `digest:`-veld, en dat is geen omissie: chart 8.9.0 rendert het niet,
+    # dus de podspec zou alleen de tag dragen terwijl git een digest beweert. Wie
+    # het toch nodig heeft, heeft een chart-wijziging nodig, geen formulierveld.
+    nc_tag = (fields.get("nc_image_tag") or "").strip()
+    nc_registry = (fields.get("nc_image_registry") or "").strip()
+    nc_repository = (fields.get("nc_image_repository") or "").strip()
+
+    if nc_tag or nc_registry or nc_repository:
+        lines.append("")
+        lines.append("image:")
+        if nc_registry:
+            lines.append(f"  registry: {_q(nc_registry)}")
+        if nc_repository:
+            lines.append(f"  repository: {_q(nc_repository)}")
+        if nc_tag:
+            lines.append(f"  tag: {_q(nc_tag)}")
 
     return "\n".join(lines) + "\n"

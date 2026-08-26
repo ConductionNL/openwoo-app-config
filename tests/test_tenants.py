@@ -359,3 +359,236 @@ def test_from_org_honours_overrides():
                          display="Provincie X", host="open.almere.nl")
     assert f["name"] == "almere-prod" and f["dbType"] == "mariadb"
     assert f["frontend_org"] == "Provincie X" and f["frontend_host"] == "open.almere.nl"
+
+
+# --- Nextcloud image-override -------------------------------------------------
+# De regel die hier wordt afgedwongen komt uit Nextcloud-base
+# docs/ADDING-TENANT.md: nooit een lagere versie dan wat de tenant draait.
+
+
+def test_image_version_parses_only_versioned_tags():
+    assert tenants.image_version("32.0.6-fpm-soap") == (32, 0, 6)
+    assert tenants.image_version("32.0.13-fpm") == (32, 0, 13)
+    assert tenants.image_version("32.0.6") == (32, 0, 6)
+    # Zwevende tags dragen geen versie; daarop rust de weigering ervan.
+    assert tenants.image_version("fpm-soap") is None
+    assert tenants.image_version("latest") is None
+    assert tenants.image_version("") is None
+    assert tenants.image_version(None) is None
+
+
+def test_compare_versions_beats_the_string_comparison_trap():
+    """Lexicaal is '32.0.6-...' GROTER dan '32.0.13-...', want '6' > '1'.
+
+    Een stringvergelijking concludeert dus dat 32.0.6 nieuwer is dan 32.0.13 en
+    laat exact de downgrade door die de guard moet vangen. Deze test pint de
+    juiste richting vast.
+    """
+    assert "32.0.6-fpm-soap" > "32.0.13-fpm"          # de val, als tekst
+    assert tenants.compare_versions("32.0.6-fpm-soap", "32.0.13-fpm") == -1
+    assert tenants.compare_versions("32.0.13-fpm", "32.0.6-fpm-soap") == 1
+
+
+def test_compare_versions_ignores_the_build_suffix():
+    """Zelfde versie, andere build: geen downgrade, dus toegestaan."""
+    assert tenants.compare_versions("32.0.6-fpm", "32.0.6-fpm-soap") == 0
+    # Onvergelijkbaar zodra een kant geen versie draagt.
+    assert tenants.compare_versions("fpm-soap", "32.0.13-fpm") is None
+
+
+def test_render_emits_a_top_level_image_block():
+    """Top-level, NIET onder `tenant:` — het is een chart-value."""
+    f = tenants.from_org("almere", "accept",
+                         nc_registry="ghcr.io",
+                         nc_repository="conductionnl/nextcloud-images",
+                         nc_tag="32.0.6-fpm-soap")
+    out = tenants.render(f)
+    assert tenants.validate(f) == []
+    assert "\nimage:\n" in out
+    assert '  tag: "32.0.6-fpm-soap"' in out
+    # Geen digest-veld: chart 8.9.0 rendert het niet, dus git zou iets beweren
+    # wat de podspec niet doet.
+    assert "digest" not in out
+
+
+def test_render_omits_the_image_block_when_unset():
+    assert "image:" not in tenants.render(tenants.from_org("almere", "accept"))
+
+
+def test_image_override_round_trips():
+    """render -> parse -> from_declaration -> render moet identiek zijn.
+
+    Zonder dit is de override niet beheerbaar: het portaal zou het blok bij het
+    opslaan stil weggooien.
+    """
+    f = tenants.from_org("almere", "accept",
+                         nc_registry="ghcr.io",
+                         nc_repository="conductionnl/nextcloud-images",
+                         nc_tag="32.0.6-fpm-soap")
+    first = tenants.render(f)
+    doc = {"tenant": {"name": "almere-accept", "environment": "accept",
+                      "wave": "1", "dbType": "postgres",
+                      "secrets": {"managed": True},
+                      "apps": {"enabled": list(tenants.KNOWN_APPS)},
+                      "frontend": {"branding": {"organisationName": "Gemeente Almere"}}},
+           "image": {"registry": "ghcr.io",
+                     "repository": "conductionnl/nextcloud-images",
+                     "tag": "32.0.6-fpm-soap"}}
+    assert tenants.unknown_keys(doc) == []
+    assert tenants.render(tenants.from_declaration(doc)) == first
+
+
+def test_validate_rejects_a_floating_nextcloud_tag():
+    """`fpm-soap` is een geldige tag maar een ongeldige keuze.
+
+    Met pullPolicy IfNotPresent hangt de draaiende versie af van wanneer een node
+    voor het laatst pullde: op 2026-08-19 schoof `fpm-soap` van sha256:31123c8c
+    naar sha256:80310a36 zonder wijziging in git.
+    """
+    f = tenants.from_org("almere", "accept",
+                         nc_registry="ghcr.io",
+                         nc_repository="conductionnl/nextcloud-images",
+                         nc_tag="fpm-soap")
+    errors = tenants.validate(f)
+    assert any("geen versienummer" in e for e in errors), errors
+    # De frontend-tag houdt de laksere regel: die tags dragen geen semver.
+    g = tenants.from_org("almere", "accept",
+                         registry="docker.io", repository="conduction2022/woo-website-v2",
+                         tag="V1.0.260422-development")
+    assert tenants.validate(g) == []
+
+
+def test_validate_rejects_a_full_reference_in_the_image_tag():
+    f = tenants.from_org("almere", "accept", nc_tag="ghcr.io/x/y:32.0.6-fpm")
+    assert any("volledige image-reference" in e for e in tenants.validate(f))
+
+
+def test_validate_rejects_registry_without_repository():
+    f = tenants.from_org("almere", "accept", nc_registry="ghcr.io", nc_tag="32.0.6-fpm")
+    assert any("zonder image.repository" in e for e in tenants.validate(f))
+
+
+def test_unknown_keys_accepts_versions_now_that_it_is_rendered():
+    """`apps.versions` wordt sinds 2026-08-26 wél gerenderd, dus is het geen
+    reden meer om een bestand read-only te zetten.
+
+    Deze test hield eerder het omgekeerde vast (`== ["tenant.apps.versions"]`).
+    Dat was correct zolang render() de pins niet emitte: dan zou opslaan ze stil
+    weggooien. Nu ze wél worden geemit, zou read-only blijven de tenant zonder
+    reden buiten het portaal houden.
+    """
+    doc = {"tenant": {"name": "almere-accept", "environment": "accept",
+                      "dbType": "postgres",
+                      "apps": {"enabled": list(tenants.KNOWN_APPS),
+                               "versions": {"opencatalogi": "0.7.12"}}},
+           "image": {"registry": "ghcr.io",
+                     "repository": "conductionnl/nextcloud-images",
+                     "tag": "32.0.6-fpm-soap"}}
+    assert tenants.unknown_keys(doc) == []
+
+
+def test_unknown_keys_still_guards_anything_else_inside_apps():
+    """De afdaling in `apps` blijft nodig voor wat render() níet kent."""
+    doc = {"tenant": {"name": "almere-accept", "environment": "accept",
+                      "dbType": "postgres",
+                      "apps": {"enabled": list(tenants.KNOWN_APPS),
+                               "disabled": ["iets"]}}}
+    assert tenants.unknown_keys(doc) == ["tenant.apps.disabled"]
+
+
+# --- per-app versie-pins ------------------------------------------------------
+
+
+def test_render_emits_app_version_pins():
+    f = tenants.from_org("almere", "accept",
+                         versions={"opencatalogi": "0.7.12", "openregister": "0.2.11"})
+    out = tenants.render(f)
+    assert tenants.validate(f) == []
+    assert "    versions:\n" in out
+    assert '      opencatalogi: "0.7.12"' in out
+    assert '      openregister: "0.2.11"' in out
+    # Niet gepinde apps krijgen geen key: die volgen de laatste release, en de
+    # ApplicationSet geeft dan "" mee.
+    assert "openconnector:" not in out
+
+
+def test_render_omits_the_versions_block_when_nothing_is_pinned():
+    assert "versions:" not in tenants.render(tenants.from_org("almere", "accept"))
+
+
+def test_validate_rejects_a_leading_v_with_its_own_message():
+    """De klassieker: GitHub-releases heten `v0.7.12`, het veld wil het zonder."""
+    f = tenants.from_org("almere", "accept", versions={"opencatalogi": "v0.7.12"})
+    errors = tenants.validate(f)
+    assert any("mag niet met 'v' beginnen" in e for e in errors), errors
+    assert any("0.7.12" in e for e in errors)      # noemt de juiste waarde
+
+
+def test_validate_rejects_incomplete_and_floating_app_versions():
+    for bad in ("0.7", "0.7.x", "latest", "1"):
+        f = tenants.from_org("almere", "accept", versions={"openconnector": bad})
+        assert tenants.validate(f), f"{bad} had moeten falen"
+
+
+def test_validate_accepts_the_suffix_forms_the_shell_validator_accepts():
+    """Spiegelt de voorbeelden uit validate_app_versions_format()."""
+    for good in ("0.7.12", "0.2.8-beta.7", "0.2.10-unstable.4",
+                 "0.2.12-beta.20260410072957"):
+        f = tenants.from_org("almere", "accept", versions={"openregister": good})
+        assert tenants.validate(f) == [], f"{good} had moeten passeren"
+
+
+def test_a_file_with_both_image_and_pins_round_trips_without_loss():
+    """Het geval dat deze change nodig maakte.
+
+    Dit is de inhoud van het tenantbestand dat op 2026-08-26 met de hand werd
+    geschreven: een top-level `image:`-blok EN `apps.versions`. Het was daardoor
+    in het portaal niet te beheren.
+
+    Semantisch vergelijken, niet byte-identiek: het echte bestand draagt
+    commentaarregels en render() emit die niet. De eigenschap die telt is dat
+    geen sleutel of waarde verdwijnt — anders kleedt opslaan het bestand stil uit.
+    """
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load("""---
+tenant:
+  name: myorg-accept
+  environment: accept
+  wave: "1"
+  dbType: mariadb
+  secrets:
+    managed: true
+  apps:
+    enabled:
+      - opencatalogi
+      - openconnector
+      - openregister
+    # BCT Woo versions
+    versions:
+      opencatalogi: "0.7.12"
+      openconnector: "0.2.19"
+      openregister: "0.2.11"
+  frontend:
+    branding:
+      organisationName: "Gemeente Myorg"
+
+image:
+  registry: ghcr.io
+  repository: conductionnl/nextcloud-images
+  tag: "32.0.6-fpm-soap"
+""")
+    # Alles wat erin staat wordt geemit, dus beheerbaar.
+    assert tenants.unknown_keys(doc) == []
+
+    fields = tenants.from_declaration(doc)
+    assert tenants.validate(fields) == []
+    again = yaml.safe_load(tenants.render(fields))
+
+    assert again["image"] == doc["image"]
+    assert again["tenant"]["apps"]["versions"] == doc["tenant"]["apps"]["versions"]
+    assert again["tenant"]["apps"]["enabled"] == doc["tenant"]["apps"]["enabled"]
+    assert again["tenant"]["dbType"] == "mariadb"
+    assert again["tenant"]["secrets"] == {"managed": True}
+    # Nog een ronde levert exact hetzelfde op: stabiel, geen drift bij herhaald
+    # opslaan.
+    assert tenants.render(tenants.from_declaration(again)) == tenants.render(fields)

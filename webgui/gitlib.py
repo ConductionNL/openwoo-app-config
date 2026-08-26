@@ -41,6 +41,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 _DEFAULT_API = "https://api.github.com"
 
@@ -283,6 +284,46 @@ def get_file(path, ref=None):
         raise GitlibError(404, f"file not found: {path}")
     raw = base64.b64decode(data["content"]).decode("utf-8")
     return raw, data.get("sha")
+
+
+def file_history(path, limit=1):
+    """Commits die `path` raken op de base-branch, nieuwste eerst.
+
+    `[{sha, date, message}]`; een lege lijst betekent dat dit pad nooit heeft
+    bestaan. Dat onderscheid is het hele punt: `get_file()` geeft 404 zowel voor
+    "bestond nooit" als voor "is verwijderd", en juist het tweede geval is
+    gevaarlijk. Beide ApplicationSets zetten `preserveResourcesOnDeletion: true`,
+    dus na het verwijderen van een tenantbestand blijven namespace en PVC staan.
+    Een tenant met dezelfde naam opnieuw aanmaken landt dan op een bestaand
+    volume — met een geinstalleerde Nextcloud-versie erop.
+
+    Aantoonbaar: Nextcloud-base PR #100 (2026-08-26) voegde
+    `tenant-harderwijk-prod.yaml` toe terwijl datzelfde bestand een dag eerder
+    was verwijderd. Niets in de PR wees daarop.
+
+    Het portaal mag geen namespaces lezen (argolib is bewust least-privilege op
+    Applications), dus git-historie is de enige bron die hiervoor geen nieuwe
+    clusterrechten vraagt.
+    """
+    _api, _token, repo, base = _cfg()
+    count = max(1, int(limit))
+    data = _request(
+        "GET",
+        # safe="" want dit is een query-waarde: een rauwe '/' hoort hier
+        # geencodeerd, ook al accepteert GitHub het toevallig ongeencodeerd.
+        f"/repos/{repo}/commits?path={quote(str(path), safe='')}"
+        f"&sha={quote(str(base), safe='')}&per_page={count}",
+        None)
+    if not isinstance(data, list):
+        return []
+    out = []
+    for entry in data:
+        commit = (entry or {}).get("commit") or {}
+        out.append({"sha": entry.get("sha"),
+                    "date": ((commit.get("committer") or {}).get("date")),
+                    "message": str(commit.get("message") or "").splitlines()[0]
+                    if commit.get("message") else ""})
+    return out
 
 
 def update_file(branch, path, content, sha, message, author_name=None, author_email=None):

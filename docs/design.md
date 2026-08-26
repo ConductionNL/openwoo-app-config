@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-26
 owner: info@conduction.nl
 ---
 
@@ -146,6 +146,118 @@ against the list of themes that actually exist. Those live in
 often and the image lags behind it, so a list check here would reject a theme
 that was added yesterday. A wrong-but-well-formed theme still yields a site
 without styling, silently.
+
+## The Nextcloud image is an exception, and it is guarded
+
+The same three fields exist a second time, for the Nextcloud image itself:
+a **top-level** `image:` block, not under `tenant:`, because it is a chart value
+rather than a hub field. It works because the tenant file is the last entry in
+the `nextcloud-tenants` ApplicationSet's `valueFiles`, so it wins over
+`common.yaml`.
+
+It is deliberately a separate, collapsed section in the form rather than sitting
+next to the frontend fields. Almost every tenant should follow the platform
+version; this is for one that needs a PHP extension the official image does not
+ship — soap, for Woo BCT.
+
+Adding the fields was the small half. The rule that makes them safe is one a
+form cannot express by itself, from `Nextcloud-base/docs/ADDING-TENANT.md`:
+**never point an existing tenant at a lower version**. `/var/www/html` is a PVC,
+so the installed version survives a pod restart; the upstream entrypoint
+compares it against the image and exits 1 when the image is older. With
+`selfHeal: true` Argo retries forever, and recovery is reverting the tenant file,
+not `kubectl`.
+
+That rule was nearly broken twice in one month, both times through this portal's
+blind spot:
+
+- **2026-08-25** — asked whether tenants support a different image, the portal
+  had nothing to answer from, and a reconstruction presented a 32.0.13 → 32.0.6
+  downgrade as routine, citing `beek` as precedent. `beek` is a legacy
+  standalone Application on chart 6.4.1, not a tenant of this ApplicationSet.
+- **2026-08-26** — Nextcloud-base PR #100 re-added `harderwijk-prod`, removed
+  one day earlier, pinned to `32.0.6-fpm-soap` while the file it replaced
+  carried no override and therefore ran 32.0.13. It landed safely because the
+  namespace happened to be cleaned up.
+
+So the guard has three layers, with deliberately different hardness:
+
+| Layer | Source | Hardness |
+|---|---|---|
+| git | effective current tag: the tenant file's, else `common.yaml`'s | blocks |
+| argo | `status.summary.images` of `nc-<tenant>` | blocks; disagreement with git is a warning |
+| history | did `tenant-<name>.yaml` exist and get removed? | warns only |
+
+Git is authoritative for what should run; Argo reports what it sees. When they
+disagree git wins the block decision, because a drifted cluster must not veto a
+correct change.
+
+The history layer is the PR #100 case, and it is exactly where the other two
+know nothing: the file is gone and the Application has been pruned. Both
+ApplicationSets set `preserveResourcesOnDeletion: true`, so the volume can still
+be there. It warns rather than blocks — the portal may not read namespaces and
+should not be given permission to, so it cannot know. Blocking on a maybe would
+make re-adding any removed tenant impossible; staying silent is what let PR #100
+through. The warning names the removed file's `dbType` and image, so a database
+engine switch becomes visible too; that was the other thing nobody caught there.
+
+A fresh tenant with no history may pin any version — there is no volume to
+collide with. That distinction is why the guard reads the declaration and the
+history rather than only comparing tags.
+
+Two rules are enforced by *not* offering something. No `digest:` field: chart
+8.9.0 does not render it, so git would claim a digest the podspec does not
+carry. And no GHCR existence check: that would make form validation depend on an
+external service, while a non-existent tag surfaces as `ImagePullBackOff` on
+first sync — visible, not silent.
+
+One thing the guard cannot see: it compares against the **podspec** image, not
+the version actually installed in the PVC. Those normally agree; after a failed
+upgrade they do not. Closing that gap needs `exec` in the tenant namespace, far
+wider rights than `argolib`'s read-only-on-Applications. The history warning
+covers the practical case.
+
+### Version comparison is parsed, never string-compared
+
+Lexically `"32.0.6-fpm-soap"` is **greater** than `"32.0.13-fpm"`, because
+`'6' > '1'`. A string compare therefore concludes 32.0.6 is newer than 32.0.13
+and lets the downgrade through — it says yes to exactly the case it exists to
+catch. Hence `image_version()` / `compare_versions()` in `tenants.py`, and their
+own tests. The build suffix (`-fpm`, `-fpm-soap`) is ignored: same version in a
+different build is not a downgrade.
+
+## Per-app version pins
+
+`tenant.apps.versions` pins an app's version in git; leaving a key out means the
+app tracks its latest release (the ApplicationSet then passes `""`). The form
+offers one field per app, collapsed, blank by default — blank is the norm.
+
+Exactly three apps are pinnable, because
+`argo/applicationsets/nextcloud-tenants.yaml` maps exactly three keys to
+`OPENCATALOGI_VERSION`, `OPENCONNECTOR_VERSION` and `OPENREGISTER_VERSION`.
+`validate-values.sh` has **no** allowlist of app names, so a pin on a fourth name
+passes its CI and then does nothing at all — a pin that never takes effect. In a
+form that silent no-op is worse than an error, so `PINNABLE_APPS` is a closed set
+here. Adding a fourth pinnable app means changing the ApplicationSet first.
+
+The version format mirrors `validate_app_versions_format()` exactly, including
+its separate message for a leading `v`. That message earns its place: GitHub
+releases are named `v0.7.12` while the field wants `0.7.12`, so it is the mistake
+people actually make. Three numeric parts are required — `0.7` is rejected.
+
+### Why this had to land together with the image override
+
+Making `image` a rendered key had a side effect that nearly caused silent data
+loss. `unknown_keys()` never descended into `tenant.apps`, and `render()` did not
+emit `apps.versions`. On `tenant-harderwijk-prod.yaml`, which carries both an
+`image:` block and three pins, the unknown `image` key was the *only* thing
+keeping the file read-only. Allowing `image` without rendering the pins would
+have made the portal drop them on the next save.
+
+So two things changed: `unknown_keys()` now descends into `apps`, and `versions`
+is rendered. The descent still matters — anything else under `apps` that
+`render()` does not know keeps a file read-only, which is the behaviour that
+caught this in the first place.
 
 ## How Nextcloud-base consumes this
 

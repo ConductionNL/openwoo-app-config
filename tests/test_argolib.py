@@ -46,8 +46,41 @@ def _urlopen(item):
 def test_app_status_synced_healthy(monkeypatch):
     monkeypatch.setattr(argolib.urllib.request, "urlopen", _urlopen(
         {"status": {"sync": {"status": "Synced"}, "health": {"status": "Healthy"}}}))
+    # `images` is leeg maar aanwezig: een Application zonder status.summary is
+    # geen fout, en de guard moet een lege lijst kunnen verwerken.
     assert argolib.app_status("nc-almere-accept") == {
-        "exists": True, "sync": "Synced", "health": "Healthy"}
+        "exists": True, "sync": "Synced", "health": "Healthy", "images": []}
+
+
+def test_app_status_reports_images(monkeypatch):
+    """`status.summary.images` komt mee, zonder tweede API-call.
+
+    Dit is de kruiscontrole van de image-downgrade-guard: git zegt wat er hoort
+    te draaien, dit zegt wat Argo ziet.
+    """
+    monkeypatch.setattr(argolib.urllib.request, "urlopen", _urlopen(
+        {"status": {"sync": {"status": "Synced"}, "health": {"status": "Healthy"},
+                    "summary": {"images": [
+                        "ghcr.io/conductionnl/nextcloud-images:32.0.13-fpm",
+                        "docker.io/conduction2022/woo-website-v2:V1.0.260422"]}}}))
+    status = argolib.app_status("nc-almere-accept")
+    assert status["images"] == [
+        "ghcr.io/conductionnl/nextcloud-images:32.0.13-fpm",
+        "docker.io/conduction2022/woo-website-v2:V1.0.260422"]
+
+
+def test_image_for_repository_selects_by_path_not_position():
+    """Selecteren op positie breekt zodra de chart een image toevoegt."""
+    images = ["docker.io/conduction2022/woo-website-v2:V1.0.260422",
+              "ghcr.io/conductionnl/nextcloud-images:32.0.13-fpm"]
+    assert argolib.image_for_repository(images, "conductionnl/nextcloud-images") == \
+        "ghcr.io/conductionnl/nextcloud-images:32.0.13-fpm"
+    # Zonder registry-prefix in de image-reference werkt het ook.
+    assert argolib.image_for_repository(["nextcloud:32.0.13-fpm"], "nextcloud") == \
+        "nextcloud:32.0.13-fpm"
+    # Geen match en geen repository geven None, niet de eerste image.
+    assert argolib.image_for_repository(images, "does/not-exist") is None
+    assert argolib.image_for_repository(images, "") is None
 
 
 def test_app_status_404_means_not_yet_generated(monkeypatch):

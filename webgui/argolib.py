@@ -57,9 +57,41 @@ def _get(path):
 
 
 def _summary(app):
+    """{sync, health, images} uit de Application-status.
+
+    `images` komt uit `status.summary.images` — de images die Argo op de live
+    resources van deze Application ziet. Dat is de kruiscontrole voor de
+    image-downgrade-guard: git zegt wat er hoort te draaien, dit zegt wat Argo
+    ziet. De volledige Application wordt in _get() al opgehaald, dus dit kost
+    geen extra call en geen extra RBAC — de ClusterRole blijft read-only op
+    argoproj.io Applications in argocd.
+
+    Let op: dit is de PODSPEC-image, niet de versie die in het PVC geinstalleerd
+    staat. Normaal lopen die gelijk; na een mislukte upgrade niet.
+    """
     st = app.get("status", {})
     return {"sync": (st.get("sync") or {}).get("status"),
-            "health": (st.get("health") or {}).get("status")}
+            "health": (st.get("health") or {}).get("status"),
+            "images": list((st.get("summary") or {}).get("images") or [])}
+
+
+def image_for_repository(images, repository):
+    """De eerste image uit `images` waarvan het pad `repository` bevat, of None.
+
+    Een tenant-Application draagt meerdere images (Nextcloud, de frontend, soms
+    een sidecar), dus selecteren op positie is fout zodra de chart iets
+    toevoegt. Matchen op het repository-pad is stabiel: `nextcloud`,
+    `conductionnl/nextcloud-images`.
+    """
+    needle = str(repository or "").strip()
+    if not needle:
+        return None
+    for image in images or []:
+        # `<registry>/<repository>:<tag>` of `<repository>:<tag>`.
+        path = str(image).rsplit(":", 1)[0]
+        if path == needle or path.endswith(f"/{needle}"):
+            return str(image)
+    return None
 
 
 def app_status(name):

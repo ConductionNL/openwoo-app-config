@@ -70,6 +70,13 @@ import yaml      # noqa: E402
 
 TENANTS_DIR = "nextcloud-platform/values/tenants"
 
+# De platformbrede Nextcloud-image staat hier één keer; een tenant zonder eigen
+# `image:`-blok draait deze versie. De image-downgrade-guard vergelijkt hiertegen
+# wanneer het tenantbestand zelf geen override heeft. Env-instelbaar omdat het
+# een pad in een ándere repo is.
+COMMON_VALUES_PATH = os.environ.get("COMMON_VALUES_PATH",
+                                    "nextcloud-platform/values/common.yaml")
+
 # Nextcloud-base's governance-check weigert elke PR zonder het label dat bij de
 # classificatie hoort; een PR die alleen tenantbestanden raakt classificeert als
 # `tenant-additive`. Zonder label is élke portal-PR rood en moet een mens hem
@@ -280,6 +287,11 @@ def _tenant_write(form, is_edit):
         tag=form.get("frontend_tag", ""),
         registry=form.get("frontend_registry", ""),
         repository=form.get("frontend_repository", ""),
+        nc_tag=form.get("nc_image_tag", ""),
+        nc_registry=form.get("nc_image_registry", ""),
+        nc_repository=form.get("nc_image_repository", ""),
+        versions={app: form.get(f"version_{app}", "")
+                  for app in tenants.PINNABLE_APPS},
     )
     # defense-in-depth: the derived fields must still pass the full validator
     errors = tenants.validate(fields)
@@ -313,6 +325,16 @@ def _tenant_write(form, is_edit):
         return {"errors": [f"{name} bestaat al — pas hem aan via /tenant/{name}/edit"],
                 "edit_url": f"/tenant/{name}/edit"}, 409
 
+    # De image-downgrade-guard staat hier en niet direct na validate(): laag 1
+    # heeft `declared` nodig om de effectieve huidige tag te bepalen, en laag 3
+    # om create van update te scheiden. Wel nog vóór de PR — een geblokkeerde
+    # downgrade mag geen branch achterlaten.
+    image_errors, image_warnings = _image_guard(name, fields, declared)
+    if image_errors:
+        app.logger.warning("image guard blocked: user=%s name=%s errors=%s",
+                           user, name, image_errors)
+        return {"errors": image_errors, "warnings": image_warnings}, 400
+
     updating = declared["exists"]
     verb, branch = ("update", f"edit-tenant/{name}") if updating else ("add", f"add-tenant/{name}")
     commit_msg = (f"{verb} tenant: {name}\n\n"
@@ -322,6 +344,19 @@ def _tenant_write(form, is_edit):
                f"provisioning portal.\n\n"
                f"- requested-by: `{user}`\n"
                f"- machine-authored: review before merge.\n")
+    if fields.get("nc_image_tag"):
+        # De reviewer moet zien dat dit een afwijkende Nextcloud-build is en
+        # waartegen de guard heeft vergeleken. PR #100 (Nextcloud-base,
+        # 2026-08-26) had een image-override zonder één woord daarover in de
+        # body, met een onderbouwing die naar een tenant verwees die niet
+        # bestond.
+        pr_body += (f"- Afwijkende Nextcloud-image: "
+                    f"`{fields.get('nc_image_registry') or '<default>'}/"
+                    f"{fields.get('nc_image_repository') or '<default>'}:"
+                    f"{fields['nc_image_tag']}`. Gecontroleerd op downgrade "
+                    f"tegen git en Argo.\n")
+    for warning in image_warnings:
+        pr_body += f"- ⚠️ {warning}\n"
     if updating:
         # Branding env is ignore-diffed on the frontend Deployment, so a change
         # here does NOT reach a running frontend. Saying so in the PR beats
@@ -350,7 +385,130 @@ def _tenant_write(form, is_edit):
     app.logger.info("tenant PR opened: user=%s name=%s pr=%s update=%s",
                     user, name, result.get("number"), updating)
     return {"pr_url": result.get("html_url"), "pr_number": result.get("number"),
-            "tenant": name, "updated": updating}, 201
+            "tenant": name, "updated": updating,
+            # Niet-blokkerend, maar de operator moet het zien: het staat ook in
+            # de PR-body, en die leest hij pas na het klikken.
+            "warnings": image_warnings}, 201
+
+
+def _common_image_tag():
+    """De platformstandaard-tag uit `values/common.yaml`, of None.
+
+    Dat is de versie die een tenant draait zolang hij geen eigen `image:`-blok
+    heeft, en dus de referentie waartegen een override wordt vergeleken.
+    """
+    raw, _sha = gitlib.get_file(COMMON_VALUES_PATH)
+    doc = yaml.safe_load(raw) or {}
+    tag = ((doc.get("image") or {}).get("tag"))
+    return str(tag).strip() if tag else None
+
+
+def _image_guard(name, fields, declared):
+    """De image-downgrade-guard. Returnt (errors, warnings).
+
+    Handhaaft de regel uit Nextcloud-base docs/ADDING-TENANT.md die een
+    formulier niet met veldvalidatie kan uitdrukken: **nooit een lagere versie
+    dan wat de tenant draait**. `/var/www/html` is een PVC, de upstream-
+    entrypoint stopt met exit 1 op een ouder image, en met `selfHeal: true`
+    blijft Argo het proberen — herstel gaat via het tenantbestand, niet via
+    kubectl.
+
+    Drie lagen, met opzet verschillende hardheid:
+
+    1. git      — de effectieve huidige tag (tenantbestand, anders common.yaml).
+                  Blokkeert. Dit is de bron van waarheid voor wat er hoort te
+                  draaien.
+    2. argo     — `status.summary.images` van `nc-<naam>`. Blokkeert. Wijkt het
+                  af van laag 1, dan is dat een waarschuwing en wint git: een
+                  gedrifte cluster mag een correcte wijziging niet vetoen.
+    3. historie — bestond het tenantbestand eerder en is het verwijderd?
+                  Waarschuwt alleen. Of het volume er nog staat weet het portaal
+                  niet (het mag geen namespaces lezen), dus blokkeren op een
+                  misschien zou elke re-add onmogelijk maken.
+
+    Een verse tenant zonder historie mag elke versie: er is geen volume om
+    tegenaan te lopen. Dat onderscheid is de reden dat de lagen naar `declared`
+    en de historie kijken en niet alleen naar de tags.
+    """
+    errors, warnings = [], []
+    proposed = (fields.get("nc_image_tag") or "").strip()
+    exists = bool(declared.get("exists"))
+
+    # --- laag 3: is dit een re-add van een verwijderd bestand? -------------
+    previous = None
+    if not exists:
+        try:
+            history = gitlib.file_history(f"{TENANTS_DIR}/{tenants.filename(name)}", limit=1)
+        except gitlib.GitlibError as exc:
+            # Deze laag waarschuwt en blokkeert nooit, dus mag zijn eigen
+            # falen ook niet blokkeren — anders houdt een onbereikbare
+            # historie-endpoint het aanmaken van élke tenant tegen. Dat de
+            # check niet gelukt is, moet wel zichtbaar zijn: een stille
+            # overslag leest als "geen historie".
+            history = []
+            warnings.append(
+                f"kon de git-historie van tenant-{name}.yaml niet lezen "
+                f"({exc.detail}) — niet vastgesteld of deze tenant eerder heeft "
+                f"bestaan. Bestaat de namespace nog, dan gelden de versie- en "
+                f"databaseregels van een bestaande tenant.")
+        if history:
+            previous = history[0]
+            warnings.append(
+                f"tenant-{name}.yaml heeft eerder bestaan en is verwijderd "
+                f"({previous.get('date') or 'datum onbekend'}: "
+                f"{previous.get('message') or 'geen bericht'}). Beide "
+                f"ApplicationSets zetten preserveResourcesOnDeletion, dus de "
+                f"namespace en het PVC kunnen er nog staan. Controleer dat met "
+                f"`kubectl get ns {name}` voordat dit gemerged wordt: op een "
+                f"bestaand volume gelden de versie- en databaseregels van een "
+                f"BESTAANDE tenant, niet die van een nieuwe.")
+
+    if not proposed:
+        return errors, warnings          # geen override: niets te vergelijken
+
+    # --- laag 1: git -------------------------------------------------------
+    current = (declared.get("fields") or {}).get("nc_image_tag") if exists else None
+    if exists and not current:
+        try:
+            current = _common_image_tag()
+        except (gitlib.GitlibError, yaml.YAMLError) as exc:
+            return (errors + [f"kan {COMMON_VALUES_PATH} niet lezen ({exc}) — "
+                              f"zonder de platformstandaard is niet vast te "
+                              f"stellen of dit een downgrade is"], warnings)
+
+    if exists and current and tenants.compare_versions(proposed, current) == -1:
+        errors.append(
+            f"image.tag '{proposed}' is ouder dan de versie die {name} nu draait "
+            f"('{current}'). Downgraden werkt niet: /var/www/html is een PVC, de "
+            f"entrypoint stopt met exit 1 en Argo blijft met selfHeal opnieuw "
+            f"proberen. Bouw de variant eerst op {current} of hoger.")
+
+    # --- laag 2: argo ------------------------------------------------------
+    repository = (fields.get("nc_image_repository") or "").strip()
+    if exists and repository:
+        try:
+            status = argolib.app_status(f"nc-{name}")
+        except argolib.ArgoError as exc:
+            # Argo is de kruiscontrole, niet de bron van waarheid. Onbereikbaar
+            # betekent geen tweede mening — melden, niet weigeren, want laag 1
+            # heeft de blokkerende uitspraak al gedaan.
+            warnings.append(f"Argo-status van nc-{name} niet op te halen "
+                            f"({exc.detail}); alleen tegen git vergeleken.")
+        else:
+            live = argolib.image_for_repository(status.get("images"), repository)
+            live_tag = str(live).rsplit(":", 1)[-1] if live and ":" in str(live) else None
+            if live_tag:
+                if tenants.compare_versions(proposed, live_tag) == -1:
+                    errors.append(
+                        f"image.tag '{proposed}' is ouder dan de image die Argo "
+                        f"op nc-{name} ziet draaien ('{live_tag}').")
+                if current and tenants.compare_versions(live_tag, current) != 0:
+                    warnings.append(
+                        f"git zegt '{current}' en Argo ziet '{live_tag}' op "
+                        f"nc-{name} — die lopen uiteen. Git is hier "
+                        f"maatgevend; controleer de drift apart.")
+
+    return errors, warnings
 
 
 def _declaration(name):
