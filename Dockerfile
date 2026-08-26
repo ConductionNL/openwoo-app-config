@@ -29,15 +29,21 @@ RUN pip install --no-cache-dir -r webgui/requirements.txt
 # (docs/sites-batch) vóór de eerstvolgende image-build. De sha-pin is
 # host-onafhankelijk (zelfde commit op beide hosts).
 ARG HUB_REPO=https://github.com/ConductionNL/hub.git
-# Bumped 2026-08-10: 4945cf97 -> 6bbf2aee (11 commits). Inhoud:
-#   * docs_mcp veegt de git-omgeving schoon vóór elke aanroep (clean_git_env);
-#     zonder dat kon de MCP-server onder een gelekte GIT_DIR de verkeerde repo
-#     bewerken. Dit is de enige wijziging die de inhoudslaag van dit image raakt.
-#   * server-side docs-gate (ci.yml), docs-touched in warn-mode, techbook-pin
-#     op v0.2.0, en een cryptography-bump (GHSA-g6cj-pr64-35w5).
-# Bewuste bump: de builds van 09:08 en 10:56 faalden op deze tripwire, precies
-# zoals bedoeld — hub-main was voorbij de pin.
-ARG HUB_SHA=6bbf2aee28bfa5bdb79f4e2fd84d05e70dd8618f
+# Bumped 2026-08-26: 6bbf2aee -> 0cb65b3 (15 commits). Inhoud:
+#   * `fix(mcp): handbook en techbook waren onzichtbaar voor de MCP` — de enige
+#     wijziging die de inhoudslaag van dit image raakt. `docs_mcp/content.py` en
+#     `docs_mcp/internal_components.yaml` kregen een `publication:`-veld per
+#     entry, waardoor search_docs nu óók handbook en techbook teruggeeft in
+#     plaats van alleen de componentrepos.
+#   * De overige veertien zijn workstation-gereedschap dat meelift zonder de
+#     docs-MCP te raken: `scripts/onboard.sh` + `onboard_gui.py` (werkplek
+#     inrichten), `rollout_frontend_image_tls.sh`, `swap_epe_cert.sh`, en een
+#     hook die stap 0 bij elke prompt injecteert.
+# Bewuste bump: de builds sinds 2026-08-16 faalden op deze tripwire, precies
+# zoals bedoeld — hub-main was voorbij de pin. Dat is géén defect in de clone;
+# `--depth 1` haalt de tip en de assert daaronder ís de poort. Wie de assert
+# "repareert" door de pin te laten fetchen, haalt de tripwire eruit.
+ARG HUB_SHA=0cb65b38d38a4cc423478cd08d2a036118a6a11f
 RUN git clone --depth 1 "$HUB_REPO" /opt/hub \
  && [ "$(git -C /opt/hub rev-parse HEAD)" = "$HUB_SHA" ] \
  && rm -rf /opt/hub/.git

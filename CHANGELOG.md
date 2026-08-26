@@ -4,6 +4,32 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Gewijzigd — 2026-08-26 (hub-pin gebumpt: 6bbf2aee → 0cb65b3)
+
+De `image`-workflow faalde sinds 2026-08-16 op de `HUB_SHA`-tripwire in de
+Dockerfile. **Dat is geen defect maar de bedoelde werking:** de pin faalt zodra
+hub-main erover heen is, zodat het bumpen een bewuste handeling blijft met een
+changelog-entry erbij. De laatste geslaagde build was `b9c0ac6` (2026-08-11).
+
+Gevolg was wel dat er tien dagen geen nieuw portaal-image is gebouwd — vandaar
+dat de image-override-wijziging van vandaag nog niet in de draaiende portal zit.
+
+Vijftien hub-commits verder. Wat de **inhoudslaag** van dit image raakt, is er
+precies één: `fix(mcp): handbook en techbook waren onzichtbaar voor de MCP`.
+`docs_mcp/content.py` en `docs_mcp/internal_components.yaml` kregen een
+`publication:`-veld per entry, waardoor `search_docs` nu ook handbook en techbook
+teruggeeft in plaats van alleen de componentrepos. De andere veertien zijn
+workstation-gereedschap dat meelift zonder de docs-MCP te raken (`onboard.sh` +
+`onboard_gui.py`, `rollout_frontend_image_tls.sh`, `swap_epe_cert.sh`, en een
+hook die stap 0 bij elke prompt injecteert).
+
+Bij de bump is in het commentaar vastgelegd wat de faalmodus *niet* is, omdat het
+er wél zo uitziet: `git clone --depth 1` haalt de tip en de assert daaronder ís de
+poort. Wie die assert "repareert" door de clone de gepinde SHA te laten fetchen,
+haalt de tripwire eruit in plaats van hem te herstellen.
+
+Gewijzigd: `Dockerfile` (`ARG HUB_SHA`), `CHANGELOG.md`.
+
 ### Toegevoegd — 2026-08-26 (Nextcloud-image-override in het portaal, met downgrade-guard)
 
 Een tenant die een afwijkende Nextcloud-build nodig heeft — het soap-image voor
