@@ -13,9 +13,13 @@ en bevroren zodra hij gezet is, zodat een publieke link een re-import of
 reset-sync overleeft (opencatalogi#1592, openregister#4037; besluit Robert
 Zondervan 2026-10-19: kenmerk, niet de titel).
 
-- Werkt pas op een OpenRegister met de slug-fix van openregister#4037. Een
-  oudere OpenRegister gooit de sleutel bij import stil weg; verder verandert er
-  dan niets.
+- Werkt pas op een OpenRegister met de slug-fix van openregister#4037 (PR
+  openregister#4774). Een oudere OpenRegister gooit de sleutel bij import stil
+  weg; verder verandert er dan niets.
+- Een export van zo'n oudere OpenRegister mist de sleutel dus ook. De nieuwe
+  test `tests/test_woo_config.py` laat `make test` falen zodra een WOO-schema na
+  `make sanitize RAW=…` geen `objectSlugField: "kenmerk"` meer heeft; zet hem
+  dan terug (zie `docs/config-changes.md`, stap 3).
 - Bestaande publicaties krijgen hun slug niet vanzelf: na de import per
   register/schema `occ openregister:backfill-slugs <register> <schema>`
   (eerst met `--dry-run`). Een publicatie zonder kenmerk krijgt geen slug en
