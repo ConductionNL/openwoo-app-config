@@ -4,6 +4,30 @@ All notable changes to this repository are documented here.
 
 ## [Unreleased]
 
+### Toegevoegd — 2026-10-22 (stabiele publicatie-links: `objectSlugField: kenmerk`)
+
+Alle 17 WOO-publicatietypen in `config/woo.configuration.json` krijgen
+`configuration.objectSlugField: "kenmerk"`. Een publicatie krijgt daarmee een
+slug uit haar kenmerk (zaaknummer uit de bron), uniek binnen register en schema
+en bevroren zodra hij gezet is, zodat een publieke link een re-import of
+reset-sync overleeft (opencatalogi#1592, openregister#4037; besluit Robert
+Zondervan 2026-10-19: kenmerk, niet de titel).
+
+- Werkt pas op een OpenRegister met de slug-fix van openregister#4037 (PR
+  openregister#4774). Een oudere OpenRegister gooit de sleutel bij import stil
+  weg; verder verandert er dan niets.
+- Een export van zo'n oudere OpenRegister mist de sleutel dus ook. De nieuwe
+  test `tests/test_woo_config.py` laat `make test` falen zodra een WOO-schema na
+  `make sanitize RAW=…` geen `objectSlugField: "kenmerk"` meer heeft; zet hem
+  dan terug (zie `docs/config-changes.md`, stap 3).
+- Bestaande publicaties krijgen hun slug niet vanzelf: na de import per
+  register/schema `occ openregister:backfill-slugs <register> <schema>`
+  (eerst met `--dry-run`). Een publicatie zonder kenmerk krijgt geen slug en
+  blijft op haar UUID bereikbaar.
+- Bewerkt in de canonieke config i.p.v. via een verse export: geen tenant draait
+  nog een OpenRegister die de sleutel bewaart. `make sanitize` laat de wijziging
+  ongemoeid, `make lint` en de tests zijn groen.
+
 ### Gewijzigd — 2026-08-26 (hub-pin gebumpt: 6bbf2aee → 0cb65b3)
 
 De `image`-workflow faalde sinds 2026-08-16 op de `HUB_SHA`-tripwire in de

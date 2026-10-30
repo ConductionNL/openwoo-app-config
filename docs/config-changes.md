@@ -14,7 +14,11 @@ follows this flow — no exceptions:
 2. Make/obtain a fresh export → drop it in the repo as `raw-<date>.json`
    (git-ignored, never committed).
 3. `make sanitize RAW=raw-<date>.json` — strips the postgres runtime
-   pollution into `config/woo.configuration.json`.
+   pollution into `config/woo.configuration.json`. An export from an
+   OpenRegister without the slug fix (openregister#4774) lacks
+   `configuration.objectSlugField` on the WOO publication schemas; put
+   `"kenmerk"` back before step 4, which fails on it
+   (`tests/test_woo_config.py`).
 4. `make lint && make test` — the gate. Fix any dangling refs / pollution.
 5. `make functional` *(local)* — prove it imports into a clean Nextcloud
    (see [functional test](functional-test.md)).

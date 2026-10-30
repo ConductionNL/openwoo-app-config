@@ -1250,7 +1250,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -1646,7 +1647,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -2043,7 +2045,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -2440,7 +2443,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -2837,7 +2841,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -3234,7 +3239,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -3631,7 +3637,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -4029,7 +4036,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -4438,7 +4446,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -4835,7 +4844,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -5240,7 +5250,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -5637,7 +5648,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -6035,7 +6047,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -6432,7 +6445,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -6829,7 +6843,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -7226,7 +7241,8 @@
           "objectDescriptionField": "beschrijving",
           "objectImageField": null,
           "objectNameField": "titel",
-          "objectSummaryField": null
+          "objectSummaryField": null,
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
@@ -7623,7 +7639,8 @@
           "objectImageField": null,
           "objectSummaryField": null,
           "allowFiles": false,
-          "allowedTags": []
+          "allowedTags": [],
+          "objectSlugField": "kenmerk"
         },
         "allOf": null,
         "oneOf": null,
